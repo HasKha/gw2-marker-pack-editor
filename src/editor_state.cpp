@@ -92,6 +92,8 @@ void State::reset() {
     dirty = false;
     status.clear();
     selection.clear();
+    reveal_pending = false;
+    reveal_target = NodeRef{};
     pathables_by_category.clear();
     orphan_pathables.clear();
     category_hidden.clear();

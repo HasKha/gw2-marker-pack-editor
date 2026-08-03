@@ -31,9 +31,16 @@ public:
     // Last item clicked. Drives the property panel when several things are selected.
     NodeRef primary() const { return items_.empty() ? NodeRef{} : items_.back(); }
 
+    // First item selected. The gizmo sits here and a group rotation orbits about it, so it
+    // has to stay put as the selection grows — which is why every add appends.
+    NodeRef anchor() const { return items_.empty() ? NodeRef{} : items_.front(); }
+
     void clear() { items_.clear(); }
     void set(NodeRef node);
     void toggle(NodeRef node);
+    // Replaces the selection wholesale. The caller's order is kept, so whatever it puts
+    // first becomes the anchor.
+    void setAll(std::vector<NodeRef> nodes) { items_ = std::move(nodes); }
 
 private:
     std::vector<NodeRef> items_;
@@ -55,6 +62,17 @@ struct State {
 
     Settings settings;
     Selection selection;
+
+    // A click in the world asks the tree to open down to the node and scroll it into view.
+    // The tree consumes it on its next frame — deferred rather than done directly because
+    // the pick arrives from the game's message thread, and because only the tree knows
+    // which rows it is drawing.
+    bool reveal_pending = false;
+    NodeRef reveal_target;
+    void requestReveal(NodeRef node) {
+        reveal_pending = true;
+        reveal_target = node;
+    }
 
     // Pathables grouped by owning category, built once per load. Without this the tree
     // would rescan every pathable for every category it draws — 55k x 14k on the largest

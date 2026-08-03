@@ -2,11 +2,56 @@
 
 #include <imgui.h>
 
+#include <algorithm>
+#include <iterator>
 #include <string>
+#include <vector>
 
 namespace ui::tree_window {
 
 namespace {
+
+// ── Reveal ────────────────────────────────────────────────────────────────────
+// A node picked in the world has to be shown in the tree, which means opening every
+// category above it. A parent chain is only walkable upwards, so it is collected once at
+// the top of draw() and consulted on the way down. Valid for the one frame that consumes
+// State::reveal_pending.
+bool reveal_active = false;
+editor::NodeRef reveal_target;
+std::vector<size_t> reveal_ancestors; // categories to force open, root-first
+bool reveal_orphans = false; // the target is a pathable with no resolvable category
+
+void beginReveal(editor::State& state) {
+    reveal_active = false;
+    reveal_orphans = false;
+    reveal_ancestors.clear();
+    if (!state.reveal_pending) return;
+
+    state.reveal_pending = false;
+    reveal_target = state.reveal_target;
+    reveal_active = true;
+
+    size_t category = pack::kNoIndex;
+    if (reveal_target.kind == editor::NodeKind::Category) {
+        category = reveal_target.index;
+    } else if (reveal_target.index < state.pack.pathables.size()) {
+        category = state.pack.pathables[reveal_target.index].category;
+    }
+
+    if (category == pack::kNoIndex || category >= state.pack.categories.size()) {
+        reveal_orphans = reveal_target.kind == editor::NodeKind::Pathable;
+        return;
+    }
+
+    while (category != pack::kNoIndex && category < state.pack.categories.size()) {
+        reveal_ancestors.push_back(category);
+        category = state.pack.categories[category].parent;
+    }
+}
+
+bool revealOpens(size_t category_index) {
+    return reveal_active && std::find(reveal_ancestors.begin(), reveal_ancestors.end(), category_index) != reveal_ancestors.end();
+}
 
 // Label for a pathable. Packs rarely give markers a title, so fall back to whatever
 // identifies it: the trail's data file, the marker's icon, then its position.
@@ -88,8 +133,81 @@ bool eyeButton(const char* id, bool open_eye, bool dimmed) {
     return pressed;
 }
 
+// ── Range select ──────────────────────────────────────────────────────────────
+// A shift+click range is only meaningful inside one level of the tree: rows in different
+// branches are drawn in different places, so "everything between them" would have to
+// invent an order across the branches. A level is identified by the group that owns it.
+struct RowGroup {
+    enum class Kind { Roots, Orphans, Category };
+    Kind kind = Kind::Roots;
+    size_t category = pack::kNoIndex;
+
+    bool operator==(const RowGroup& other) const { return kind == other.kind && category == other.category; }
+};
+
+RowGroup groupOf(const editor::State& state, editor::NodeRef node) {
+    if (node.kind == editor::NodeKind::Category) {
+        if (node.index >= state.pack.categories.size()) return {RowGroup::Kind::Roots, pack::kNoIndex};
+        const size_t parent = state.pack.categories[node.index].parent;
+        if (parent == pack::kNoIndex || parent >= state.pack.categories.size()) return {RowGroup::Kind::Roots, pack::kNoIndex};
+        return {RowGroup::Kind::Category, parent};
+    }
+
+    if (node.index >= state.pack.pathables.size()) return {RowGroup::Kind::Orphans, pack::kNoIndex};
+    const size_t category = state.pack.pathables[node.index].category;
+    if (category == pack::kNoIndex || category >= state.pack.categories.size()) return {RowGroup::Kind::Orphans, pack::kNoIndex};
+    return {RowGroup::Kind::Category, category};
+}
+
+// The rows of one level, in the order the tree draws them. Must stay in step with
+// drawCategoryRow, or a range would cover rows the user did not see between the ends.
+std::vector<editor::NodeRef> rowsOf(const editor::State& state, const RowGroup& group) {
+    std::vector<editor::NodeRef> rows;
+    switch (group.kind) {
+    case RowGroup::Kind::Roots:
+        for (size_t root : state.pack.roots) rows.push_back({editor::NodeKind::Category, root});
+        break;
+    case RowGroup::Kind::Orphans:
+        for (size_t pathable : state.orphan_pathables) rows.push_back({editor::NodeKind::Pathable, pathable});
+        break;
+    case RowGroup::Kind::Category:
+        for (size_t child : state.pack.categories[group.category].children) rows.push_back({editor::NodeKind::Category, child});
+        for (size_t pathable : state.pathables_by_category[group.category]) rows.push_back({editor::NodeKind::Pathable, pathable});
+        break;
+    }
+    return rows;
+}
+
+// Anchor to `node`, inclusive. The anchor is emitted first whichever way the range runs,
+// so it stays the selection's anchor and the gizmo does not jump to the other end.
+bool selectRange(editor::State& state, editor::NodeRef anchor, editor::NodeRef node) {
+    const RowGroup group = groupOf(state, anchor);
+    if (!(group == groupOf(state, node))) return false;
+
+    const std::vector<editor::NodeRef> rows = rowsOf(state, group);
+    const auto from = std::find(rows.begin(), rows.end(), anchor);
+    const auto to = std::find(rows.begin(), rows.end(), node);
+    if (from == rows.end() || to == rows.end()) return false;
+
+    std::vector<editor::NodeRef> range;
+    if (from <= to) {
+        range.assign(from, to + 1);
+    } else {
+        range.assign(std::make_reverse_iterator(from + 1), std::make_reverse_iterator(to));
+    }
+
+    state.selection.setAll(std::move(range));
+    return true;
+}
+
 void selectNode(editor::State& state, editor::NodeRef node) {
-    if (ImGui::GetIO().KeyCtrl) {
+    const ImGuiIO& io = ImGui::GetIO();
+
+    // Shift over a level boundary falls back to a plain select rather than doing nothing,
+    // so the click always lands somewhere.
+    if (io.KeyShift && !state.selection.empty() && selectRange(state, state.selection.anchor(), node)) return;
+
+    if (io.KeyCtrl) {
         state.selection.toggle(node);
     } else {
         state.selection.set(node);
@@ -149,6 +267,10 @@ void drawRow(
 
     if (row_clicked && !eye_took_click) selectNode(state, node);
 
+    // The ancestors were forced open above, so the row exists this frame and can be
+    // scrolled to straight away.
+    if (reveal_active && node == reveal_target) ImGui::SetScrollHereY(0.5f);
+
     if (out_open) *out_open = open;
 }
 
@@ -180,6 +302,8 @@ void drawCategoryRow(editor::State& state, size_t category_index) {
     // Categories and pathables share an id space here, so keep them apart.
     ImGui::PushID(-1 - static_cast<int>(category_index));
 
+    if (revealOpens(category_index)) ImGui::SetNextItemOpen(true);
+
     bool open = false;
     drawRow(state, node, flags, category.displayName(), nullptr, own_pathables, &open);
 
@@ -202,12 +326,15 @@ void draw(editor::State& state) {
         return;
     }
 
+    beginReveal(state);
+
     ImGui::BeginChild("##tree", ImVec2(0, 0), false);
 
     for (size_t root : state.pack.roots) drawCategoryRow(state, root);
 
     if (!state.orphan_pathables.empty()) {
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.00f, 0.70f, 0.30f, 1.00f));
+        if (reveal_orphans) ImGui::SetNextItemOpen(true);
         const bool open =
             ImGui::TreeNodeEx("##orphans", ImGuiTreeNodeFlags_SpanFullWidth, "Unresolved (%zu)", state.orphan_pathables.size());
         ImGui::PopStyleColor();

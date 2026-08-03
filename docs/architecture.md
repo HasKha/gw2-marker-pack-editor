@@ -14,6 +14,7 @@ for what is done and what is next see [plan.md](plan.md).
 | World rendering | ImGui draw list + hand-built matrices | see [Rendering](#rendering) |
 | Tree top level | categories only; XML files never appear as nodes | see [The tree is categories](#the-tree-is-categories) |
 | Packs open | exactly one at a time | keeps the model a single source of truth |
+| Group transform | anchored on the first node selected; a rotation orbits the rest | see [The gizmo anchor](#the-gizmo-anchor) |
 | Shipping format | zip in, zip out | Blish HUD fails to load images from unzipped folders |
 
 ## Dependencies
@@ -66,12 +67,12 @@ src/
     writer.*           serializes the document back out, rebuilds the zip (format.md)
     trl.*              .trl read/write, byte-exact
   ui/
-    tree_window.*      category tree, selection, per-node eye toggles
+    tree_window.*      category tree, selection (ctrl / shift range), per-node eye toggles
     property_panel.*   attribute form + "add attribute" + inherited values
   world/
     camera.*           MumbleLink -> view/projection, world->screen
     renderer.*         billboards + trail ribbons into an ImGui draw list, hit testing
-    gizmo.*            ImGuizmo translate/rotate, writes back to attributes
+    gizmo.*            ImGuizmo translate/rotate over the selection, writes back to attributes
 test/
   pack_probe.cpp       the harness
 ```
@@ -95,6 +96,33 @@ result is what once made every marker fall back to a dot until the pack was relo
 pack still open for reading, and Windows will not rename over a live handle, so the caller
 has to release the source in between. Building first also means a failure never replaces a
 working pack with a half-written one; the previous file is kept as `.bak`.
+
+## The gizmo anchor
+
+The gizmo draws on the **first** node selected, not the last. `Selection` keeps click
+order and only ever appends, so the anchor is stable as the selection grows — the handles
+do not hop to whatever was clicked most recently, which is what makes a group drag
+predictable. The property panel wants the opposite (`primary()`, the last click), so both
+accessors exist.
+
+Everything a drag does is expressed as one transform about the anchor:
+
+```
+p' = anchor' + R (p - anchor)      orientation' = R · orientation
+```
+
+A pure translation has `R = identity`, so it falls out as a shift. A pure rotation leaves
+`anchor'` at `anchor`, so the anchor turns in place while the others **orbit** it — which
+is why a group rotation writes position as well as `rotate` on every non-anchor node. The
+anchor's own offset is zero, so the same loop covers it without a special case.
+
+Two consequences worth knowing. `R` is recovered per frame from the anchor's stored
+attributes, which are formatted to six significant digits, so a long group drag drifts a
+little. And rotating a group stamps `rotate` onto markers that had none, turning them from
+billboards into fixed-orientation quads — unavoidable, since orbiting is a rotation.
+
+Only POIs take part. A trail's geometry lives in its `.trl`, so moving one means moving
+its points; the gizmo skips them rather than pretending.
 
 ## The attribute table is the core abstraction
 

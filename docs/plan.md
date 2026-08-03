@@ -20,18 +20,19 @@ nothing in the addon may be specific to that pack.
 
 ## Current state
 
-The full loop works and is confirmed in game: **open a pack, edit it, save it back.**
+The full loop works and is confirmed end to end: **open a pack, edit it, save it back, and
+the edited markers show correctly in Blish HUD.**
 
 | Area | State |
 |---|---|
 | Read | zip and folder sources, XML, attribute inheritance, `.trl`. 937/937 files across 9 test packs |
 | Tree + properties | category tree with visibility toggles; attribute form generated from the attribute table |
 | World | billboards, trail ribbons, rotation, selection highlight, click-to-pick |
-| 3D edit | ImGuizmo translate/rotate on one selected POI, writing straight back to attributes |
+| Selection | ctrl+click in the tree and the world, shift+click ranges in the tree, world picks reveal the node in the tree |
+| 3D edit | ImGuizmo translate/rotate on the selection, anchored on the first node selected; a group rotation orbits the rest about it |
 | Write | serializes the owned document; comments, order, spelling, BOM, CRLF and the file split survive. 947/947 files stable on rewrite |
 
-Two things are unproven: **no saved pack has been loaded in Blish HUD yet**, and the
-editor has no way to add or delete anything.
+The gap: the editor has no way to **add or delete** anything, and no undo.
 
 Before touching the pack layer, run:
 
@@ -60,15 +61,9 @@ measured.
 
 ## Next up
 
-Roughly in order. 1 is a one-off check; 2 unblocks comfortable use of everything else.
+Roughly in order. 1 unblocks comfortable use of everything else.
 
-### 1. Prove a saved pack loads in Blish HUD
-
-Save `haskha_markers`, drop it in the markers folder, load it in Blish HUD, confirm the
-markers still show. `mpe_probe` proves the bytes are self-consistent, not that Blish
-accepts them. Until this passes, saving is not really done.
-
-### 2. Split the UI into separate windows
+### 1. Split the UI into separate windows
 
 One window that owns both the tree and the details is wrong: it forces the gizmo into
 whatever screen the big window is not covering. Break it into windows the user places
@@ -79,19 +74,19 @@ themselves, each independently closable, with a **View** menu listing all of the
 | Tree | the main window: category hierarchy, selection, visibility toggles | exists, needs to shed the details panel |
 | Details | the attribute form for the selection | exists, needs its own window |
 | Toolbar | gizmo mode, new POI, and whatever comes later | new |
-| Trail editor | see [3](#3-trail-editor) | new |
-| Resources | see [4](#4-resources-window) | new |
+| Trail editor | see [2](#2-trail-editor) | new |
+| Resources | see [3](#3-resources-window) | new |
 
-Points to settle while doing it:
+Settled:
 
-- **The menu bar cannot live in a closable window.** Today File/Settings hang off the
-  single window; if Tree can be closed, they go with it. Either the Toolbar window is the
-  one that always carries the menus, or the menus move somewhere that cannot be closed.
-- Nexus options currently expose one "show window" checkbox. It needs one per window, or
-  the View menu has to be reachable another way after everything is closed.
-- Window visibility and layout should persist — see [settings](#smaller-work-unblocked).
+- **The menu bar is drawn in each of the large windows** — Tree, Details, Trail editor —
+  not in the Toolbar. The same bar, so it is reachable whichever of them is open, which
+  means the menu drawing has to be one shared function rather than three copies.
+- **Nexus options get a checkbox per window**, so everything is reopenable even with all
+  windows closed. That replaces today's single "Show Marker Pack Editor window".
+- Window visibility should persist — see [settings](#smaller-work-unblocked).
 
-### 3. Trail editor
+### 2. Trail editor
 
 There is no trail editing at all today: a `.trl` is read, drawn, and written back
 unchanged. The window should:
@@ -107,13 +102,13 @@ unchanged. The window should:
   scripts unnecessary.
 - Respect `(0,0,0)` segment terminators as real breaks in the point list, not as points.
 
-### 4. Resources window
+### 3. Resources window
 
 Inspect, add and remove the images a pack carries. Needs the `DataSource` to grow a write
 path for binary entries (today only `.xml` is rewritten), and needs a way to answer "what
 references this icon" so removing one is not silently destructive.
 
-### 5. Add and delete
+### 4. Add and delete
 
 The writer became a serializer specifically to make this possible, so it is unblocked.
 Adding or removing a marker is a `pugi::xml_node` insert or erase on the document the
@@ -130,13 +125,13 @@ Watch out:
   `orphan_pathables`, `Selection` and the renderer cache are **positional**. Erasing from
   `Pack::pathables` invalidates all of them — tombstone entries instead of erasing, or
   rebuild the index and remap the selection. Tombstoning also makes undo simpler; see
-  [6](#6-undo--redo).
+  [5](#5-undo--redo).
 - A new node needs its `SourceNode.file` set, and a category needs a declaration appended,
   or the writer will not know where to put it. The sensible default file is the one the
   node's siblings are already in.
 - `Pack` is move-only. That is deliberate; do not "fix" it by adding a copy constructor.
 
-### 6. Undo / redo
+### 5. Undo / redo
 
 Deferred twice. **Preliminary read: feasible, and cheaper than feared — but only if it is
 built before add/delete, not after.**
@@ -158,7 +153,7 @@ What actually needs deciding:
 - **Structural edits are the hard half**, and only because of positional indices. If
   delete tombstones rather than erases, an undo is just un-tombstoning and indices never
   move; if it erases, undo has to reparse and rebuild, which also invalidates the
-  selection. This is the argument for settling [5](#5-add-and-delete)'s deletion strategy
+  selection. This is the argument for settling [4](#4-add-and-delete)'s deletion strategy
   first.
 - Visibility toggles must **not** be undoable — they are view state and deliberately do
   not bump the revision.
@@ -167,20 +162,26 @@ Verdict to confirm while implementing: attribute-level undo is a small, containe
 Structural undo is affordable only under the tombstone design. Decide the deletion
 strategy before writing either.
 
-### 7. Selection
+### 6. Selection and the group gizmo — done, needs verifying in game
 
-- **Shift+click range select is not implemented anywhere.** `tree_window::selectNode`
-  handles `KeyCtrl` only; `Selection` already documents its ordering as existing so the
-  last-clicked item can anchor a range, but nothing uses it. Needs a flattened view of the
-  visible tree rows to define what "range" means.
-- Ctrl+click works in both the tree and the viewport. Shift+click in the viewport should
-  do whatever it ends up meaning in the tree, so the two stay consistent.
-- **The gizmo should appear on a multi-selection**, anchored on the first node selected,
-  with any transform applied to all selected nodes. Today `world::gizmo::draw` bails on
-  `selection.size() != 1`, and `Selection::primary()` returns the *last* item — the anchor
-  wants the first, so either add an accessor or reconsider what `primary()` means for the
-  details panel. A rotate applied to a group has to be decided too: rotate each marker in
-  place, or orbit them about the anchor.
+Built, builds clean, **not yet exercised in game**:
+
+- Shift+click in the tree selects the range between the anchor and the clicked row, within
+  one level. Shift in the world does what ctrl does — a range needs an order between two
+  markers and the world has none.
+- A world pick reveals the marker in the tree: every ancestor category opens and the row
+  scrolls into view.
+- The gizmo works on a multi-selection, anchored on the first node selected, and a group
+  rotation **orbits** the others about the anchor — writing both their `rotate` and their
+  position. See the anchor note in [architecture.md](architecture.md).
+
+Left over:
+
+- A group rotation stamps `rotate` onto markers that had none, which turns a billboard
+  into a fixed-orientation quad. That is what orbiting means, but it is worth a look in
+  game before deciding it is fine.
+- Trails are skipped by the gizmo entirely — moving one means moving its `.trl` points,
+  which is [2](#2-trail-editor)'s job.
 
 ### Smaller work, unblocked
 
@@ -196,8 +197,5 @@ strategy before writing either.
 
 ## Open questions
 
-1. Group rotate semantics — rotate each marker in place, or orbit the selection about the
-   anchor? (See [7](#7-selection).)
-2. Where the menu bar lives once the main window is closable. (See [2](#2-split-the-ui-into-separate-windows).)
-3. Delete strategy — tombstone or erase. It decides how hard undo and the index rebuild
-   are. (See [5](#5-add-and-delete) and [6](#6-undo--redo).)
+1. Delete strategy — tombstone or erase. It decides how hard undo and the index rebuild
+   are. (See [4](#4-add-and-delete) and [5](#5-undo--redo).)

@@ -151,7 +151,9 @@ UINT onWndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
     const size_t hovered = world::renderer::hoveredPathable();
     if (hovered == pack::kNoIndex) return 1;
 
-    pending_select_additive.store((wParam & MK_CONTROL) != 0);
+    // Shift does what ctrl does out here. A range needs an order between two markers, and
+    // the world has none — the tree is where a range means something.
+    pending_select_additive.store((wParam & (MK_CONTROL | MK_SHIFT)) != 0);
     pending_select.store(hovered);
     return 0;
 }
@@ -375,6 +377,9 @@ void render() {
         } else {
             state.selection.set(node);
         }
+        // Picking in the world is only half the job: the marker has to be findable in the
+        // tree afterwards, which for a deep category means opening the way down to it.
+        if (state.selection.contains(node)) state.requestReveal(node);
     }
 
     if (!show_window) return;

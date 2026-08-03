@@ -5,6 +5,8 @@
 // Must follow imgui.h: ImGuizmo.h uses ImDrawList and ImU32 without declaring them.
 #include <ImGuizmo.h>
 
+#include <vector>
+
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
@@ -43,6 +45,15 @@ glm::vec3 attributesFromRotation(const glm::mat4& world_rotation) {
     glm::extractEulerAngleZYX(blish, radians.z, radians.y, radians.x);
     return radians;
 }
+
+// A POI the gizmo moves. The first one collected is the anchor: the handles sit on it, and
+// a group rotation orbits the rest about it.
+struct Target {
+    size_t pathable = pack::kNoIndex;
+    glm::vec3 position{0.0f}; // as drawn, i.e. including heightOffset
+    glm::vec3 rotation{0.0f}; // radians, in the attributes' own axis order
+    float height_offset = 0.0f;
+};
 
 // Same resolution the renderer does, so the gizmo sits exactly on the drawn icon.
 bool markerTransform(
@@ -84,6 +95,22 @@ bool markerTransform(
 
     *out_rotation = rotation;
     return true;
+}
+
+// In selection order, so targets.front() is the first thing the user selected. Anything
+// without a transform — categories, trails, a POI missing a coordinate — is skipped rather
+// than blocking the gizmo, so a mixed selection still moves what it can.
+std::vector<Target> collectTargets(const editor::State& state) {
+    std::vector<Target> targets;
+    for (const editor::NodeRef& node : state.selection.items()) {
+        if (node.kind != editor::NodeKind::Pathable || node.index >= state.pack.pathables.size()) continue;
+
+        Target target;
+        if (!markerTransform(state, node.index, &target.position, &target.rotation, &target.height_offset)) continue;
+        target.pathable = node.index;
+        targets.push_back(target);
+    }
+    return targets;
 }
 
 void writePosition(editor::State& state, size_t pathable_index, const glm::vec3& drawn_position, float height_offset) {
@@ -133,15 +160,10 @@ void writeRotation(editor::State& state, size_t pathable_index, const glm::vec3&
 bool draw(editor::State& state, const Camera& camera) {
     if (!state.loaded || !camera.valid) return false;
     if (state.settings.gizmo == editor::GizmoMode::Disabled) return false;
-    if (state.selection.size() != 1) return false;
 
-    const editor::NodeRef node = state.selection.primary();
-    if (node.kind != editor::NodeKind::Pathable || node.index >= state.pack.pathables.size()) return false;
-
-    glm::vec3 position(0.0f);
-    glm::vec3 rotation(0.0f);
-    float height_offset = 0.0f;
-    if (!markerTransform(state, node.index, &position, &rotation, &height_offset)) return false;
+    const std::vector<Target> targets = collectTargets(state);
+    if (targets.empty()) return false;
+    const Target& anchor = targets.front();
 
     applyStyleOnce();
     ImGuizmo::BeginFrame();
@@ -151,7 +173,7 @@ bool draw(editor::State& state, const Camera& camera) {
     ImGuizmo::SetDrawlist(ImGui::GetBackgroundDrawList());
     ImGuizmo::SetRect(0.0f, 0.0f, camera.viewport.x, camera.viewport.y);
 
-    glm::mat4 model = glm::translate(glm::mat4(1.0f), position) * rotationFromAttributes(rotation);
+    glm::mat4 model = glm::translate(glm::mat4(1.0f), anchor.position) * rotationFromAttributes(anchor.rotation);
 
     const bool translating =
         state.settings.gizmo == editor::GizmoMode::Translate || state.settings.gizmo == editor::GizmoMode::TranslateRotate;
@@ -179,15 +201,34 @@ bool draw(editor::State& state, const Camera& camera) {
         // Write only what actually moved. In the combined mode a pure drag would otherwise
         // also stamp rotate="0,0,0" onto a plain billboard — and the mere presence of that
         // attribute switches the marker to a fixed orientation. See docs/format.md.
-        const glm::vec3 new_position(model[3]);
-        if (translating && glm::distance(new_position, position) > 1e-5f) {
-            writePosition(state, node.index, new_position, height_offset);
-        }
-
-        const glm::vec3 new_rotation = attributesFromRotation(model);
         constexpr float kAngleEpsilon = 1e-4f; // radians, ~0.006 degrees
-        if (rotating && glm::any(glm::greaterThan(glm::abs(new_rotation - rotation), glm::vec3(kAngleEpsilon)))) {
-            writeRotation(state, node.index, new_rotation);
+        const glm::vec3 new_position(model[3]);
+        const glm::vec3 new_rotation = attributesFromRotation(model);
+
+        const bool moved = translating && glm::distance(new_position, anchor.position) > 1e-5f;
+        const bool rotated = rotating && glm::any(glm::greaterThan(glm::abs(new_rotation - anchor.rotation), glm::vec3(kAngleEpsilon)));
+
+        // Everything the drag did, expressed about the anchor: p' = anchor' + R * (p -
+        // anchor), and likewise R * orientation. One formula covers both operations and
+        // the anchor itself — a pure drag has R = identity, and under a pure rotation the
+        // anchor's own offset is zero, so it stays put and only turns.
+        //
+        // Both rotations are products of a permutation and a Euler rotation, so they are
+        // orthogonal and the transpose is the inverse.
+        const glm::mat4 anchor_rotation = rotationFromAttributes(anchor.rotation);
+        const glm::mat4 delta_rotation = rotated ? glm::mat4(glm::mat3(model)) * glm::transpose(anchor_rotation) : glm::mat4(1.0f);
+        const glm::vec3 anchor_position = moved ? new_position : anchor.position;
+
+        for (const Target& target : targets) {
+            if (rotated) {
+                writeRotation(state, target.pathable, attributesFromRotation(delta_rotation * rotationFromAttributes(target.rotation)));
+            }
+
+            const glm::vec3 offset = target.position - anchor.position;
+            const glm::vec3 position = anchor_position + glm::vec3(delta_rotation * glm::vec4(offset, 0.0f));
+            if (glm::distance(position, target.position) > 1e-5f) {
+                writePosition(state, target.pathable, position, target.height_offset);
+            }
         }
     }
 
