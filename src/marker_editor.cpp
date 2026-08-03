@@ -11,8 +11,11 @@
 #include "file_dialog.h"
 #include "pack/source.h"
 #include "pack/xml_reader.h"
+#include "resources.h"
 #include "ui/property_panel.h"
 #include "ui/tree_window.h"
+#include "world/camera.h"
+#include "world/renderer.h"
 
 namespace marker_editor {
 
@@ -74,6 +77,10 @@ void openPack(const std::filesystem::path& path) {
         return;
     }
 
+    // The renderer reads icons and .trl data straight out of the source as markers become
+    // visible, so it has to outlive the load.
+    resources::setSource(std::move(source));
+
     state.rebuildIndex();
     state.loaded = true;
     open_pack_path = state.pack.source_path;
@@ -95,6 +102,13 @@ void render() {
     if (std::optional<std::filesystem::path> picked = file_dialog::takeResult()) {
         openPack(*picked);
     }
+
+    resources::beginFrame();
+
+    // The world is drawn whether or not the editor window is open — the point is to see
+    // the pack in the game.
+    const world::Camera camera = world::fromMumble(mumble_link, nexus_link);
+    world::renderer::draw(state, camera);
 
     if (!show_window) return;
 
@@ -128,6 +142,36 @@ void render() {
         }
 
         if (!status_message.empty()) ImGui::TextWrapped("%s", status_message.c_str());
+
+        world::renderer::Options& draw = world::renderer::options();
+        ImGui::Checkbox("Markers", &draw.draw_markers);
+        ImGui::SameLine();
+        ImGui::Checkbox("Trails", &draw.draw_trails);
+        ImGui::SameLine();
+        ImGui::Checkbox("Highlight selection", &draw.highlight_selection);
+        ImGui::SameLine();
+        ImGui::Checkbox("All maps", &draw.ignore_map_filter);
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("Draw markers from every map, not just the one you are on.\nFor checking a pack you are not standing in.");
+        }
+
+        ImGui::SameLine();
+        if (camera.valid) {
+            ImGui::TextDisabled("map %u | fov %.1f deg", camera.map_id, camera.fov * 57.2957795f);
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip(
+                    "camera %.2f, %.2f, %.2f\nplayer %.2f, %.2f, %.2f",
+                    camera.position.x,
+                    camera.position.y,
+                    camera.position.z,
+                    camera.player.x,
+                    camera.player.y,
+                    camera.player.z);
+            }
+        } else {
+            ImGui::TextDisabled("no camera");
+        }
+
         ImGui::Separator();
 
         const float available = ImGui::GetContentRegionAvail().x;
@@ -166,6 +210,8 @@ void load(AddonAPI* _api, NexusLinkData* _nexus_link, Mumble::Data* _mumble_link
     nexus_link = _nexus_link;
     mumble_link = _mumble_link;
 
+    resources::init(api);
+
     api->Renderer.Register(ERenderType_Render, render);
     api->Renderer.Register(ERenderType_OptionsRender, drawOptions);
     // nullptr target -> appended to the Nexus main menu.
@@ -181,6 +227,7 @@ void unload() {
     api->QuickAccess.RemoveContextMenu(QUICKACCESS_ID);
     api->InputBinds.Deregister(KEYBIND_TOGGLE_ID);
     file_dialog::shutdown();
+    resources::shutdown();
 }
 
 } // namespace marker_editor

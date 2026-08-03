@@ -53,12 +53,19 @@ struct State {
     std::vector<std::vector<size_t>> pathables_by_category;
     std::vector<size_t> orphan_pathables; // category could not be resolved
 
+    // Bumped by every edit. The world renderer caches resolved per-marker values and
+    // rebuilds when this changes, so it never walks the category chain per frame.
+    uint64_t revision = 1;
+
     void rebuildIndex();
     void reset();
 
     // Marks the pack edited. Every mutation goes through here so the title bar, the save
-    // prompt and (later) undo all see the same signal.
-    void touch() { dirty = true; }
+    // prompt, the render cache and (later) undo all see the same signal.
+    void touch() {
+        dirty = true;
+        ++revision;
+    }
 };
 
 } // namespace editor

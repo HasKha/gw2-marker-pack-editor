@@ -27,10 +27,14 @@ read the pack yet.
 M1 done: the pack layer reads every pack in the markers folder — zip, XML, attributes
 with inheritance, and `.trl`.
 
-M2 built and compiling, **not yet verified in game**: **Open Pack…** loads the pack, the
-tree shows the category hierarchy with selection and filtering, and the property panel
-edits attributes. Editing is in-memory only — there is no save yet (M5), so nothing can
-be written to a pack by accident.
+M2 done and verified in game: **Open Pack…** and **Open Folder…** both load, the tree
+shows the category hierarchy with selection, and the property panel edits attributes.
+
+M3 built and compiling, **not yet verified in game**: markers and trails are drawn in the
+world from the MumbleLink camera.
+
+Editing is in-memory only — there is no save yet (M5), so nothing can be written to a pack
+by accident.
 
 ### Test packs
 
@@ -106,11 +110,17 @@ Measured by `mpe_probe` across all 9 packs:
 - [ ] Fill in enum value lists so `ValueKind::Enum` gets a dropdown instead of a text box
 
 ### M3 — Draw it
-- [ ] `world/camera` — matrices from MumbleLink, validated against a known marker
-- [ ] `pack/textures` — pack images into Nexus textures
-- [ ] `world/renderer` — billboards with `iconSize`, `alpha`, `color`, fade
-- [ ] Trail ribbons, including `isWall`
-- [ ] Highlight the tree selection in the world and vice versa
+- [x] `world/camera` — view/projection from MumbleLink, world-to-screen, FOV parsed out of
+      the Mumble identity JSON
+- [x] `resources` — icons and `.trl` data pulled from the pack source on demand, budgeted
+      to a few decodes per frame so arriving on a map cannot hitch
+- [x] `world/renderer` — billboards with `iconSize`, `heightOffset`, `alpha`,
+      `color`/`tint`, `minSize`/`maxSize` clamping and distance fade
+- [x] Trail ribbons, including `isWall`, with Blish's exact half-width and UV scale
+- [x] Highlight the tree selection in the world
+- [x] Toggles for markers / trails / highlight / ignore-map-filter, plus a camera readout
+- [ ] **Verify in game** — especially that positions land where they should
+- [ ] Select in the world to select in the tree (needs M4's picking)
 
 ### M4 — Edit in 3D
 - [ ] Click-to-select in the viewport (ray vs. billboard, nearest hit)
@@ -138,14 +148,15 @@ Measured by `mpe_probe` across all 9 packs:
 
 ## Open questions
 
-1. **FOV.** `Mumble::Identity::FOV` comes from the identity JSON, which Nexus parses;
-   confirm whether Nexus exposes a parsed `Identity` via DataLink or whether we parse
-   `Mumble::Data::Identity` ourselves.
-3. **`.taco` vs `.zip`.** Both are zips. Confirm TaimiHUD and Blish HUD accept both from
+1. **`.taco` vs `.zip`.** Both are zips. Confirm TaimiHUD and Blish HUD accept both from
    the markers folder.
-*(nothing blocking)*
 
 ### Resolved
+
+- ~~**FOV.**~~ Nexus exposes no parsed identity — there is no `DL_MUMBLE_LINK_IDENTITY`
+  and `Nexus.h` does not mention `Identity` at all. `world/camera` parses the `fov` field
+  (vertical, radians) out of the raw identity JSON in `Mumble::Data::Identity`, caching by
+  the identity string so the JSON is only touched when the game changes it.
 
 - ~~**Tree top level.**~~ Categories only; XML files never appear as nodes. Measured: of
   31,817 categories across the 9 test packs, exactly **one** is declared in more than one

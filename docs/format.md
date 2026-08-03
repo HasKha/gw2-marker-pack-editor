@@ -134,9 +134,23 @@ Markers, per `Entity/StandardMarker.World.cs`:
 - `occlude="1"` switches the blend state to opaque.
 - `cull` maps to a rasterizer cull direction.
 
-Trails: `Entity/StandardTrail*.cs`, `ref/hlsl/trail.hlsl`. `animspeed` scrolls the
+Trails: `Entity/StandardTrail.World.cs`, `ref/hlsl/trail.hlsl`. `animspeed` scrolls the
 texture along the ribbon; `iswall="1"` orients the ribbon vertically; `trailscale`
 scales ribbon width and texture repeat.
+
+The exact geometry, from `BuildTrailSection`:
+
+```
+TRAIL_WIDTH  = 20 * 0.0254f          // 0.508 m, the half-width offset
+normalOffset = TRAIL_WIDTH * trailScale
+offset       = cross(pathDirection, isWall ? cross(pathDirection, down) : down)
+vertices     = curPoint ± normalize(offset) * normalOffset
+UV.v         = distanceAlongPath / (TRAIL_WIDTH * 2)
+```
+
+So a trail is 1.016 m wide at `trailScale="1"`, the ribbon is centred on the path, and
+the texture repeats once per 1.016 m of length. `down` is Blish's `Vector3.Forward` in its
+Z-up space; in the file format's Y-up space that is `(0,-1,0)`.
 
 ## Defaults
 
