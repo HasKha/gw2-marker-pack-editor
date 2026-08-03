@@ -57,6 +57,23 @@ struct State {
     // rebuilds when this changes, so it never walks the category chain per frame.
     uint64_t revision = 1;
 
+    // ── Visibility ────────────────────────────────────────────────────────────
+    // Purely a view state for the 3D viewport. Never saved, never marks the pack dirty:
+    // hiding a category is about looking at the pack, not editing it. (A pack's own
+    // defaulttoggle / ishidden attributes are a different thing entirely and do get
+    // saved — they live in the attribute table like everything else.)
+    std::vector<char> category_hidden;
+    std::vector<char> pathable_hidden;
+
+    // Derived: hidden here, or beneath a hidden category.
+    std::vector<char> category_visible;
+    std::vector<char> pathable_visible;
+
+    bool isHidden(NodeRef node) const;
+    bool isVisible(NodeRef node) const;
+    void setHidden(NodeRef node, bool hidden);
+    void rebuildVisibility();
+
     void rebuildIndex();
     void reset();
 

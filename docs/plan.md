@@ -30,8 +30,8 @@ with inheritance, and `.trl`.
 M2 done and verified in game: **Open Pack…** and **Open Folder…** both load, the tree
 shows the category hierarchy with selection, and the property panel edits attributes.
 
-M3 built and compiling, **not yet verified in game**: markers and trails are drawn in the
-world from the MumbleLink camera.
+M3 done and verified in game: markers and trails draw in the world from the MumbleLink
+camera, with per-node visibility toggles in the tree.
 
 Editing is in-memory only — there is no save yet (M5), so nothing can be written to a pack
 by accident.
@@ -118,9 +118,15 @@ Measured by `mpe_probe` across all 9 packs:
       `color`/`tint`, `minSize`/`maxSize` clamping and distance fade
 - [x] Trail ribbons, including `isWall`, with Blish's exact half-width and UV scale
 - [x] Highlight the tree selection in the world
-- [x] Toggles for markers / trails / highlight / ignore-map-filter, plus a camera readout
-- [ ] **Verify in game** — especially that positions land where they should
+- [x] Per-node visibility toggles in the tree — eye / eye-slash icons, cascading down the
+      category tree. View state only: never saved, never marks the pack dirty
+- [x] Window visibility exposed as a checkbox on the Nexus options page, so closing the
+      window is recoverable without a keybind
+- [x] Verified in game: positions, camera transform, image loading and sizes all correct
+- [x] Marker rotation, including the sign-derived UV mapping that a naive corner mapping
+      gets 180 degrees wrong
 - [ ] Select in the world to select in the tree (needs M4's picking)
+- [ ] `animspeed` — trail textures do not scroll yet
 
 ### M4 — Edit in 3D
 - [ ] Click-to-select in the viewport (ray vs. billboard, nearest hit)

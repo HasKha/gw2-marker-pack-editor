@@ -13,8 +13,6 @@ namespace world::renderer {
 
 namespace {
 
-Options draw_options;
-
 // Blish HUD's StandardTrail.World.cs: TRAIL_WIDTH = 20 * 0.0254f, used as the half-width
 // offset either side of the path, scaled by trailScale.
 constexpr float kTrailHalfWidth = 20.0f * kMetresPerInch;
@@ -34,6 +32,11 @@ struct MarkerDraw {
     float fade_far = -1.0f; // inches
     ImU32 tint = IM_COL32_WHITE;
     std::string icon;
+
+    // Any of rotate / rotate-x / rotate-y / rotate-z turns the marker from a billboard
+    // into a fixed-orientation quad — including rotate="0,0,0", which is not a no-op.
+    bool has_rotation = false;
+    glm::vec3 rotation{0.0f}; // radians
 };
 
 struct TrailDraw {
@@ -69,6 +72,49 @@ ImU32 tintOf(const pack::Pack& pack, const pack::Pathable& pathable) {
 std::string stringOf(const pack::Pack& pack, const pack::Pathable& pathable, const char* key) {
     const std::string* value = pack.effectiveValue(pathable, key);
     return value ? *value : std::string();
+}
+
+constexpr float kDegreesToRadians = 3.14159265358979323846f / 180.0f;
+
+// rotate="x,y,z" with any number of components; Blish fills the rest with zero.
+void applyRotateList(std::string_view text, glm::vec3* out) {
+    size_t component = 0;
+    size_t begin = 0;
+    while (component < 3) {
+        const size_t comma = text.find(',', begin);
+        const std::string_view part = text.substr(begin, comma == std::string_view::npos ? std::string_view::npos : comma - begin);
+
+        float degrees = 0.0f;
+        if (pack::parseFloat(part, &degrees)) (*out)[static_cast<glm::length_t>(component)] = degrees * kDegreesToRadians;
+
+        ++component;
+        if (comma == std::string_view::npos) break;
+        begin = comma + 1;
+    }
+}
+
+// Mirrors Pathing's Populate_Rotation: degrees in, radians out, and the presence of *any*
+// rotate attribute is what disables billboarding.
+bool resolveRotation(const pack::Pack& pack, const pack::Pathable& pathable, glm::vec3* out) {
+    bool present = false;
+    *out = glm::vec3(0.0f);
+
+    if (const std::string* text = pack.effectiveValue(pathable, "rotate")) {
+        applyRotateList(*text, out);
+        present = true;
+    }
+
+    // The per-axis forms are applied after, and win, matching the reference order.
+    static constexpr const char* kAxisKeys[3] = {"rotate-x", "rotate-y", "rotate-z"};
+    for (int axis = 0; axis < 3; ++axis) {
+        const std::string* text = pack.effectiveValue(pathable, kAxisKeys[axis]);
+        if (!text) continue;
+        float degrees = 0.0f;
+        if (pack::parseFloat(*text, &degrees)) (*out)[axis] = degrees * kDegreesToRadians;
+        present = true;
+    }
+
+    return present;
 }
 
 void rebuild(editor::State& state) {
@@ -107,6 +153,7 @@ void rebuild(editor::State& state) {
             marker.fade_far = state.pack.effectiveFloat(pathable, "fadefar");
             marker.tint = tintOf(state.pack, pathable);
             marker.icon = stringOf(state.pack, pathable, "iconfile");
+            marker.has_rotation = resolveRotation(state.pack, pathable, &marker.rotation);
 
             cache.markers.push_back(std::move(marker));
             continue;
@@ -152,6 +199,43 @@ struct Sorted {
     bool is_trail = false;
 };
 
+// Draws a marker that carries a rotate attribute: a quad fixed in the world rather than
+// turned towards the camera.
+//
+// Blish builds this in its own Z-up space as
+//   Scale(size*2) * RotX * RotY * RotZ * Translate(position)
+// over a unit quad lying in the XY plane, i.e. flat on the ground facing up. Its space
+// relates to the file's Y-up space by swapping Y and Z — the same swap TmfLib applies when
+// reading .trl — so the offset is built in Blish's space and swapped back at the end.
+// (Swapping two axes also flips handedness, which is exactly the LH-to-RH difference
+// between Mumble's space and Blish's.)
+bool rotatedMarkerCorners(const Camera& camera, const MarkerDraw& marker, ImVec2 out[4]) {
+    const float half = marker.icon_size; // the quad is the unit square scaled by size*2
+    const float cx = std::cos(marker.rotation.x), sx = std::sin(marker.rotation.x);
+    const float cy = std::cos(marker.rotation.y), sy = std::sin(marker.rotation.y);
+    const float cz = std::cos(marker.rotation.z), sz = std::sin(marker.rotation.z);
+
+    static const glm::vec2 kCorners[4] = {{-1.0f, -1.0f}, {1.0f, -1.0f}, {1.0f, 1.0f}, {-1.0f, 1.0f}};
+
+    for (int i = 0; i < 4; ++i) {
+        glm::vec3 p(kCorners[i].x * half, kCorners[i].y * half, 0.0f);
+
+        // X, then Y, then Z, matching the reference's matrix order.
+        p = glm::vec3(p.x, p.y * cx - p.z * sx, p.y * sx + p.z * cx);
+        p = glm::vec3(p.x * cy + p.z * sy, p.y, -p.x * sy + p.z * cy);
+        p = glm::vec3(p.x * cz - p.y * sz, p.x * sz + p.y * cz, p.z);
+
+        // Blish Z-up -> file/Mumble Y-up.
+        const glm::vec3 world = marker.position + glm::vec3(p.x, p.z, p.y);
+
+        glm::vec2 screen;
+        if (!camera.project(world, &screen)) return false;
+        out[i] = ImVec2(screen.x, screen.y);
+    }
+
+    return true;
+}
+
 void drawMarkers(editor::State& state, const Camera& camera, ImDrawList* list, std::vector<Sorted>& order) {
     for (const Sorted& entry : order) {
         if (entry.is_trail) continue;
@@ -164,6 +248,42 @@ void drawMarkers(editor::State& state, const Camera& camera, ImDrawList* list, s
         const float opacity = marker.alpha * fadeFactor(metresToInches(entry.distance), marker.fade_near, marker.fade_far);
         if (opacity <= 0.003f) continue;
 
+        const bool selected = state.selection.contains(editor::NodeRef{editor::NodeKind::Pathable, marker.pathable});
+        const ImU32 colour = applyOpacity(marker.tint, opacity);
+        ImTextureID texture = resources::texture(marker.icon);
+
+        if (marker.has_rotation) {
+            // Fixed in the world, so it foreshortens with the viewing angle. minSize and
+            // maxSize do not apply: those clamp a billboard's screen size, and clamping a
+            // world-locked quad would detach it from the surface it is placed on.
+            ImVec2 corners[4];
+            if (!rotatedMarkerCorners(camera, marker, corners)) continue;
+
+            if (texture) {
+                // Blish derives each UV from the sign of the vertex it belongs to:
+                //     new Vector2(vert.X < 0 ? 1 : 0, vert.Y < 0 ? 1 : 0)
+                // so the -X,-Y corner carries uv (1,1) and the +X,+Y corner (0,0). Both
+                // axes are inverted relative to the obvious (0,0)->(1,1) mapping, which is
+                // exactly a 180-degree in-plane rotation of the image.
+                list->AddImageQuad(
+                    texture,
+                    corners[0],
+                    corners[1],
+                    corners[2],
+                    corners[3],
+                    ImVec2(1, 1),
+                    ImVec2(0, 1),
+                    ImVec2(0, 0),
+                    ImVec2(1, 0),
+                    colour);
+            } else {
+                list->AddConvexPolyFilled(corners, 4, colour);
+            }
+
+            if (selected) list->AddPolyline(corners, 4, IM_COL32(255, 210, 60, 255), true, 2.0f);
+            continue;
+        }
+
         const float camera_distance = glm::length(marker.position - camera.position);
         // Blish scales the unit quad by iconSize * 2, then clamps the on-screen height
         // between minSize*4 and maxSize*4 pixels.
@@ -175,11 +295,8 @@ void drawMarkers(editor::State& state, const Camera& camera, ImDrawList* list, s
         const ImVec2 min(screen.x - half, screen.y - half);
         const ImVec2 max(screen.x + half, screen.y + half);
 
-        const bool selected =
-            draw_options.highlight_selection && state.selection.contains(editor::NodeRef{editor::NodeKind::Pathable, marker.pathable});
-
-        if (ImTextureID texture = resources::texture(marker.icon)) {
-            list->AddImage(texture, min, max, ImVec2(0, 0), ImVec2(1, 1), applyOpacity(marker.tint, opacity));
+        if (texture) {
+            list->AddImage(texture, min, max, ImVec2(0, 0), ImVec2(1, 1), colour);
         } else {
             // No icon, or it failed to load: a dot still shows the marker is there.
             list->AddCircleFilled(ImVec2(screen.x, screen.y), std::max(2.0f, half * 0.35f), applyOpacity(marker.tint, opacity * 0.7f));
@@ -295,8 +412,7 @@ void drawTrails(editor::State& state, const Camera& camera, ImDrawList* list, st
 
         ImTextureID texture = resources::texture(trail.texture);
 
-        const bool selected =
-            draw_options.highlight_selection && state.selection.contains(editor::NodeRef{editor::NodeKind::Pathable, trail.pathable});
+        const bool selected = state.selection.contains(editor::NodeRef{editor::NodeKind::Pathable, trail.pathable});
 
         TrailDraw effective = trail;
         if (selected) effective.tint = IM_COL32(255, 210, 60, (trail.tint >> IM_COL32_A_SHIFT) & 0xFF);
@@ -308,10 +424,6 @@ void drawTrails(editor::State& state, const Camera& camera, ImDrawList* list, st
 }
 
 } // namespace
-
-Options& options() {
-    return draw_options;
-}
 
 void draw(editor::State& state, const Camera& camera) {
     if (!state.loaded || !camera.valid) return;
@@ -327,25 +439,23 @@ void draw(editor::State& state, const Camera& camera) {
     std::vector<Sorted> order;
     order.reserve(256);
 
-    if (draw_options.draw_markers) {
-        for (size_t i = 0; i < cache.markers.size(); ++i) {
-            const MarkerDraw& marker = cache.markers[i];
-            if (!draw_options.ignore_map_filter && marker.map_id != map_id) continue;
+    for (size_t i = 0; i < cache.markers.size(); ++i) {
+        const MarkerDraw& marker = cache.markers[i];
+        if (marker.map_id != map_id) continue;
+        if (!state.isVisible(editor::NodeRef{editor::NodeKind::Pathable, marker.pathable})) continue;
 
-            const float distance = glm::length(marker.position - camera.player);
-            // Cheap reject before any projection work.
-            if (marker.fade_far > 0.0f && metresToInches(distance) > marker.fade_far) continue;
+        const float distance = glm::length(marker.position - camera.player);
+        // Cheap reject before any projection work.
+        if (marker.fade_far > 0.0f && metresToInches(distance) > marker.fade_far) continue;
 
-            order.push_back(Sorted{distance, i, false});
-        }
+        order.push_back(Sorted{distance, i, false});
     }
 
-    if (draw_options.draw_trails) {
-        for (size_t i = 0; i < cache.trails.size(); ++i) {
-            if (!draw_options.ignore_map_filter && cache.trails[i].map_id != map_id) continue;
-            // Trails span a large area, so a single distance is only a sorting hint.
-            order.push_back(Sorted{0.0f, i, true});
-        }
+    for (size_t i = 0; i < cache.trails.size(); ++i) {
+        if (cache.trails[i].map_id != map_id) continue;
+        if (!state.isVisible(editor::NodeRef{editor::NodeKind::Pathable, cache.trails[i].pathable})) continue;
+        // Trails span a large area, so a single distance is only a sorting hint.
+        order.push_back(Sorted{0.0f, i, true});
     }
 
     // Back to front: with no depth buffer, painter's order is all we have.

@@ -143,35 +143,6 @@ void render() {
 
         if (!status_message.empty()) ImGui::TextWrapped("%s", status_message.c_str());
 
-        world::renderer::Options& draw = world::renderer::options();
-        ImGui::Checkbox("Markers", &draw.draw_markers);
-        ImGui::SameLine();
-        ImGui::Checkbox("Trails", &draw.draw_trails);
-        ImGui::SameLine();
-        ImGui::Checkbox("Highlight selection", &draw.highlight_selection);
-        ImGui::SameLine();
-        ImGui::Checkbox("All maps", &draw.ignore_map_filter);
-        if (ImGui::IsItemHovered()) {
-            ImGui::SetTooltip("Draw markers from every map, not just the one you are on.\nFor checking a pack you are not standing in.");
-        }
-
-        ImGui::SameLine();
-        if (camera.valid) {
-            ImGui::TextDisabled("map %u | fov %.1f deg", camera.map_id, camera.fov * 57.2957795f);
-            if (ImGui::IsItemHovered()) {
-                ImGui::SetTooltip(
-                    "camera %.2f, %.2f, %.2f\nplayer %.2f, %.2f, %.2f",
-                    camera.position.x,
-                    camera.position.y,
-                    camera.position.z,
-                    camera.player.x,
-                    camera.player.y,
-                    camera.player.z);
-            }
-        } else {
-            ImGui::TextDisabled("no camera");
-        }
-
         ImGui::Separator();
 
         const float available = ImGui::GetContentRegionAvail().x;
@@ -191,7 +162,10 @@ void render() {
 }
 
 void drawOptions() {
-    ImGui::TextDisabled("No options yet.");
+    // The only way back once the window's close button has been used, short of the
+    // keybind or the quick access menu — neither of which is bound by default.
+    ImGui::Checkbox("Show Marker Pack Editor window", &show_window);
+    ImGui::TextDisabled("Also toggled by the keybind and the Nexus menu item.");
 }
 
 void drawQuickAccess() {

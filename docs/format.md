@@ -127,7 +127,22 @@ Markers, per `Entity/StandardMarker.World.cs`:
 
 - Quad is the unit square scaled by `iconSize * 2`.
 - Billboarded toward the camera **unless** any of `rotate`/`rotate-x/y/z` is set, in
-  which case it is a fixed-orientation quad with an explicit rotation.
+  which case it is a fixed-orientation quad with an explicit rotation. `rotate="0,0,0"`
+  is **not** a no-op — the mere presence of the attribute disables billboarding
+  (`Populate_Rotation` sets `RotationXyz` whenever any of the four is present).
+- Rotation values are **degrees** in the file, converted to radians, applied X then Y
+  then Z, over a quad lying in Blish's XY plane — flat on the ground, facing up.
+- **UVs come from the sign of each vertex**, not from a conventional corner mapping:
+
+  ```csharp
+  new Vector2(vert.X < 0 ? 1 : 0, vert.Y < 0 ? 1 : 0)
+  ```
+
+  So the `-X,-Y` corner carries uv `(1,1)` and the `+X,+Y` corner `(0,0)`. Both axes are
+  inverted from the obvious `(0,0)->(1,1)` mapping. Getting this wrong draws a rotated
+  marker in the right place, on the right plane, with the right normal — and the image
+  turned 180 degrees. (Billboards are unaffected in practice: `CreateBillboard` orients
+  the quad so the flips cancel.)
 - After projection, on-screen height is clamped between `minsize * 4` and `maxsize * 4`
   **pixels**, and the model matrix is rescaled to satisfy it.
 - Opacity is `alpha * fade`, where fade ramps linearly between `fadeNear` and `fadeFar`.

@@ -41,6 +41,53 @@ std::string pathableLabel(const pack::Pack& pack, size_t index) {
     return std::string(pack::toString(pathable.type)) + suffix;
 }
 
+// Scene-hierarchy style eye toggle, drawn rather than typed.
+//
+// FontAwesome would be the obvious source for this, but it cannot reach the atlas: Nexus
+// builds every font with its own glyph ranges (Latin, Latin-Ext, and CJK/Cyrillic for the
+// default font) and FontAwesome's glyphs live at 0xF000-0xF8FF, so they would be dropped.
+// Its FontManager also takes raw TTF while imgui-fonts ships compressed data. Drawing the
+// icon sidesteps both.
+//
+// `dimmed` is for a node that is visible in itself but sits under a hidden ancestor.
+bool eyeButton(const char* id, bool open_eye, bool dimmed) {
+    const float height = ImGui::GetTextLineHeight();
+    const ImVec2 origin = ImGui::GetCursorScreenPos();
+
+    const bool pressed = ImGui::InvisibleButton(id, ImVec2(height, height));
+    const bool hovered = ImGui::IsItemHovered();
+
+    ImDrawList* list = ImGui::GetWindowDrawList();
+    const ImVec2 centre(origin.x + height * 0.5f, origin.y + height * 0.5f);
+    const float w = height * 0.42f; // half-width of the almond
+    const float h = height * 0.42f; // bezier control offset, so the lid peaks around 0.75h
+
+    ImVec4 colour = ImGui::GetStyleColorVec4(ImGuiCol_Text);
+    if (!open_eye || dimmed) colour.w *= 0.35f;
+    if (hovered) colour.w = 1.0f;
+    const ImU32 packed = ImGui::ColorConvertFloat4ToU32(colour);
+
+    list->PathLineTo(ImVec2(centre.x - w, centre.y));
+    list->PathBezierCurveTo(
+        ImVec2(centre.x - w * 0.5f, centre.y - h),
+        ImVec2(centre.x + w * 0.5f, centre.y - h),
+        ImVec2(centre.x + w, centre.y));
+    list->PathBezierCurveTo(
+        ImVec2(centre.x + w * 0.5f, centre.y + h),
+        ImVec2(centre.x - w * 0.5f, centre.y + h),
+        ImVec2(centre.x - w, centre.y));
+    list->PathStroke(packed, true, 1.4f);
+
+    if (open_eye) {
+        list->AddCircleFilled(centre, h * 0.42f, packed);
+    } else {
+        // Slash across the closed eye, the usual "hidden" affordance.
+        list->AddLine(ImVec2(centre.x - w, centre.y + h * 0.8f), ImVec2(centre.x + w, centre.y - h * 0.8f), packed, 1.4f);
+    }
+
+    return pressed;
+}
+
 void selectNode(editor::State& state, editor::NodeRef node) {
     if (ImGui::GetIO().KeyCtrl) {
         state.selection.toggle(node);
@@ -49,27 +96,77 @@ void selectNode(editor::State& state, editor::NodeRef node) {
     }
 }
 
-void drawPathableLeaf(editor::State& state, size_t pathable_index) {
+// Draws the eye and applies a click. Returns true when it consumed the click, so the row
+// underneath does not also treat it as a selection.
+bool drawVisibilityToggle(editor::State& state, editor::NodeRef node) {
+    const bool hidden = state.isHidden(node);
+    // Visible in itself but suppressed by an ancestor: show an open eye, dimmed, so the
+    // node's own setting stays readable.
+    const bool dimmed = !hidden && !state.isVisible(node);
+
+    const bool pressed = eyeButton("##vis", !hidden, dimmed);
+
+    if (ImGui::IsItemHovered()) {
+        if (dimmed) {
+            ImGui::SetTooltip("Hidden by a parent category");
+        } else {
+            ImGui::SetTooltip(hidden ? "Hidden in the world" : "Visible in the world");
+        }
+    }
+
+    if (pressed) state.setHidden(node, !hidden);
+    return pressed;
+}
+
+// Every row is caret, eye, name. The tree node itself carries an empty label so it draws
+// only the caret while its hitbox still spans the row; the eye and the name are laid out
+// after it with SameLine. SetItemAllowOverlap lets the eye take clicks that would
+// otherwise be swallowed by the row.
+void drawRow(
+    editor::State& state,
+    editor::NodeRef node,
+    ImGuiTreeNodeFlags flags,
+    const std::string& label,
+    const ImVec4* label_colour,
+    size_t count,
+    bool* out_open) {
+    const bool open = ImGui::TreeNodeEx("##node", flags);
+    ImGui::SetItemAllowOverlap();
+    const bool row_clicked = ImGui::IsItemClicked() && !ImGui::IsItemToggledOpen();
+
+    ImGui::SameLine();
+    const bool eye_took_click = drawVisibilityToggle(state, node);
+
+    ImGui::SameLine();
+    if (label_colour) ImGui::PushStyleColor(ImGuiCol_Text, *label_colour);
+    ImGui::TextUnformatted(label.c_str());
+    if (label_colour) ImGui::PopStyleColor();
+
+    if (count > 0) {
+        ImGui::SameLine();
+        ImGui::TextDisabled("(%zu)", count);
+    }
+
+    if (row_clicked && !eye_took_click) selectNode(state, node);
+
+    if (out_open) *out_open = open;
+}
+
+void drawPathableRow(editor::State& state, size_t pathable_index) {
     const editor::NodeRef node{editor::NodeKind::Pathable, pathable_index};
 
     ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen | ImGuiTreeNodeFlags_SpanFullWidth;
     if (state.selection.contains(node)) flags |= ImGuiTreeNodeFlags_Selected;
 
     const bool is_trail = state.pack.pathables[pathable_index].type == pack::PathableType::Trail;
-    if (is_trail) ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.60f, 0.80f, 1.00f, 1.00f));
+    const ImVec4 trail_colour(0.60f, 0.80f, 1.00f, 1.00f);
 
-    ImGui::TreeNodeEx(
-        reinterpret_cast<void*>(static_cast<intptr_t>(pathable_index + 1)),
-        flags,
-        "%s",
-        pathableLabel(state.pack, pathable_index).c_str());
-
-    if (is_trail) ImGui::PopStyleColor();
-
-    if (ImGui::IsItemClicked()) selectNode(state, node);
+    ImGui::PushID(static_cast<int>(pathable_index));
+    drawRow(state, node, flags, pathableLabel(state.pack, pathable_index), is_trail ? &trail_colour : nullptr, 0, nullptr);
+    ImGui::PopID();
 }
 
-void drawCategory(editor::State& state, size_t category_index) {
+void drawCategoryRow(editor::State& state, size_t category_index) {
     const pack::Category& category = state.pack.categories[category_index];
     const editor::NodeRef node{editor::NodeKind::Category, category_index};
 
@@ -80,24 +177,20 @@ void drawCategory(editor::State& state, size_t category_index) {
     if (!has_children) flags |= ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen;
     if (state.selection.contains(node)) flags |= ImGuiTreeNodeFlags_Selected;
 
-    ImGui::PushID(static_cast<int>(category_index));
-    const bool open = ImGui::TreeNodeEx("##cat", flags, "%s", category.displayName().c_str());
+    // Categories and pathables share an id space here, so keep them apart.
+    ImGui::PushID(-1 - static_cast<int>(category_index));
 
-    // Clicking the arrow toggles; clicking the label selects.
-    if (ImGui::IsItemClicked() && !ImGui::IsItemToggledOpen()) selectNode(state, node);
-
-    if (own_pathables > 0) {
-        ImGui::SameLine();
-        ImGui::TextDisabled("(%zu)", own_pathables);
-    }
+    bool open = false;
+    drawRow(state, node, flags, category.displayName(), nullptr, own_pathables, &open);
 
     if (open && has_children) {
-        for (size_t child : category.children) drawCategory(state, child);
+        for (size_t child : category.children) drawCategoryRow(state, child);
         for (size_t pathable_index : state.pathables_by_category[category_index]) {
-            drawPathableLeaf(state, pathable_index);
+            drawPathableRow(state, pathable_index);
         }
         ImGui::TreePop();
     }
+
     ImGui::PopID();
 }
 
@@ -111,7 +204,7 @@ void draw(editor::State& state) {
 
     ImGui::BeginChild("##tree", ImVec2(0, 0), false);
 
-    for (size_t root : state.pack.roots) drawCategory(state, root);
+    for (size_t root : state.pack.roots) drawCategoryRow(state, root);
 
     if (!state.orphan_pathables.empty()) {
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.00f, 0.70f, 0.30f, 1.00f));
@@ -119,7 +212,7 @@ void draw(editor::State& state) {
             ImGui::TreeNodeEx("##orphans", ImGuiTreeNodeFlags_SpanFullWidth, "Unresolved (%zu)", state.orphan_pathables.size());
         ImGui::PopStyleColor();
         if (open) {
-            for (size_t pathable_index : state.orphan_pathables) drawPathableLeaf(state, pathable_index);
+            for (size_t pathable_index : state.orphan_pathables) drawPathableRow(state, pathable_index);
             ImGui::TreePop();
         }
     }

@@ -66,17 +66,28 @@ ImTextureID texture(const std::string& path) {
     if (budget <= 0) return nullptr;
     --budget;
 
-    ImTextureID result = nullptr;
-
     std::vector<uint8_t> bytes;
     std::string error;
-    if (data_source->read(key, &bytes, &error) && !bytes.empty()) {
-        const std::string identifier = "MPE_" + std::to_string(generation) + "_" + key;
-        // Synchronous on purpose: the async LoadFromMemory variant would need the bytes to
-        // outlive this call, and decoding one PNG per newly visible marker is cheap.
-        if (Texture* loaded = api->Textures.GetOrCreateFromMemory(identifier.c_str(), bytes.data(), bytes.size())) {
-            result = static_cast<ImTextureID>(loaded->Resource);
-        }
+    if (!data_source->read(key, &bytes, &error) || bytes.empty()) {
+        // The file genuinely is not in the pack. Remember that so it is not retried.
+        textures.emplace(key, nullptr);
+        return nullptr;
+    }
+
+    const std::string identifier = "MPE_" + std::to_string(generation) + "_" + key;
+    // Synchronous on purpose: the async LoadFromMemory variant would need the bytes to
+    // outlive this call, and decoding one PNG per newly visible marker is cheap.
+    Texture* loaded = api->Textures.GetOrCreateFromMemory(identifier.c_str(), bytes.data(), bytes.size());
+    ImTextureID result = loaded ? static_cast<ImTextureID>(loaded->Resource) : nullptr;
+
+    if (!result) {
+        // The file is there but Nexus could not hand back a texture *this time* — it may
+        // not have a device yet, or it may be creating the texture asynchronously.
+        //
+        // Deliberately not cached: caching this nullptr is what made a freshly opened pack
+        // show every marker as a fallback dot until the pack was reloaded, because a
+        // reload is the only thing that clears the cache.
+        return nullptr;
     }
 
     textures.emplace(key, result);

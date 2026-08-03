@@ -93,6 +93,12 @@ hold in any change:
   it — the one thing the gizmo needs from imgui 1.82+, and numerically identical to the
   `bool closed` argument 1.80 expects. ImGuizmo itself carries `IMGUI_VERSION_NUM` guards
   for old imgui, so the gizmo is genuinely supported there.
+- **Icon fonts cannot reach the atlas.** Nexus's `CFontManager` rebuilds every font with
+  its *own* glyph ranges (Latin + Latin-Ext, plus CJK/Cyrillic for `FONT_DEFAULT`), so
+  FontAwesome's `0xF000-0xF8FF` glyphs are dropped whatever we pass. It also calls
+  `AddFontFromMemoryTTF`, i.e. raw TTF, while `HasKha/imgui-fonts` ships *compressed*
+  data. Draw icons with `ImDrawList` primitives instead — see `eyeButton` in
+  `ui/tree_window.cpp`.
 - **Do not define `WIN32_LEAN_AND_MEAN`.** It drops winsock from `<Windows.h>`, and
   gw2relib's `Game/VdfContext.h` uses `IN_ADDR`. `NOMINMAX` is fine and is set globally.
 - **CMake 4 rejects `cmake_minimum_required` below 3.5.** miniz's repo CMakeLists trips
