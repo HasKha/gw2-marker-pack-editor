@@ -7,7 +7,12 @@
 #include <optional>
 #include <string>
 
+#include "editor_state.h"
 #include "file_dialog.h"
+#include "pack/xml_reader.h"
+#include "pack/zip.h"
+#include "ui/property_panel.h"
+#include "ui/tree_window.h"
 
 namespace marker_editor {
 
@@ -22,6 +27,11 @@ bool show_window = true;
 // Absolute path of the pack currently open, empty when none is.
 std::filesystem::path open_pack_path;
 std::string status_message;
+
+editor::State state;
+
+// Fraction of the window width given to the tree.
+float tree_split = 0.42f;
 
 void log(ELogLevel level, const std::string& message) {
     api->Log(level, ADDON_NAME, message.c_str());
@@ -41,10 +51,38 @@ std::filesystem::path blishhudMarkersFolder() {
 }
 
 void openPack(const std::filesystem::path& path) {
-    // TODO(milestone 1): read the zip, parse the XML files, build the pack model.
+    // TODO: move off the render thread once a pack is big enough to stutter. The largest
+    // pack tested (56k markers) loads fast enough that it has not been worth it yet.
+    state.reset();
+
+    pack::zip::Archive archive;
+    std::string error;
+    if (!archive.open(path, &error)) {
+        status_message = "Could not open " + path.filename().string() + ": " + error;
+        log(ELogLevel_WARNING, status_message);
+        return;
+    }
+
+    if (!pack::loadPack(archive, &state.pack, &error)) {
+        status_message = "Could not read " + path.filename().string() + ": " + error;
+        log(ELogLevel_WARNING, status_message);
+        return;
+    }
+
+    state.rebuildIndex();
+    state.loaded = true;
     open_pack_path = path;
-    status_message = "Selected " + path.filename().string() + " (loading not implemented yet)";
-    log(ELogLevel_INFO, status_message);
+
+    status_message = std::to_string(state.pack.categories.size()) + " categories, " +
+                     std::to_string(state.pack.countByType(pack::PathableType::Poi)) + " POIs, " +
+                     std::to_string(state.pack.countByType(pack::PathableType::Trail)) + " trails";
+    if (!state.pack.warnings.empty()) {
+        status_message += ", " + std::to_string(state.pack.warnings.size()) + " warnings";
+        for (const pack::Warning& warning : state.pack.warnings) {
+            log(ELogLevel_WARNING, warning.file + ": " + warning.message);
+        }
+    }
+    log(ELogLevel_INFO, "Opened " + path.filename().string() + " — " + status_message);
 }
 
 void render() {
@@ -54,6 +92,7 @@ void render() {
 
     if (!show_window) return;
 
+    ImGui::SetNextWindowSize(ImVec2(760, 520), ImGuiCond_FirstUseEver);
     if (ImGui::Begin("Marker Pack Editor##MarkerPackEditor", &show_window)) {
         // Nexus ships imgui 1.80, which predates BeginDisabled/EndDisabled.
         if (file_dialog::isPending()) {
@@ -62,13 +101,26 @@ void render() {
             file_dialog::requestOpenFile(blishhudMarkersFolder(), {{"Marker pack", "zip,taco"}});
         }
 
-        ImGui::Separator();
-        if (open_pack_path.empty()) {
-            ImGui::TextDisabled("No pack open.");
-        } else {
-            ImGui::TextUnformatted(open_pack_path.string().c_str());
+        if (state.loaded) {
+            ImGui::SameLine();
+            ImGui::TextDisabled("%s%s", open_pack_path.filename().string().c_str(), state.dirty ? " *" : "");
         }
+
         if (!status_message.empty()) ImGui::TextWrapped("%s", status_message.c_str());
+        ImGui::Separator();
+
+        const float available = ImGui::GetContentRegionAvail().x;
+        const float tree_width = available * tree_split;
+
+        ImGui::BeginChild("##left", ImVec2(tree_width, 0), true);
+        ui::tree_window::draw(state);
+        ImGui::EndChild();
+
+        ImGui::SameLine();
+
+        ImGui::BeginChild("##right", ImVec2(0, 0), true);
+        ui::property_panel::draw(state);
+        ImGui::EndChild();
     }
     ImGui::End();
 }

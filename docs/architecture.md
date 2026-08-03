@@ -12,6 +12,7 @@ for what is done and what is next see [plan.md](plan.md).
 | Dependencies | FetchContent only, one `cmake/*.cmake` per dep | nothing vendored into `src/` |
 | entry.cpp | oops-wrong-template's minimal form | no globals beyond `AddonDef`/`hSelf`, no feature logic |
 | World rendering | ImGui draw list + hand-built matrices | see [Rendering](#rendering) |
+| Tree top level | categories only; XML files never appear as nodes | see [The tree is categories](#the-tree-is-categories) |
 | Packs open | exactly one at a time | keeps the model a single source of truth |
 | Shipping format | zip in, zip out | Blish HUD fails to load images from unzipped folders |
 
@@ -87,6 +88,36 @@ survives a round-trip and shows up in the property panel as a raw text field.
 The table also has to carry the explicit-vs-inherited distinction, because the property
 panel needs to show the effective value while making clear whether it is set here or
 came from an ancestor category — see [format.md](format.md).
+
+## The tree is categories
+
+The XML files a pack is split across are an authoring convenience. Every loader merges
+them into one category tree and one pathable list, so the split has no meaning to the
+game — which is exactly how pack authors treat it.
+
+That was the open question, and the data settled it. Across all 9 test packs:
+
+| | |
+|---|---|
+| Categories | 31,817 |
+| Declared in more than one file | **1** |
+
+The single exception is `gw2-markers`' `haskha` root, which each of its 10 files reopens
+as a wrapper. No leaf category anywhere is split. So a file-oriented tree would add a
+level of nesting that carries no information and, for hand-authored packs, actively
+obscures the structure.
+
+The tree therefore shows categories, with each pathable under its own category. Files are
+still tracked and still matter — just as metadata rather than hierarchy:
+
+- Every pathable records the file it came from; the property panel shows it, and the
+  writer needs it.
+- A category records **all** of its declarations, since one may legitimately span files.
+- New markers will need a target file; the sensible default is the file its siblings are
+  already in.
+
+Pathables whose `type` resolves to no category appear under an "Unresolved" node rather
+than being dropped, so a broken `type` is visible instead of silent.
 
 ## Rendering
 

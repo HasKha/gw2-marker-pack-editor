@@ -345,6 +345,26 @@ int probeModel(const pack::zip::Archive& archive) {
         loaded.countByType(pack::PathableType::Trail),
         loaded.countByType(pack::PathableType::Route));
 
+    // How much do categories actually span files? This decides whether the editor's tree
+    // can be category-only or has to be file-oriented.
+    size_t split_categories = 0;
+    size_t max_files_for_one_category = 0;
+    std::string most_split;
+    for (const pack::Category& category : loaded.categories) {
+        std::set<size_t> files;
+        for (const pack::SourceSpan& span : category.declarations) files.insert(span.file);
+        if (files.size() > 1) ++split_categories;
+        if (files.size() > max_files_for_one_category) {
+            max_files_for_one_category = files.size();
+            most_split = category.id;
+        }
+    }
+    std::printf(
+        "  categories declared across >1 file: %zu (worst: %s in %zu files)\n",
+        split_categories,
+        most_split.empty() ? "-" : most_split.c_str(),
+        max_files_for_one_category);
+
     size_t dangling = 0;
     for (const pack::Pathable& pathable : loaded.pathables) {
         if (pathable.category == pack::kNoIndex) ++dangling;

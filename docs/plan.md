@@ -24,9 +24,13 @@ M0 complete and verified in game: the addon loads, the window shows, the keybind
 it, and **Open Pack…** opens the native dialog without stalling the frame. It does not
 read the pack yet.
 
-M1 essentially done: the pack layer reads every pack in the markers folder — zip, XML,
-attributes with inheritance, and `.trl`. Nothing is wired into the addon UI yet; the
-reader is exercised by `mpe_probe`, not by the game.
+M1 done: the pack layer reads every pack in the markers folder — zip, XML, attributes
+with inheritance, and `.trl`.
+
+M2 built and compiling, **not yet verified in game**: **Open Pack…** loads the pack, the
+tree shows the category hierarchy with selection and filtering, and the property panel
+edits attributes. Editing is in-memory only — there is no save yet (M5), so nothing can
+be written to a pack by accident.
 
 ### Test packs
 
@@ -81,12 +85,18 @@ Measured by `mpe_probe` across all 9 packs:
 | Routes found | 0 |
 
 ### M2 — Tree + properties
-- [ ] `ui/tree_window` — hierarchy with selection
-- [ ] Decide and implement the tree's top level (see Open questions)
-- [ ] `ui/property_panel` — form generated from the attribute table
-- [ ] Add / remove attribute
-- [ ] Show inherited values greyed out with an "override" affordance
-- [ ] Multi-select and bulk edit
+- [x] **Open Pack…** now actually loads the pack into the editor
+- [x] Tree top level decided: categories only, see [architecture.md](architecture.md)
+- [x] `ui/tree_window` — category hierarchy, pathables under their category, ctrl+click
+      multi-select, "Unresolved" node for dangling `type`s, name filter
+- [x] `ui/property_panel` — form generated from the attribute table; the widget for each
+      value comes from its `ValueKind`, no attribute is named in the UI code
+- [x] Add / remove attribute, with the picker filtered to what applies to the selection
+- [x] Inherited values greyed out, showing the category they come from, with "override"
+- [x] Multi-select bulk edit, `<multiple values>` where the selection disagrees
+- [ ] Verify in game
+- [ ] Shift+click range select
+- [ ] Fill in enum value lists so `ValueKind::Enum` gets a dropdown instead of a text box
 
 ### M3 — Draw it
 - [ ] `world/camera` — matrices from MumbleLink, validated against a known marker
@@ -121,12 +131,7 @@ Measured by `mpe_probe` across all 9 packs:
 
 ## Open questions
 
-1. **Tree top level.** Options: (a) categories only, files hidden; (b) XML files as
-   roots with their categories beneath; (c) a "Files" section listing xml/png/trl
-   alongside a "Categories" section. Categories can be split across files, which argues
-   against (b) as the only view. Leaning towards (a) as the default with a toggle for a
-   file-oriented view — decide during M2.
-2. **FOV.** `Mumble::Identity::FOV` comes from the identity JSON, which Nexus parses;
+1. **FOV.** `Mumble::Identity::FOV` comes from the identity JSON, which Nexus parses;
    confirm whether Nexus exposes a parsed `Identity` via DataLink or whether we parse
    `Mumble::Data::Identity` ourselves.
 3. **`.taco` vs `.zip`.** Both are zips. Confirm TaimiHUD and Blish HUD accept both from
@@ -135,6 +140,10 @@ Measured by `mpe_probe` across all 9 packs:
 
 ### Resolved
 
+- ~~**Tree top level.**~~ Categories only; XML files never appear as nodes. Measured: of
+  31,817 categories across the 9 test packs, exactly **one** is declared in more than one
+  file, and it is a root wrapper. Files are tracked as metadata, not hierarchy. See
+  [architecture.md](architecture.md).
 - ~~**Routes.**~~ Deprecated and unimplemented upstream: TmfLib's `UnpackRoutePoi` returns
   null with a "deprecated route type" TODO, Pathing's `StandardRoute` is an empty class,
   and no `<route>` appears in any of the 9 packs tested. We parse and carry them through
