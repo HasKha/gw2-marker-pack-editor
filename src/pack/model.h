@@ -157,6 +157,10 @@ struct Pack {
     // Marks a file for deletion on the next save. A file that only ever existed as a
     // pending add just goes away.
     void removeAsset(std::string_view path);
+
+    // Withdraws a pending add without marking anything for deletion — "forget my edits to
+    // this file", which leaves whatever the source holds untouched.
+    bool dropAddedAsset(std::string_view path);
     void restoreAsset(std::string_view path);
     bool hasAssetChanges() const { return !added_assets.empty() || !removed_assets.empty(); }
     void clearAssetChanges();
@@ -179,6 +183,16 @@ struct Pack {
 
     size_t countByType(PathableType type) const;
     void addWarning(std::string file, std::string message);
+
+    // Creates a pathable: a new element in the document plus the model entry that indexes
+    // it. Returns its index in `pathables`, or kNoIndex when there is nowhere to put it.
+    //
+    // It is **appended** to `pathables`, never inserted, so no existing index moves. Where
+    // it sits in the *file* is decided by `after`: right behind that pathable's element
+    // when one is given, otherwise at the end of a <POIs> block in `file` — created if the
+    // file has none. The editor's own ordering is a separate concern; see
+    // State::pathableAdded.
+    size_t addPathable(PathableType type, size_t category, size_t after, size_t file, AttributeCollection attributes);
 };
 
 } // namespace pack

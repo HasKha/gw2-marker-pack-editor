@@ -56,6 +56,8 @@ mpe_probe "<...>/markers/haskha_markers.zip" "<...>/markers/hero.blish.pack.zip"
 src/
   entry.cpp            Nexus entry, AddonDefinition, hands DataLinks to marker_editor
   marker_editor.*      lifecycle, the windows and the shared menu bar, save/open, WndProc
+  pathable_edit.*      creating markers: what a new one is and where it belongs
+  trail_edit.*         the open trail's working copy, shared by its window and the gizmo
   editor_state.*       State: the open Pack, selection, per-node visibility, settings
   file_dialog.*        NFD on a worker thread (never block the render thread)
   resources.*          icons + .trl pulled from the pack source on demand, budgeted
@@ -72,6 +74,7 @@ src/
     tree_window.*      category tree, selection (ctrl / shift range), per-node eye toggles
     property_panel.*   attribute form + "add attribute" + inherited values
     resource_window.*  the pack's images, what references them, add / remove
+    trail_editor.*     the open trail: map id, point list, the Trail menu, shape tools
   world/
     camera.*           MumbleLink -> view/projection, world->screen
     renderer.*         billboards + trail ribbons into an ImGui draw list, hit testing
@@ -110,7 +113,7 @@ closable, each remembering its own place:
 |---|---|
 | Tree | pack header, category hierarchy, selection, visibility toggles |
 | Details | the attribute form for the selection |
-| Toolbar | gizmo mode, and the create/place controls as they arrive |
+| Toolbar | gizmo mode, Add POI, and the create/place controls as they arrive |
 | Trail editor | the open trail's map id and points, with drag fields for the selected one |
 | Resources | the pack's images: folder tree, references, preview, add / remove |
 
@@ -134,6 +137,53 @@ vectors every window has just drawn from, and a menu click happens partway throu
 
 The Nexus options page carries a checkbox per window, because a window closed with its X
 would otherwise only come back through a keybind that is unbound by default.
+
+## One trail, one working copy
+
+`trail_edit` holds the trail being edited as a mutable copy of its `.trl`, and it is a
+module of its own rather than part of the trail editor window because the window is not the
+only thing editing it: the gizmo drags the same points, and the renderer draws handles for
+them. All three go through the one model.
+
+- **Points are addressed by a flat index** across segments — a `.trl` is one or more runs of
+  points separated by `(0,0,0)` terminators, and the editor lists them as one numbered list
+  with a mark where a new run begins.
+- **Every change writes the whole trail back** into `Pack::added_assets`, the same pending
+  mechanism the resources window uses, and calls `resources::forget` so the next frame
+  redraws from the new bytes. There is no separate "trail is dirty" state and no save step
+  of its own: a pack save picks the trail up with everything else. Reserializing a few
+  thousand points per edited frame is nothing next to a frame of rendering.
+- **A trail point is a `NodeRef`** like anything else — `NodeKind::TrailPoint`, with `sub`
+  carrying the point index. That is what lets the gizmo's group transform, the anchor and
+  ctrl/shift multi-select work on points without a second selection mechanism. The property
+  panel says so and defers; visibility ignores them, since they are not tree rows.
+- **Only the open trail gets handles** in the world. Every trail's points at once would be
+  an unreadable field of dots, and a point that cannot be seen cannot be clicked.
+
+`Trail > Reload from file` drops the pending bytes and rereads the source **directly**
+rather than through `resources`, whose reads are budgeted a few per frame: a menu action
+that silently does nothing because the budget was spent is worse than one extra read.
+`Save to file` exports a copy outside the pack — for a zip pack there is no other coherent
+meaning, since a single `.trl` cannot be written back into the archive on its own.
+
+## A new marker is appended, not inserted
+
+`Pack::pathables`, `State::pathables_by_category`, the selection and the renderer cache are
+all positional, so inserting into the middle of the pathable vector would shift every index
+after it and invalidate all four at once. `Pack::addPathable` therefore **appends** to the
+vector, always, and no existing index ever moves.
+
+Where the marker appears is decided in the two places that actually care:
+
+- **In the file**, by `pugi::xml_node::insert_child_after` on the sibling it should follow,
+  so the document reads in the order the editor shows. With no sibling to follow it goes at
+  the end of a `<POIs>` block in the category's own file, created if that file has none.
+- **In the tree**, by `State::pathableAdded` inserting the new index into
+  `pathables_by_category` after its sibling. That list *is* the tree order; it only happens
+  to match the vector order on a freshly loaded pack.
+
+Deleting will not have this luxury, which is why the deletion strategy — tombstone or
+erase — is still an open question in [plan.md](plan.md).
 
 ## Assets are pending until a save
 

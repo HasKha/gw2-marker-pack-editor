@@ -18,6 +18,7 @@ namespace {
 // things that make sense for what is selected.
 uint8_t appliesMaskFor(const editor::State& state, editor::NodeRef node) {
     if (node.kind == editor::NodeKind::Category) return pack::kAppliesCategory;
+    if (node.kind != editor::NodeKind::Pathable || node.index >= state.pack.pathables.size()) return 0;
     const pack::Pathable& pathable = state.pack.pathables[node.index];
     return pathable.type == pack::PathableType::Trail ? pack::kAppliesTrail : pack::kAppliesPoi;
 }
@@ -27,7 +28,9 @@ pack::AttributeCollection* attributesOf(editor::State& state, editor::NodeRef no
         if (node.index >= state.pack.categories.size()) return nullptr;
         return &state.pack.categories[node.index].attributes;
     }
-    if (node.index >= state.pack.pathables.size()) return nullptr;
+    // A trail point is a coordinate in a .trl, not an XML node: it has no attributes at
+    // all, and the trail editor is where it is edited.
+    if (node.kind != editor::NodeKind::Pathable || node.index >= state.pack.pathables.size()) return nullptr;
     return &state.pack.pathables[node.index].attributes;
 }
 
@@ -35,7 +38,8 @@ pack::AttributeCollection* attributesOf(editor::State& state, editor::NodeRef no
 // a stale ref. Reloading clears the selection, but this runs inside the game's render
 // loop and a bad index there is a crash, not a glitch.
 bool isValid(const editor::State& state, editor::NodeRef node) {
-    return node.kind == editor::NodeKind::Category ? node.index < state.pack.categories.size() : node.index < state.pack.pathables.size();
+    if (node.kind == editor::NodeKind::Category) return node.index < state.pack.categories.size();
+    return node.kind == editor::NodeKind::Pathable && node.index < state.pack.pathables.size();
 }
 
 // Draws the editor for one value. Returns the new text when the user changed it.
@@ -405,6 +409,14 @@ void draw(editor::State& state) {
 
     if (state.selection.empty()) {
         ImGui::TextDisabled("Select something in the tree.");
+        return;
+    }
+
+    // Trail points carry no attributes; they are numbers in a .trl and belong to the trail
+    // editor. Saying so beats an empty form or a "stale selection".
+    if (state.selection.primary().kind == editor::NodeKind::TrailPoint) {
+        ImGui::TextDisabled("Trail point %zu selected.", state.selection.primary().sub);
+        ImGui::TextWrapped("Points have no attributes. Edit them in the Trail Editor window.");
         return;
     }
 

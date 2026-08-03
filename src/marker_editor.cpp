@@ -13,9 +13,12 @@
 #include "pack/source.h"
 #include "pack/writer.h"
 #include "pack/xml_reader.h"
+#include "pathable_edit.h"
 #include "resources.h"
+#include "trail_edit.h"
 #include "ui/property_panel.h"
 #include "ui/resource_window.h"
+#include "ui/trail_editor.h"
 #include "ui/tree_window.h"
 #include "ui/windows.h"
 #include "world/camera.h"
@@ -44,14 +47,21 @@ std::filesystem::path last_image_folder;
 
 editor::State state;
 
+// This frame's camera, kept so the menu bar can reach the player position and map id
+// without every window that draws the bar having to be handed a camera.
+world::Camera frame_camera;
+
 // A world click picked this pathable; the render thread consumes it. Written from the
 // game's message thread — see onWndProc for why the click cannot come from ImGui.
 std::atomic<size_t> pending_select{pack::kNoIndex};
+// The same for a point of the trail open in the editor. Which trail it belongs to is not
+// carried across: the render thread owns that and reads it when it consumes this.
+std::atomic<size_t> pending_select_point{pack::kNoIndex};
 std::atomic<bool> pending_select_additive{false};
 
 // What the in-flight file dialog is for. One dialog runs at a time, so a single value is
 // enough, and it has to survive until the worker reports back.
-enum class DialogPurpose { OpenFile, OpenFolder, SaveAs, AddResource };
+enum class DialogPurpose { OpenFile, OpenFolder, SaveAs, AddResource, ExportTrail };
 DialogPurpose dialog_purpose = DialogPurpose::OpenFile;
 
 // Close and Reload both throw away unsaved edits, so with a dirty pack they go through a
@@ -89,6 +99,8 @@ void openPack(std::filesystem::path path) {
     // TODO: move off the render thread once a pack is big enough to stutter. The largest
     // pack tested (56k markers) loads fast enough that it has not been worth it yet.
     state.reset();
+    // Its pathable index and its working copy both belong to the pack going away.
+    trail_edit::close();
 
     // Zip or folder — pack::open picks by what the path actually is.
     std::string error;
@@ -155,13 +167,20 @@ UINT onWndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
     if (ImGui::GetIO().WantCaptureMouse) return 1; // an addon window owns this click
     if (!isCursorVisible()) return 1;
 
+    // A trail point handle wins over the marker behind it: the handles are small, only the
+    // open trail has them, and they are drawn precisely to be aimed at.
+    const size_t point = world::renderer::hoveredTrailPoint();
     const size_t hovered = world::renderer::hoveredPathable();
-    if (hovered == pack::kNoIndex) return 1;
+    if (point == pack::kNoIndex && hovered == pack::kNoIndex) return 1;
 
     // Shift does what ctrl does out here. A range needs an order between two markers, and
     // the world has none — the tree is where a range means something.
     pending_select_additive.store((wParam & (MK_CONTROL | MK_SHIFT)) != 0);
-    pending_select.store(hovered);
+    if (point != pack::kNoIndex) {
+        pending_select_point.store(point);
+    } else {
+        pending_select.store(hovered);
+    }
     return 0;
 }
 
@@ -250,6 +269,7 @@ void savePack() {
 
 void closePack() {
     state.reset();
+    trail_edit::close();
     resources::setSource(nullptr);
     open_pack_path.clear();
     status_message.clear();
@@ -301,6 +321,12 @@ void drawMenuBar(ui::windows::Id owner) {
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("Always writes a zip — the only form Blish HUD loads reliably.");
 
         ImGui::EndMenu();
+    }
+
+    if (ui::trail_editor::drawMenu(state, frame_camera) == ui::trail_editor::Request::Export && !file_dialog::isPending()) {
+        dialog_purpose = DialogPurpose::ExportTrail;
+        const std::filesystem::path folder = last_folder.empty() ? blishhudMarkersFolder() : last_folder;
+        file_dialog::requestSaveFile(folder, "trail.trl", {{"Trail data", "trl"}});
     }
 
     if (ImGui::BeginMenu("View")) {
@@ -430,6 +456,36 @@ void drawDetailsWindow() {
     ImGui::End();
 }
 
+// Adds a marker where the character is standing. Placement follows the selection, so the
+// button needs no target of its own — see pathable_edit::addPoi.
+void drawAddPoi() {
+    if (!ImGui::Button("Add POI")) {
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip(
+                "Adds a marker at the character's position.\n"
+                "With a category selected it goes in at the end;\n"
+                "with a marker selected it follows it and copies its attributes.");
+        }
+        return;
+    }
+
+    if (!state.loaded) {
+        status_message = "Open a pack first.";
+        return;
+    }
+    if (!frame_camera.valid) {
+        status_message = "No character position: MumbleLink has no data yet.";
+        return;
+    }
+
+    const size_t added = pathable_edit::addPoi(state, frame_camera.player);
+    if (added == pack::kNoIndex) {
+        status_message = "Select a category or a marker to say where the POI goes.";
+    } else {
+        status_message = "Added a POI at the character's position.";
+    }
+}
+
 // No menu bar: this one is a strip of controls, and a menu bar over it would be taller
 // than its contents.
 void drawToolbarWindow() {
@@ -448,16 +504,15 @@ void drawToolbarWindow() {
     ImGui::RadioButton("Both", &mode, static_cast<int>(editor::GizmoMode::TranslateRotate));
     state.settings.gizmo = static_cast<editor::GizmoMode>(mode);
 
+    ImGui::Separator();
+    drawAddPoi();
+
     ImGui::End();
 }
 
 void drawTrailEditorWindow() {
-    if (!beginWindow(ui::windows::Id::TrailEditor, ImVec2(380, 460), true)) return;
-    ImGui::TextDisabled("Not implemented yet.");
-    // Plain ASCII in anything drawn: Nexus builds its fonts with Latin and Latin-Ext glyph
-    // ranges only, so an em dash would come out as a box. See CLAUDE.md.
-    ImGui::TextWrapped(
-        "Will list the points of the selected trail, edit them individually, and generate shapes: circles, arcs, lines. See docs/plan.md.");
+    if (!beginWindow(ui::windows::Id::TrailEditor, ImVec2(420, 560), true)) return;
+    ui::trail_editor::draw(state, frame_camera);
     ImGui::End();
 }
 
@@ -487,6 +542,7 @@ void render() {
             last_image_folder = picked->parent_path();
             ui::resource_window::addFile(state, *picked, &status_message);
             break;
+        case DialogPurpose::ExportTrail: ui::trail_editor::exportTo(state, *picked, &status_message); break;
         default: openPack(*picked); break;
         }
     }
@@ -496,13 +552,23 @@ void render() {
     // The world is drawn whether or not any editor window is open — the point is to see
     // the pack in the game.
     const world::Camera camera = world::fromMumble(mumble_link, nexus_link);
+    frame_camera = camera;
     world::renderer::draw(state, camera);
 
     // After the markers so it draws over them, and so it can claim the click first.
     const bool gizmo_active = world::gizmo::draw(state, camera);
 
     const size_t picked = pending_select.exchange(pack::kNoIndex);
-    if (picked != pack::kNoIndex && !gizmo_active && picked < state.pack.pathables.size()) {
+    const size_t picked_point = pending_select_point.exchange(pack::kNoIndex);
+
+    if (!gizmo_active && picked_point != pack::kNoIndex && picked_point < trail_edit::pointCount()) {
+        const editor::NodeRef node{editor::NodeKind::TrailPoint, trail_edit::pathable(), picked_point};
+        if (pending_select_additive.load()) {
+            state.selection.toggle(node);
+        } else {
+            state.selection.set(node);
+        }
+    } else if (picked != pack::kNoIndex && !gizmo_active && picked < state.pack.pathables.size()) {
         const editor::NodeRef node{editor::NodeKind::Pathable, picked};
         if (pending_select_additive.load()) {
             state.selection.toggle(node);

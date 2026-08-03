@@ -19,4 +19,9 @@ void draw(editor::State& state, const Camera& camera);
 // the picture. Valid until the next draw().
 size_t hoveredPathable();
 
+// Flat index of the trail point under the mouse, or pack::kNoIndex. Only points of the
+// trail open in the trail editor are drawn as handles, so only those can be picked; the
+// index is into that trail. Valid until the next draw().
+size_t hoveredTrailPoint();
+
 } // namespace world::renderer

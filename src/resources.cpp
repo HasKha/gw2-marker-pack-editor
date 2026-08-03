@@ -63,11 +63,15 @@ void setPendingAssets(const pack::Pack* pack) {
 }
 
 void forget(const std::string& path) {
-    textures.erase(pack::normalizePath(path));
+    const std::string key = pack::normalizePath(path);
+    trails.erase(key);
+
     // Nexus hands back the *existing* texture for an identifier it has already seen, so a
     // reload under the same name would return the old image. A new generation gives the
-    // next load a name Nexus has not seen.
-    ++generation;
+    // next load a name Nexus has not seen. Only bumped when something was actually cached,
+    // so an edit that touches no texture — a trail point being dragged — does not push
+    // every later image into a fresh identifier.
+    if (textures.erase(key) > 0) ++generation;
 }
 
 Image image(const std::string& path) {
@@ -131,7 +135,18 @@ const pack::trl::Trail* trail(const std::string& path) {
 
     std::vector<uint8_t> bytes;
     std::string error;
-    if (data_source->read(key, &bytes, &error)) {
+
+    // Edited in the editor and not saved yet — the trail editor writes its working copy
+    // back as a pending asset, so those bytes are what the world should draw.
+    bool have_bytes = false;
+    if (const pack::Pack::AddedAsset* added = pending_pack ? pending_pack->findAddedAsset(key) : nullptr) {
+        bytes = added->bytes;
+        have_bytes = true;
+    } else {
+        have_bytes = data_source->read(key, &bytes, &error);
+    }
+
+    if (have_bytes) {
         auto candidate = std::make_unique<pack::trl::Trail>();
         if (pack::trl::read(bytes, candidate.get(), &error)) parsed = std::move(candidate);
     }

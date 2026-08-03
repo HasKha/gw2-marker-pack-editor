@@ -112,6 +112,71 @@ void Pack::addWarning(std::string file, std::string message) {
     warnings.push_back(Warning{std::move(file), std::move(message)});
 }
 
+namespace {
+
+// The element name to write for a new pathable. Packs spell these in mixed case and the
+// reader is case-insensitive, so this only has to be readable and consistent.
+const char* elementName(PathableType type) {
+    switch (type) {
+    case PathableType::Trail: return "Trail";
+    case PathableType::Route: return "Route";
+    case PathableType::Poi: break;
+    }
+    return "POI";
+}
+
+// The <POIs> block a new element goes into, created at the end of <OverlayData> when the
+// file has none. Returns a null node when the document has no root to hang it off.
+pugi::xml_node poisBlock(pugi::xml_document* document) {
+    if (!document) return {};
+
+    pugi::xml_node root;
+    for (pugi::xml_node child : document->children()) {
+        if (child.type() != pugi::node_element) continue;
+        if (attributeKey(child.name()) == "overlaydata") {
+            root = child;
+            break;
+        }
+    }
+    if (!root) return {};
+
+    for (pugi::xml_node child : root.children()) {
+        if (child.type() == pugi::node_element && attributeKey(child.name()) == "pois") return child;
+    }
+    return root.append_child("POIs");
+}
+
+} // namespace
+
+size_t Pack::addPathable(PathableType type, size_t category, size_t after, size_t file, AttributeCollection attributes) {
+    pugi::xml_node node;
+    size_t target_file = file;
+
+    if (after < pathables.size() && pathables[after].source.node) {
+        // Directly behind its sibling, so the file reads in the order the editor shows.
+        const SourceNode& sibling = pathables[after].source;
+        node = sibling.node.parent().insert_child_after(sibling.node.name(), sibling.node);
+        target_file = sibling.file;
+    } else {
+        if (target_file >= files.size()) return kNoIndex;
+        pugi::xml_node pois = poisBlock(files[target_file].document.get());
+        if (!pois) return kNoIndex;
+        node = pois.append_child(elementName(type));
+    }
+
+    if (!node) return kNoIndex;
+
+    Pathable pathable;
+    pathable.type = type;
+    pathable.attributes = std::move(attributes);
+    pathable.category = category;
+    if (const std::string* id = pathable.attributes.value("type")) pathable.category_id = attributeKey(*id);
+    pathable.source = SourceNode{target_file, node};
+
+    pathables.push_back(std::move(pathable));
+    return pathables.size() - 1;
+}
+
 const Pack::AddedAsset* Pack::findAddedAsset(std::string_view path) const {
     const std::string key = normalizePath(path);
     auto it = std::find_if(added_assets.begin(), added_assets.end(), [&](const AddedAsset& asset) { return asset.path == key; });
@@ -138,15 +203,20 @@ void Pack::addAsset(std::string original_path, std::vector<uint8_t> bytes) {
 }
 
 void Pack::removeAsset(std::string_view path) {
+    if (dropAddedAsset(path)) return;
+
+    const std::string key = normalizePath(path);
+    if (std::find(removed_assets.begin(), removed_assets.end(), key) == removed_assets.end()) removed_assets.push_back(key);
+}
+
+bool Pack::dropAddedAsset(std::string_view path) {
     const std::string key = normalizePath(path);
 
     auto pending = std::find_if(added_assets.begin(), added_assets.end(), [&](const AddedAsset& asset) { return asset.path == key; });
-    if (pending != added_assets.end()) {
-        added_assets.erase(pending);
-        return;
-    }
+    if (pending == added_assets.end()) return false;
 
-    if (std::find(removed_assets.begin(), removed_assets.end(), key) == removed_assets.end()) removed_assets.push_back(key);
+    added_assets.erase(pending);
+    return true;
 }
 
 void Pack::restoreAsset(std::string_view path) {

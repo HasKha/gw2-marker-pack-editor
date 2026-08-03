@@ -4,6 +4,7 @@
 #include <cctype>
 #include <charconv>
 #include <cstdio>
+#include <random>
 #include <unordered_map>
 
 namespace pack {
@@ -291,6 +292,17 @@ std::string guidToBase64(const std::array<uint8_t, 16>& guid) {
     }
 
     return out;
+}
+
+std::string generateGuid() {
+    // Seeded once. A per-call random_device would be slower and no more random, and a
+    // per-call default seed would hand out the same GUID to every marker added.
+    static std::mt19937 engine(std::random_device{}());
+    std::uniform_int_distribution<unsigned int> byte(0, 255);
+
+    std::array<uint8_t, 16> guid{};
+    for (uint8_t& value : guid) value = static_cast<uint8_t>(byte(engine));
+    return guidToBase64(guid);
 }
 
 std::string formatFloat(float value) {

@@ -72,6 +72,11 @@ bool parseGuid(std::string_view text, std::array<uint8_t, 16>* out);
 
 std::string guidToBase64(const std::array<uint8_t, 16>& guid);
 
+// A fresh GUID for a marker the editor creates, already in the base64 form the format
+// uses. 128 random bits, so a collision with anything else in the pack is not a case worth
+// coding around.
+std::string generateGuid();
+
 // Value text for a number we are writing back. Only ever applied to a value the user
 // actually changed — an untouched attribute keeps its original text verbatim, which is
 // what makes a byte-exact round trip possible. See Attribute::value in model.h.

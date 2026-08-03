@@ -13,6 +13,8 @@
 #include <glm/gtc/type_ptr.hpp>
 #include <glm/gtx/euler_angles.hpp>
 
+#include "trail_edit.h"
+
 namespace world::gizmo {
 
 namespace {
@@ -47,13 +49,18 @@ glm::vec3 attributesFromRotation(const glm::mat4& world_rotation) {
     return radians;
 }
 
-// A POI the gizmo moves. The first one collected is the anchor: the handles sit on it, and
-// a group rotation orbits the rest about it.
+// Something the gizmo moves — a POI, or a point of the trail open in the editor. The first
+// one collected is the anchor: the handles sit on it, and a group rotation orbits the rest
+// about it.
 struct Target {
-    size_t pathable = pack::kNoIndex;
+    editor::NodeRef node;
     glm::vec3 position{0.0f}; // as drawn, i.e. including heightOffset
     glm::vec3 rotation{0.0f}; // radians, in the attributes' own axis order
     float height_offset = 0.0f;
+
+    // A trail point is a coordinate and nothing else: it has no orientation to write, so a
+    // group rotation still carries it around the anchor but leaves it facing nowhere.
+    bool has_rotation = false;
 };
 
 // Same resolution the renderer does, so the gizmo sits exactly on the drawn icon.
@@ -99,24 +106,39 @@ bool markerTransform(
 }
 
 // In selection order, so targets.front() is the first thing the user selected. Anything
-// without a transform — categories, trails, a POI missing a coordinate — is skipped rather
-// than blocking the gizmo, so a mixed selection still moves what it can.
+// without a transform — categories, a POI missing a coordinate, a trail point belonging to
+// a trail that is not the one open — is skipped rather than blocking the gizmo, so a mixed
+// selection still moves what it can.
 std::vector<Target> collectTargets(const editor::State& state) {
     std::vector<Target> targets;
     for (const editor::NodeRef& node : state.selection.items()) {
-        if (node.kind != editor::NodeKind::Pathable || node.index >= state.pack.pathables.size()) continue;
-
         Target target;
-        if (!markerTransform(state, node.index, &target.position, &target.rotation, &target.height_offset)) continue;
-        target.pathable = node.index;
+        target.node = node;
+
+        if (node.kind == editor::NodeKind::Pathable) {
+            if (node.index >= state.pack.pathables.size()) continue;
+            if (!markerTransform(state, node.index, &target.position, &target.rotation, &target.height_offset)) continue;
+            target.has_rotation = true;
+        } else if (node.kind == editor::NodeKind::TrailPoint) {
+            if (node.index != trail_edit::pathable() || node.sub >= trail_edit::pointCount()) continue;
+            target.position = trail_edit::point(node.sub);
+        } else {
+            continue;
+        }
+
         targets.push_back(target);
     }
     return targets;
 }
 
-void writePosition(editor::State& state, size_t pathable_index, const glm::vec3& drawn_position, float height_offset) {
-    pack::AttributeCollection& attributes = state.pack.pathables[pathable_index].attributes;
-    const glm::vec3 stored(drawn_position.x, drawn_position.y - height_offset, drawn_position.z);
+void writePosition(editor::State& state, const Target& target, const glm::vec3& drawn_position) {
+    if (target.node.kind == editor::NodeKind::TrailPoint) {
+        trail_edit::setPoint(state, target.node.sub, drawn_position);
+        return;
+    }
+
+    pack::AttributeCollection& attributes = state.pack.pathables[target.node.index].attributes;
+    const glm::vec3 stored(drawn_position.x, drawn_position.y - target.height_offset, drawn_position.z);
 
     attributes.set("xpos", pack::formatFloat(stored.x));
     attributes.set("ypos", pack::formatFloat(stored.y));
@@ -221,14 +243,14 @@ bool draw(editor::State& state, const Camera& camera) {
         const glm::vec3 anchor_position = moved ? new_position : anchor.position;
 
         for (const Target& target : targets) {
-            if (rotated) {
-                writeRotation(state, target.pathable, attributesFromRotation(delta_rotation * rotationFromAttributes(target.rotation)));
+            if (rotated && target.has_rotation) {
+                writeRotation(state, target.node.index, attributesFromRotation(delta_rotation * rotationFromAttributes(target.rotation)));
             }
 
             const glm::vec3 offset = target.position - anchor.position;
             const glm::vec3 position = anchor_position + glm::vec3(delta_rotation * glm::vec4(offset, 0.0f));
             if (glm::distance(position, target.position) > 1e-5f) {
-                writePosition(state, target.pathable, position, target.height_offset);
+                writePosition(state, target, position);
             }
         }
     }

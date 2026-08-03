@@ -202,6 +202,7 @@ void probeXmlRoundTrip(const pack::DataSource& archive, RoundTripStats* stats) {
 std::filesystem::path save_test_dir;
 int probeSaveRoundTrip(const pack::Pack& loaded, const pack::DataSource& source, const std::filesystem::path& out_dir);
 int probeAssetChanges(pack::Pack& loaded, const pack::DataSource& source, const std::filesystem::path& out_dir);
+int probeAddPathable(pack::Pack& loaded, const pack::DataSource& source, const std::filesystem::path& out_dir);
 
 // The writer reformats a pack once, so byte equality with the original is not the test.
 // What must hold is that writing is a fixed point: serialize, parse the result, serialize
@@ -500,6 +501,9 @@ int probeModel(const pack::DataSource& archive) {
 
     lintPack(loaded, archive);
 
+    // Last, because it leaves a marker in the model that nothing can take back out yet.
+    if (!save_test_dir.empty()) failures += probeAddPathable(loaded, archive, save_test_dir);
+
     return failures;
 }
 
@@ -674,6 +678,99 @@ int probeAssetChanges(pack::Pack& loaded, const pack::DataSource& source, const 
     }
 
     loaded.clearAssetChanges();
+    return failures;
+}
+
+// Adding a marker is a node insert, which is the thing the writer became a serializer for.
+// The check that matters is that it comes back: same count plus one, under the category it
+// was put in, carrying the GUID it was given.
+int probeAddPathable(pack::Pack& loaded, const pack::DataSource& source, const std::filesystem::path& out_dir) {
+    // A category that already has markers, so the insert goes in beside a sibling rather
+    // than into a fresh <POIs> block — the path the editor takes most of the time.
+    size_t category = pack::kNoIndex;
+    size_t after = pack::kNoIndex;
+    for (size_t i = 0; i < loaded.pathables.size(); ++i) {
+        if (loaded.pathables[i].category == pack::kNoIndex) continue;
+        category = loaded.pathables[i].category;
+        after = i;
+    }
+    if (category == pack::kNoIndex) {
+        std::printf("  add pathable: skipped, no categorised marker to add beside\n");
+        return 0;
+    }
+
+    const std::string guid = pack::generateGuid();
+
+    pack::AttributeCollection attributes;
+    attributes.set("type", loaded.categories[category].id);
+    attributes.set("xpos", "1.5");
+    attributes.set("ypos", "2.5");
+    attributes.set("zpos", "3.5");
+    attributes.set("GUID", guid);
+
+    const size_t before = loaded.pathables.size();
+    const size_t added =
+        loaded.addPathable(pack::PathableType::Poi, category, after, loaded.pathables[after].source.file, std::move(attributes));
+    if (added == pack::kNoIndex) {
+        std::printf("  ADD FAIL  addPathable returned nothing\n");
+        return 1;
+    }
+
+    std::error_code ec;
+    std::filesystem::create_directories(out_dir, ec);
+    const std::filesystem::path target = out_dir / (source.root().stem().string() + "-added.zip");
+    std::filesystem::remove(target, ec);
+
+    int failures = 0;
+    const pack::SaveResult saved = pack::buildZip(loaded, source, target);
+
+    std::string error;
+    if (!saved.ok) {
+        std::printf("  ADD FAIL  %s\n", saved.error.c_str());
+        return 1;
+    }
+    if (!pack::commitZip(target, &error)) {
+        std::printf("  ADD FAIL  %s\n", error.c_str());
+        return 1;
+    }
+
+    std::unique_ptr<pack::DataSource> reopened = pack::open(target, &error);
+    pack::Pack reloaded;
+    if (!reopened || !pack::loadPack(*reopened, &reloaded, &error)) {
+        std::printf("  ADD REOPEN FAIL  %s\n", error.c_str());
+        return 1;
+    }
+
+    if (reloaded.pathables.size() != before + 1) {
+        std::printf("  ADD: %zu pathables after reload, expected %zu\n", reloaded.pathables.size(), before + 1);
+        ++failures;
+    }
+
+    const pack::Pathable* found = nullptr;
+    for (const pack::Pathable& pathable : reloaded.pathables) {
+        const std::string* value = pathable.attributes.value("guid");
+        if (value && *value == guid) found = &pathable;
+    }
+
+    if (!found) {
+        std::printf("  ADD: the new marker did not come back\n");
+        ++failures;
+    } else {
+        if (found->type != pack::PathableType::Poi) {
+            std::printf("  ADD: came back as a %s\n", pack::toString(found->type));
+            ++failures;
+        }
+        if (found->category != category) {
+            std::printf("  ADD: landed in category %zu, expected %zu\n", found->category, category);
+            ++failures;
+        }
+    }
+
+    std::printf(
+        "  add pathable: %zu -> %zu markers, new POI in %s\n",
+        before,
+        reloaded.pathables.size(),
+        loaded.categories[category].id.c_str());
     return failures;
 }
 

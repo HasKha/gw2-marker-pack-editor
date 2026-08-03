@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "resources.h"
+#include "trail_edit.h"
 
 namespace world::renderer {
 
@@ -68,6 +69,11 @@ std::atomic<size_t> hovered_pathable{pack::kNoIndex};
 // marker has been tested, so the highlight uses the previous frame's result — a frame of
 // latency nobody can see, and it makes picking visible instead of a guess.
 size_t hover_highlight = pack::kNoIndex;
+
+// The same, for the points of the trail open in the editor. They are drawn as handles
+// because a coordinate has nothing to click otherwise.
+std::atomic<size_t> hovered_trail_point{pack::kNoIndex};
+size_t hover_point_highlight = pack::kNoIndex;
 
 bool pointInQuad(const ImVec2& p, const ImVec2 quad[4]) {
     // Sign of the cross product against each edge; consistent sign means inside. Works
@@ -474,15 +480,69 @@ void drawTrails(editor::State& state, const Camera& camera, ImDrawList* list, st
     }
 }
 
+// Handles for the trail open in the editor, drawn over the ribbon: one small dot per
+// point, so a point can be aimed at and dragged the way a marker can. Only the open trail
+// gets them — every trail at once would be an unreadable field of dots.
+void drawTrailPoints(editor::State& state, const Camera& camera, ImDrawList* list, int map_id) {
+    constexpr float kHandleRadius = 4.0f;
+    constexpr float kPickRadius = 9.0f; // px; a dot is small, so pick with some slack
+
+    if (!trail_edit::isOpen()) return;
+
+    const size_t pathable = trail_edit::pathable();
+    if (!state.isVisible(editor::NodeRef{editor::NodeKind::Pathable, pathable})) return;
+
+    // Culled with the trail it belongs to, so the handles cannot outlive the ribbon.
+    for (const TrailDraw& trail : cache.trails) {
+        if (trail.pathable != pathable) continue;
+        if (trail.map_id != map_id) return;
+        break;
+    }
+
+    const ImVec2 mouse = ImGui::GetIO().MousePos;
+    float best_distance = kPickRadius;
+    size_t best_point = pack::kNoIndex;
+
+    for (size_t i = 0; i < trail_edit::pointCount(); ++i) {
+        glm::vec2 screen(0.0f);
+        if (!camera.project(trail_edit::point(i), &screen)) continue;
+        if (screen.x < 0.0f || screen.y < 0.0f || screen.x > camera.viewport.x || screen.y > camera.viewport.y) continue;
+
+        const ImVec2 at(screen.x, screen.y);
+        const bool selected = state.selection.contains(editor::NodeRef{editor::NodeKind::TrailPoint, pathable, i});
+
+        list->AddCircleFilled(at, kHandleRadius, selected ? IM_COL32(255, 210, 60, 255) : IM_COL32(60, 140, 255, 200));
+        if (selected || i == hover_point_highlight) {
+            list->AddCircle(at, kHandleRadius + 2.0f, IM_COL32(255, 255, 255, selected ? 255 : 160), 12, 1.5f);
+        }
+
+        const float dx = mouse.x - at.x;
+        const float dy = mouse.y - at.y;
+        const float distance = std::sqrt(dx * dx + dy * dy);
+        if (distance < best_distance) {
+            best_distance = distance;
+            best_point = i;
+        }
+    }
+
+    hovered_trail_point.store(best_point);
+}
+
 } // namespace
 
 size_t hoveredPathable() {
     return hovered_pathable.load();
 }
 
+size_t hoveredTrailPoint() {
+    return hovered_trail_point.load();
+}
+
 void draw(editor::State& state, const Camera& camera) {
     hover_highlight = state.settings.select_in_viewport ? hovered_pathable.load() : pack::kNoIndex;
     hovered_pathable.store(pack::kNoIndex);
+    hover_point_highlight = state.settings.select_in_viewport ? hovered_trail_point.load() : pack::kNoIndex;
+    hovered_trail_point.store(pack::kNoIndex);
 
     if (!state.loaded || !camera.valid) return;
 
@@ -520,6 +580,9 @@ void draw(editor::State& state, const Camera& camera) {
     std::sort(order.begin(), order.end(), [](const Sorted& a, const Sorted& b) { return a.distance > b.distance; });
 
     drawTrails(state, camera, list, order);
+    // Over the ribbon, under the markers: a handle you cannot see is a handle you cannot
+    // click, and a marker sitting on a trail should still win the click.
+    drawTrailPoints(state, camera, list, map_id);
     drawMarkers(state, camera, list, order);
 }
 

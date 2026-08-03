@@ -9,13 +9,19 @@
 
 namespace editor {
 
-enum class NodeKind { Category, Pathable };
+enum class NodeKind { Category, Pathable, TrailPoint };
 
+// A selectable thing. `index` is into Pack::categories or Pack::pathables; a TrailPoint
+// additionally carries `sub`, the point's flat index within the trail open in the editor.
+//
+// Trail points are ordinary selection entries on purpose: multi-select, the anchor and the
+// gizmo's group transform then work on them without a second mechanism beside Selection.
 struct NodeRef {
     NodeKind kind = NodeKind::Category;
     size_t index = pack::kNoIndex;
+    size_t sub = pack::kNoIndex;
 
-    bool operator==(const NodeRef& other) const { return kind == other.kind && index == other.index; }
+    bool operator==(const NodeRef& other) const { return kind == other.kind && index == other.index && sub == other.sub; }
 };
 
 // Ordered so bulk edits apply in a predictable sequence, and so the last-clicked item can
@@ -102,6 +108,16 @@ struct State {
     void rebuildVisibility();
 
     void rebuildIndex();
+
+    // Takes a newly created pathable into the editor's indexes. `after` is the sibling it
+    // should follow in the tree, or kNoIndex to put it last in its category.
+    //
+    // Order in the tree comes from `pathables_by_category`, not from the order of
+    // `Pack::pathables` — which is exactly why a new marker can be appended to the pack and
+    // still show up in the middle of a category. Appending is what keeps every existing
+    // index, selection entry and cache slot valid.
+    void pathableAdded(size_t index, size_t after);
+
     void reset();
 
     // Marks the pack edited. Every mutation goes through here so the title bar, the save

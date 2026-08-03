@@ -40,10 +40,34 @@ void State::rebuildIndex() {
     rebuildVisibility();
 }
 
+void State::pathableAdded(size_t index, size_t after) {
+    if (index >= pack.pathables.size()) return;
+
+    // The new entry is at the end of Pack::pathables, so these line up again by growing.
+    pathable_hidden.resize(pack.pathables.size(), 0);
+
+    const size_t category = pack.pathables[index].category;
+    const bool orphan = category == pack::kNoIndex || category >= pathables_by_category.size();
+    std::vector<size_t>& siblings = orphan ? orphan_pathables : pathables_by_category[category];
+
+    auto at = std::find(siblings.begin(), siblings.end(), after);
+    if (at == siblings.end()) {
+        siblings.push_back(index);
+    } else {
+        siblings.insert(at + 1, index);
+    }
+
+    rebuildVisibility();
+    touch();
+}
+
+// Visibility is a property of tree rows. A trail point is not one, so it answers "shown,
+// not hidden" rather than indexing a vector it has no place in.
 bool State::isHidden(NodeRef node) const {
     if (node.kind == NodeKind::Category) {
         return node.index < category_hidden.size() && category_hidden[node.index] != 0;
     }
+    if (node.kind != NodeKind::Pathable) return false;
     return node.index < pathable_hidden.size() && pathable_hidden[node.index] != 0;
 }
 
@@ -51,6 +75,7 @@ bool State::isVisible(NodeRef node) const {
     if (node.kind == NodeKind::Category) {
         return node.index >= category_visible.size() || category_visible[node.index] != 0;
     }
+    if (node.kind != NodeKind::Pathable) return true;
     return node.index >= pathable_visible.size() || pathable_visible[node.index] != 0;
 }
 
@@ -58,9 +83,11 @@ void State::setHidden(NodeRef node, bool hidden) {
     if (node.kind == NodeKind::Category) {
         if (node.index >= category_hidden.size()) return;
         category_hidden[node.index] = hidden ? 1 : 0;
-    } else {
+    } else if (node.kind == NodeKind::Pathable) {
         if (node.index >= pathable_hidden.size()) return;
         pathable_hidden[node.index] = hidden ? 1 : 0;
+    } else {
+        return;
     }
     rebuildVisibility();
 }
