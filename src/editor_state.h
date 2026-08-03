@@ -39,7 +39,7 @@ private:
     std::vector<NodeRef> items_;
 };
 
-enum class GizmoMode { Disabled, Translate, Rotate };
+enum class GizmoMode { Disabled, Translate, Rotate, TranslateRotate };
 
 struct Settings {
     bool highlight_3d = true;

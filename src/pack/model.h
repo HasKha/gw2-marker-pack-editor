@@ -1,7 +1,10 @@
 #pragma once
 
+#include <pugixml.hpp>
+
 #include <cstddef>
 #include <filesystem>
+#include <memory>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -44,12 +47,13 @@ private:
     std::vector<Attribute> attributes_;
 };
 
-// Byte range of a node within its source file, so the writer can splice a replacement in
-// rather than reserializing the document and losing intra-tag whitespace.
-struct SourceSpan {
+// Where a model node lives in the parsed document.
+//
+// The document is kept alive for the pack's whole lifetime and is what gets serialized on
+// save, so the handle stays valid and doubles as the anchor for adding and removing nodes.
+struct SourceNode {
     size_t file = kNoIndex; // index into Pack::files
-    size_t begin = 0; // offset of '<'
-    size_t end = 0; // one past the closing '>'
+    pugi::xml_node node;
 };
 
 struct Category {
@@ -63,7 +67,7 @@ struct Category {
 
     // A category may be declared in several files, or several times in one. Each
     // declaration contributes attributes and has to be editable in place.
-    std::vector<SourceSpan> declarations;
+    std::vector<SourceNode> declarations;
 
     std::string displayName() const;
 };
@@ -77,12 +81,25 @@ struct Pathable {
     std::string category_id; // lowercased `type` attribute
     size_t category = kNoIndex; // resolved index, kNoIndex when the type is dangling
     AttributeCollection attributes;
-    SourceSpan source;
+    SourceNode source;
+};
+
+// How the file was written, so a save can put it back the same way. These are the only
+// things pugixml cannot tell us from the tree alone.
+struct FileFormat {
+    bool bom = false;
+    bool crlf = false;
+    bool declaration = false;
 };
 
 struct XmlFile {
-    std::string path; // normalized archive entry name
-    std::string text; // original bytes, verbatim — the writer splices into this
+    std::string path; // normalized entry name, used for lookups
+    std::string original_path; // the name as the pack spells it; what a save writes back to
+    FileFormat format;
+
+    // The parsed document, owned for the lifetime of the pack. Saving serializes this, and
+    // adding or removing a marker is a node insert or erase on it.
+    std::unique_ptr<pugi::xml_document> document;
 };
 
 // A warning that does not stop the load. Packs in the wild have plenty of these.
@@ -91,7 +108,16 @@ struct Warning {
     std::string message;
 };
 
+// Move-only: it owns the parsed documents, and the model's node handles point into them.
+// Copying would leave two packs sharing one document, where an edit through either would
+// silently change both.
 struct Pack {
+    Pack() = default;
+    Pack(Pack&&) = default;
+    Pack& operator=(Pack&&) = default;
+    Pack(const Pack&) = delete;
+    Pack& operator=(const Pack&) = delete;
+
     // The .zip/.taco file, or the folder, this pack was read from.
     std::filesystem::path source_path;
 

@@ -30,6 +30,7 @@ public:
     bool isOpen() const { return open_; }
 
     const std::vector<std::string>& entries() const override { return entries_; }
+    std::string originalName(std::string_view path) const override;
     bool contains(std::string_view path) const override;
     bool read(std::string_view path, std::vector<uint8_t>* out, std::string* error) const override;
     const std::filesystem::path& root() const override { return source_; }
@@ -45,6 +46,7 @@ private:
     std::filesystem::path source_;
     std::vector<std::string> entries_;
     std::unordered_map<std::string, uint32_t> index_; // normalized name -> entry index
+    std::unordered_map<std::string, std::string> original_names_;
 };
 
 } // namespace pack::zip

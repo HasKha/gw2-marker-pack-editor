@@ -45,6 +45,7 @@ bool Archive::open(const std::filesystem::path& file, std::string* error) {
         std::string normalized = normalizePath(std::string_view(name, written - 1));
         if (normalized.empty()) continue;
 
+        original_names_.emplace(normalized, std::string(name, written - 1));
         entries_.push_back(normalized);
         // First entry wins on a duplicate name, matching how a reader scanning forward
         // would resolve it.
@@ -52,6 +53,11 @@ bool Archive::open(const std::filesystem::path& file, std::string* error) {
     }
 
     return true;
+}
+
+std::string Archive::originalName(std::string_view path) const {
+    auto it = original_names_.find(normalizePath(path));
+    return it == original_names_.end() ? std::string() : it->second;
 }
 
 void Archive::close() {
@@ -64,6 +70,7 @@ void Archive::close() {
     source_.clear();
     entries_.clear();
     index_.clear();
+    original_names_.clear();
 }
 
 bool Archive::contains(std::string_view path) const {

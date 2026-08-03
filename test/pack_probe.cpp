@@ -16,6 +16,7 @@
 #include "pack/model.h"
 #include "pack/source.h"
 #include "pack/trl.h"
+#include "pack/writer.h"
 #include "pack/xml_reader.h"
 
 namespace {
@@ -73,11 +74,13 @@ SourceShape shapeOf(const std::string& text) {
     return shape;
 }
 
+struct StringWriter : pugi::xml_writer {
+    std::string result;
+    void write(const void* data, size_t size) override { result.append(static_cast<const char*>(data), size); }
+};
+
 std::string serialize(const pugi::xml_document& doc, const SourceShape& shape) {
-    struct StringWriter : pugi::xml_writer {
-        std::string result;
-        void write(const void* data, size_t size) override { result.append(static_cast<const char*>(data), size); }
-    } writer;
+    StringWriter writer;
 
     // format_raw: emit exactly the nodes we hold, adding no indentation of our own.
     unsigned int flags = pugi::format_raw;
@@ -193,6 +196,64 @@ void probeXmlRoundTrip(const pack::DataSource& archive, RoundTripStats* stats) {
         std::printf("             was: %s\n", excerpt(collapseSpaceBeforeSelfClose(original), relaxed).c_str());
         std::printf("             now: %s\n", excerpt(rewritten, relaxed).c_str());
     }
+}
+
+// Defined further down, next to the other save machinery.
+std::filesystem::path save_test_dir;
+int probeSaveRoundTrip(const pack::Pack& loaded, const pack::DataSource& source, const std::filesystem::path& out_dir);
+
+// The writer reformats a pack once, so byte equality with the original is not the test.
+// What must hold is that writing is a fixed point: serialize, parse the result, serialize
+// again, and the two must match. If they did not, every save would churn the file afresh.
+void probeWriter(const pack::Pack& loaded) {
+    size_t stable = 0;
+    size_t unstable = 0;
+
+    for (size_t i = 0; i < loaded.files.size(); ++i) {
+        std::string once;
+        std::string error;
+        if (!pack::writeXmlFile(loaded, i, &once, &error)) {
+            std::printf("  WRITE FAIL %-28s %s\n", loaded.files[i].path.c_str(), error.c_str());
+            ++unstable;
+            continue;
+        }
+
+        pugi::xml_document reparsed;
+        if (!reparsed.load_buffer(once.data(), once.size(), pugi::parse_full)) {
+            std::printf("  UNREADABLE OUTPUT %-22s what we wrote does not parse\n", loaded.files[i].path.c_str());
+            ++unstable;
+            continue;
+        }
+
+        StringWriter writer;
+        unsigned int flags = pugi::format_indent;
+        if (!loaded.files[i].format.declaration) flags |= pugi::format_no_declaration;
+        if (loaded.files[i].format.bom) flags |= pugi::format_write_bom;
+        reparsed.save(writer, pack::kIndent, flags);
+
+        std::string twice = writer.result;
+        if (loaded.files[i].format.crlf) {
+            std::string crlf;
+            for (char c : twice) {
+                if (c == '\n') crlf.push_back('\r');
+                crlf.push_back(c);
+            }
+            twice.swap(crlf);
+        }
+
+        if (twice == once) {
+            ++stable;
+            continue;
+        }
+
+        ++unstable;
+        const long long at = firstDifference(once, twice);
+        std::printf("  NOT A FIXED POINT %-22s at byte %lld\n", loaded.files[i].path.c_str(), at);
+        std::printf("             once:  %s\n", excerpt(once, at).c_str());
+        std::printf("             twice: %s\n", excerpt(twice, at).c_str());
+    }
+
+    std::printf("  writer: %zu/%zu files stable on rewrite\n", stable, loaded.files.size());
 }
 
 // Problems a pack author would want to fix. Distinct from the reader's warnings: nothing
@@ -353,7 +414,7 @@ int probeModel(const pack::DataSource& archive) {
     std::string most_split;
     for (const pack::Category& category : loaded.categories) {
         std::set<size_t> files;
-        for (const pack::SourceSpan& span : category.declarations) files.insert(span.file);
+        for (const pack::SourceNode& declaration : category.declarations) files.insert(declaration.file);
         if (files.size() > 1) ++split_categories;
         if (files.size() > max_files_for_one_category) {
             max_files_for_one_category = files.size();
@@ -428,9 +489,110 @@ int probeModel(const pack::DataSource& archive) {
         }
     }
 
+    probeWriter(loaded);
+
+    int failures = 0;
+    if (!save_test_dir.empty()) failures += probeSaveRoundTrip(loaded, archive, save_test_dir);
+
     lintPack(loaded, archive);
 
-    return 0;
+    return failures;
+}
+
+// End-to-end: write the pack out as a zip, read it straight back, and require the result
+// to be indistinguishable from what went in. writeXmlFile being byte-exact does not by
+// itself prove the archive assembly keeps every entry.
+//
+// Opt-in, because a diagnostic tool should not write files unless asked.
+int probeSaveRoundTrip(const pack::Pack& loaded, const pack::DataSource& source, const std::filesystem::path& out_dir) {
+    std::error_code ec;
+    std::filesystem::create_directories(out_dir, ec);
+
+    const std::filesystem::path target = out_dir / (source.root().stem().string() + "-resaved.zip");
+    std::filesystem::remove(target, ec);
+
+    const pack::SaveResult saved = pack::buildZip(loaded, source, target);
+    if (!saved.ok) {
+        std::printf("  SAVE FAIL  %s\n", saved.error.c_str());
+        return 1;
+    }
+
+    std::string error;
+    if (!pack::commitZip(target, &error)) {
+        std::printf("  SAVE FAIL  %s\n", error.c_str());
+        return 1;
+    }
+
+    std::unique_ptr<pack::DataSource> reopened = pack::open(target, &error);
+    if (!reopened) {
+        std::printf("  REOPEN FAIL  %s\n", error.c_str());
+        return 1;
+    }
+
+    pack::Pack reloaded;
+    if (!pack::loadPack(*reopened, &reloaded, &error)) {
+        std::printf("  RELOAD FAIL  %s\n", error.c_str());
+        return 1;
+    }
+
+    int failures = 0;
+
+    if (reopened->entries().size() != source.entries().size()) {
+        std::printf("  SAVE: entry count %zu -> %zu\n", source.entries().size(), reopened->entries().size());
+        ++failures;
+    }
+
+    // Serialize both sides and compare: what we wrote must survive being read back and
+    // written again unchanged.
+    size_t identical = 0;
+    for (size_t i = 0; i < loaded.files.size(); ++i) {
+        size_t match = pack::kNoIndex;
+        for (size_t j = 0; j < reloaded.files.size(); ++j) {
+            if (reloaded.files[j].path == loaded.files[i].path) match = j;
+        }
+        if (match == pack::kNoIndex) {
+            std::printf("  SAVE: %s missing after reload\n", loaded.files[i].path.c_str());
+            ++failures;
+            continue;
+        }
+
+        std::string before;
+        std::string after;
+        std::string ignored;
+        pack::writeXmlFile(loaded, i, &before, &ignored);
+        pack::writeXmlFile(reloaded, match, &after, &ignored);
+
+        if (before == after) {
+            ++identical;
+        } else {
+            std::printf("  SAVE: %s differs after a round trip\n", loaded.files[i].path.c_str());
+            ++failures;
+        }
+    }
+
+    const bool counts_match =
+        reloaded.categories.size() == loaded.categories.size() && reloaded.pathables.size() == loaded.pathables.size();
+    if (!counts_match) {
+        std::printf(
+            "  SAVE: model changed — %zu/%zu categories, %zu/%zu pathables\n",
+            reloaded.categories.size(),
+            loaded.categories.size(),
+            reloaded.pathables.size(),
+            loaded.pathables.size());
+        ++failures;
+    }
+
+    std::printf(
+        "  save round trip: %zu entries, %zu/%zu xml identical, model %s\n",
+        reopened->entries().size(),
+        identical,
+        loaded.files.size(),
+        counts_match ? "unchanged" : "CHANGED");
+
+    // Left on disk on purpose: the point of --save-test is to be able to look at what the
+    // writer produced.
+    reopened.reset();
+    return failures;
 }
 
 int probePack(const std::filesystem::path& file) {
@@ -474,14 +636,25 @@ int probePack(const std::filesystem::path& file) {
 } // namespace
 
 int main(int argc, char** argv) {
-    if (argc < 2) {
-        std::printf("usage: mpe_probe <pack.zip> [more.zip ...]\n");
+    std::vector<std::filesystem::path> packs;
+
+    for (int i = 1; i < argc; ++i) {
+        const std::string argument = argv[i];
+        if (argument == "--save-test" && i + 1 < argc) {
+            save_test_dir = argv[++i];
+            continue;
+        }
+        packs.push_back(argument);
+    }
+
+    if (packs.empty()) {
+        std::printf("usage: mpe_probe [--save-test <dir>] <pack.zip|folder> [more ...]\n");
         return 2;
     }
 
     int failures = 0;
-    for (int i = 1; i < argc; ++i) {
-        failures += probePack(std::filesystem::path(argv[i]));
+    for (const std::filesystem::path& pack : packs) {
+        failures += probePack(pack);
     }
 
     std::printf("\n");

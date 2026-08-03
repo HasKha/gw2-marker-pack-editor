@@ -33,8 +33,24 @@ shows the category hierarchy with selection, and the property panel edits attrib
 M3 done and verified in game: markers and trails draw in the world from the MumbleLink
 camera, with per-node visibility toggles in the tree.
 
-Editing is in-memory only — there is no save yet (M5), so nothing can be written to a pack
-by accident.
+M4 done and verified in game: markers can be clicked in the world to select them, and a
+selected POI can be dragged or rotated with ImGuizmo.
+
+M5 built, **not yet verified in game**: the editor can save. A zip is rebuilt whole with
+the previous one kept as `.bak`; a folder pack has its `.xml` files rewritten in place.
+
+**The next thing anyone should do is save a pack and load it in Blish HUD.** Everything up
+to M4 is confirmed working in game; saving is confirmed only by `mpe_probe`, which proves
+the bytes are self-consistent but not that Blish accepts them.
+
+Before touching the pack layer, run:
+
+```
+mpe_probe --save-test <scratch-dir> "<...>/markers/haskha_markers.zip" "<...>/git/gw2-markers"
+```
+
+It exercises read, model, `.trl`, writer stability and a full save round trip in one go,
+without launching the game. Every format claim in `format.md` was measured with it.
 
 ### Test packs
 
@@ -129,33 +145,86 @@ Measured by `mpe_probe` across all 9 packs:
 - [ ] `animspeed` — trail textures do not scroll yet
 
 ### M4 — Edit in 3D
-- [ ] Click-to-select in the viewport (ray vs. billboard, nearest hit)
-- [ ] ImGuizmo translate / rotate / scale on the selection
-- [ ] Gizmo edits write back into the model and the tree/property panel
+- [x] Click-to-select in the viewport, frontmost hit wins; ctrl+click extends. Driven by a
+      Nexus `WndProc` callback, because Nexus never forwards a world click to ImGui — see
+      the note in `CLAUDE.md`
+- [x] Hover outline in the world, so picking is visible rather than guessed at
+- [x] ImGuizmo translate / rotate on a single selected POI
+- [x] Gizmo edits write straight back into the attributes, so the property panel and the
+      world stay in step
+- [x] Menu bar: File (Open Pack / Open Folder / Reload / Close / Save) and Settings
+      (3D highlight, Select in viewport); gizmo mode radio at the top of the window
+- [ ] Verify in game — particularly the rotate gizmo's axis mapping
 - [ ] Trail points selectable and draggable individually
-- [ ] Undo / redo
+- [ ] Undo / redo *(deferred by request)*
+
+Scale is deliberately absent: a marker has no scale transform, only `iconSize`, which the
+property panel already edits.
 
 ### M5 — Write a pack
-- [ ] `pack/xml_writer` — preserves comments, attribute order, original casing and the
-      original file split. Explicitly **not** modelled on TmfLib's `PackWriter`, which
-      is a re-packer; see `format.md`
-- [ ] `pack/trl` write, preserving `(0,0,0)` segment terminators
-- [ ] `pack/zip` write; save and save-as
-- [ ] Round-trip test: load `gw2-markers`, save untouched, diff should be empty
-- [ ] Load the saved pack in Blish HUD and confirm it still works
-- [ ] Dirty tracking, confirm-on-close, backup of the previous zip
+- [x] `pack/writer` — serializes the document the pack was parsed into. Comments, the
+      declaration, attribute order, original spelling, values, the BOM, CRLF and the file
+      split all survive; blank lines and intra-tag whitespace do not, so a pack reformats
+      once on first save. Still **not** modelled on TmfLib's `PackWriter`, which also
+      flattens the file structure and drops comments; see `format.md`
+- [x] `pack/trl` write, preserving `(0,0,0)` segment terminators *(done in M1)*
+- [x] Zip write, Save and Save As; folder packs update their `.xml` files in place
+- [x] Fixed-point test in `mpe_probe`, plus an opt-in `--save-test` that writes a real zip,
+      reads it back and compares
+- [x] Dirty tracking, confirm-on-close/reload with a Save-first option, previous zip kept
+      as `.bak`
+- [ ] Load a saved pack in Blish HUD and confirm it still works
 
-### M6 — Polish
+Measured by `mpe_probe --save-test` over all 9 packs plus the `gw2-markers` folder:
+
+| | |
+|---|---|
+| Files stable on rewrite | **947 of 947** — write, reparse, write again, identical |
+| Full save → reopen → compare | all 10 sources: every entry preserved, every XML identical, model unchanged |
+
+Stability is the property that matters now that byte equality with the original is
+deliberately given up: the first save reformats, and no save after it changes anything it
+did not have to.
+
+### M6 — Create and edit structure
+The writer became a serializer specifically to make this possible, so it is unblocked.
+Adding or removing a marker is now a `pugi::xml_node` insert or erase on the document the
+`Pack` owns, plus the matching entry in `Pack::pathables` / `categories`.
+
+- [ ] Add / delete a POI, a trail and a category
+- [ ] Place a marker at the player's position (MumbleLink `AvatarPosition`)
+- [ ] Create a new pack from scratch — needs a `Pack` built without a `DataSource`, and a
+      first save that writes a zip from nothing
+- [ ] Undo / redo *(deferred from M4; worth doing before add/delete gets used in anger)*
+- [ ] Trail points selectable and draggable individually
 - [ ] Settings persisted to `MarkerPackEditor/settings.json`
-- [ ] Create a new pack from scratch; add category / POI / trail
-- [ ] Place a marker at the player's position
-- [ ] Validation pass: missing icon files, dangling `type`, duplicate GUIDs
+- [ ] Move pack loading off the render thread if a large pack starts to stutter
+- [ ] Validation pass in the UI, reusing what `mpe_probe`'s lint already checks
 - [ ] README with screenshots, GitHub releases
+
+Watch out when implementing add/delete:
+- `Pathable::category` and every index in `State::pathables_by_category`,
+  `orphan_pathables`, `Selection` and the renderer cache are positional. Erasing from
+  `Pack::pathables` invalidates all of them — rebuild the index and clear or remap the
+  selection, or mark entries dead instead of erasing.
+- A new node needs its `SourceNode.file` set, and a category needs a declaration appended,
+  or the writer will not know where to put it.
+- `Pack` is move-only. That is deliberate; do not "fix" it by adding a copy constructor.
 
 ## Open questions
 
-1. **`.taco` vs `.zip`.** Both are zips. Confirm TaimiHUD and Blish HUD accept both from
+1. **Blank lines on save.** The serializer drops whitespace-only text nodes, so the blank
+   lines `gw2-markers` uses to group POIs go away — 13 of them in `w1.xml`. They are
+   organizational in the same way comments are, and comments *are* kept. Preserving them
+   would mean keeping whitespace text nodes that contain more than one newline and
+   dropping the rest, which interacts with how pugixml indents mixed content and needs
+   testing. Raised with the user, not yet decided.
+2. **`.taco` vs `.zip`.** Both are zips. Confirm TaimiHUD and Blish HUD accept both from
    the markers folder.
+3. **`animspeed`** is parsed and stored but the renderer does not scroll trail textures.
+4. **Occlusion.** No depth buffer, so markers draw over world geometry regardless of
+   `occlude`. Matches how a pack looks in Blish with occlude off; a DX11 backend behind
+   the renderer interface is the way out if it ever matters.
 
 ### Resolved
 

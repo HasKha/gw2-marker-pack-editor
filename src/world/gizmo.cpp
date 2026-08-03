@@ -45,8 +45,12 @@ glm::vec3 attributesFromRotation(const glm::mat4& world_rotation) {
 }
 
 // Same resolution the renderer does, so the gizmo sits exactly on the drawn icon.
-bool markerTransform(const editor::State& state, size_t pathable_index, glm::vec3* out_position, glm::vec3* out_rotation,
-                     bool* out_has_rotation, float* out_height_offset) {
+bool markerTransform(
+    const editor::State& state,
+    size_t pathable_index,
+    glm::vec3* out_position,
+    glm::vec3* out_rotation,
+    float* out_height_offset) {
     const pack::Pathable& pathable = state.pack.pathables[pathable_index];
     if (pathable.type != pack::PathableType::Poi) return false;
 
@@ -66,11 +70,9 @@ bool markerTransform(const editor::State& state, size_t pathable_index, glm::vec
     *out_position = position;
 
     glm::vec3 rotation(0.0f);
-    bool present = false;
     if (const std::string* text = state.pack.effectiveValue(pathable, "rotate")) {
         glm::vec3 degrees(0.0f);
         if (pack::parseVec3(*text, &degrees)) rotation = degrees * kDegreesToRadians;
-        present = true;
     }
     static constexpr const char* kAxisKeys[3] = {"rotate-x", "rotate-y", "rotate-z"};
     for (int axis = 0; axis < 3; ++axis) {
@@ -78,11 +80,9 @@ bool markerTransform(const editor::State& state, size_t pathable_index, glm::vec
         if (!text) continue;
         float degrees = 0.0f;
         if (pack::parseFloat(*text, &degrees)) rotation[axis] = degrees * kDegreesToRadians;
-        present = true;
     }
 
     *out_rotation = rotation;
-    *out_has_rotation = present;
     return true;
 }
 
@@ -94,6 +94,25 @@ void writePosition(editor::State& state, size_t pathable_index, const glm::vec3&
     attributes.set("ypos", pack::formatFloat(stored.y));
     attributes.set("zpos", pack::formatFloat(stored.z));
     state.touch();
+}
+
+// Applied once, on first use. Defaults are tuned for a desktop editor viewport; over a
+// game scene the thinner lines are hard to pick out.
+void applyStyleOnce() {
+    static bool done = false;
+    if (done) return;
+    done = true;
+
+    ImGuizmo::Style& style = ImGuizmo::GetStyle();
+    style.TranslationLineThickness = 5.0f; // default 3
+    style.TranslationLineArrowSize = 9.0f; // default 6
+    style.RotationLineThickness = 7.0f; // default 2
+    style.RotationOuterLineThickness = 5.0f;
+    style.CenterCircleSize = 3.0f;
+
+    // ImGuizmo flips an axis towards the camera "for better visibility", which makes the
+    // handles jump as you orbit. A marker's axes mean something fixed, so keep them put.
+    ImGuizmo::AllowAxisFlip(false);
 }
 
 void writeRotation(editor::State& state, size_t pathable_index, const glm::vec3& radians) {
@@ -109,7 +128,7 @@ void writeRotation(editor::State& state, size_t pathable_index, const glm::vec3&
     state.touch();
 }
 
-}  // namespace
+} // namespace
 
 bool draw(editor::State& state, const Camera& camera) {
     if (!state.loaded || !camera.valid) return false;
@@ -121,10 +140,10 @@ bool draw(editor::State& state, const Camera& camera) {
 
     glm::vec3 position(0.0f);
     glm::vec3 rotation(0.0f);
-    bool has_rotation = false;
     float height_offset = 0.0f;
-    if (!markerTransform(state, node.index, &position, &rotation, &has_rotation, &height_offset)) return false;
+    if (!markerTransform(state, node.index, &position, &rotation, &height_offset)) return false;
 
+    applyStyleOnce();
     ImGuizmo::BeginFrame();
     ImGuizmo::SetOrthographic(false);
     // The same list the markers go into, called after them, so the gizmo sits on top of
@@ -134,21 +153,45 @@ bool draw(editor::State& state, const Camera& camera) {
 
     glm::mat4 model = glm::translate(glm::mat4(1.0f), position) * rotationFromAttributes(rotation);
 
-    const ImGuizmo::OPERATION operation =
-        state.settings.gizmo == editor::GizmoMode::Rotate ? ImGuizmo::ROTATE : ImGuizmo::TRANSLATE;
+    const bool translating =
+        state.settings.gizmo == editor::GizmoMode::Translate || state.settings.gizmo == editor::GizmoMode::TranslateRotate;
+    const bool rotating = state.settings.gizmo == editor::GizmoMode::Rotate || state.settings.gizmo == editor::GizmoMode::TranslateRotate;
 
-    const bool changed = ImGuizmo::Manipulate(glm::value_ptr(camera.view), glm::value_ptr(camera.projection), operation,
-                                              ImGuizmo::WORLD, glm::value_ptr(model));
+    // Per-axis rings only. ImGuizmo::ROTATE also includes ROTATE_SCREEN, and the presence
+    // of that handle is what makes it halve every ring (circleMul in DrawRotationGizmo),
+    // leaving semicircles whose cut swings around as the camera moves. Dropping it gives
+    // full circles, at the cost of the outer screen-rotation ring — which does not map to
+    // anything in the marker format anyway.
+    ImGuizmo::OPERATION operation = static_cast<ImGuizmo::OPERATION>(0);
+    if (translating) operation = operation | ImGuizmo::TRANSLATE;
+    if (rotating) operation = operation | ImGuizmo::ROTATE_X | ImGuizmo::ROTATE_Y | ImGuizmo::ROTATE_Z;
+
+    // The model matrix already carries the marker's orientation; LOCAL is what makes
+    // ImGuizmo draw its rings in that orientation rather than world-aligned. Pure
+    // translation stays in WORLD, because dragging a marker along the world axes — Y in
+    // particular — is more predictable than along a tilted quad's own axes.
+    const ImGuizmo::MODE mode = rotating ? ImGuizmo::LOCAL : ImGuizmo::WORLD;
+
+    const bool changed =
+        ImGuizmo::Manipulate(glm::value_ptr(camera.view), glm::value_ptr(camera.projection), operation, mode, glm::value_ptr(model));
 
     if (changed) {
-        if (state.settings.gizmo == editor::GizmoMode::Translate) {
-            writePosition(state, node.index, glm::vec3(model[3]), height_offset);
-        } else {
-            writeRotation(state, node.index, attributesFromRotation(model));
+        // Write only what actually moved. In the combined mode a pure drag would otherwise
+        // also stamp rotate="0,0,0" onto a plain billboard — and the mere presence of that
+        // attribute switches the marker to a fixed orientation. See docs/format.md.
+        const glm::vec3 new_position(model[3]);
+        if (translating && glm::distance(new_position, position) > 1e-5f) {
+            writePosition(state, node.index, new_position, height_offset);
+        }
+
+        const glm::vec3 new_rotation = attributesFromRotation(model);
+        constexpr float kAngleEpsilon = 1e-4f; // radians, ~0.006 degrees
+        if (rotating && glm::any(glm::greaterThan(glm::abs(new_rotation - rotation), glm::vec3(kAngleEpsilon)))) {
+            writeRotation(state, node.index, new_rotation);
         }
     }
 
     return ImGuizmo::IsOver() || ImGuizmo::IsUsing();
 }
 
-}  // namespace world::gizmo
+} // namespace world::gizmo

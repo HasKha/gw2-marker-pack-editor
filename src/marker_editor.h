@@ -5,7 +5,7 @@
 
 namespace marker_editor {
 
-constexpr const char* ADDON_NAME = "MarkerPackEditor";
+constexpr const char* ADDON_NAME = "Marker Pack Editor";
 constexpr const char* SETTINGS_FOLDER = "MarkerPackEditor";
 constexpr const char* SETTINGS_FILE = "MarkerPackEditor/settings.json";
 constexpr const char* QUICKACCESS_ID = "QA_MarkerPackEditor";

@@ -9,45 +9,26 @@ namespace pack {
 
 namespace {
 
-// parse_full keeps comments, processing instructions and the declaration; parse_ws_pcdata
-// keeps whitespace-only text, which is what indentation is. Together they let the writer
-// reproduce the file. See docs/format.md.
-constexpr unsigned int kParseFlags = pugi::parse_full | pugi::parse_ws_pcdata;
+// parse_full keeps comments, processing instructions and the declaration — all of which
+// carry meaning in a hand-authored pack and must survive a save.
+//
+// parse_ws_pcdata is deliberately NOT set: whitespace-only text nodes are the file's
+// existing indentation, and keeping them would fight with the indentation pugixml applies
+// on the way out. Dropping them lets the writer re-indent cleanly. See docs/format.md.
+constexpr unsigned int kParseFlags = pugi::parse_full;
 
 std::string lowered(std::string_view text) {
     return attributeKey(text);
 }
 
-// Offset one past the '>' that ends this element's *start tag*. That is the span the
-// writer needs: rewriting attributes never touches an element's children.
-size_t findStartTagEnd(const std::string& text, size_t begin) {
-    bool in_quotes = false;
-    char quote = '\0';
-
-    for (size_t at = begin; at < text.size(); ++at) {
-        const char c = text[at];
-        if (in_quotes) {
-            if (c == quote) in_quotes = false;
-            continue;
-        }
-        if (c == '"' || c == '\'') {
-            in_quotes = true;
-            quote = c;
-            continue;
-        }
-        if (c == '>') return at + 1;
-    }
-    return text.size();
-}
-
-SourceSpan spanOf(const pugi::xml_node& node, const std::string& text, size_t file_index) {
-    SourceSpan span;
-    span.file = file_index;
-    // offset_debug() points at the tag name, one past '<'.
-    const ptrdiff_t at = node.offset_debug();
-    span.begin = at > 0 ? static_cast<size_t>(at) - 1 : 0;
-    span.end = findStartTagEnd(text, span.begin);
-    return span;
+// The things pugixml cannot recover from the tree, so we note them on the way in.
+FileFormat formatOf(const std::string& text) {
+    FileFormat format;
+    format.bom = text.size() >= 3 && static_cast<unsigned char>(text[0]) == 0xEF && static_cast<unsigned char>(text[1]) == 0xBB &&
+                 static_cast<unsigned char>(text[2]) == 0xBF;
+    format.crlf = text.find("\r\n") != std::string::npos;
+    format.declaration = text.find("<?xml") != std::string::npos;
+    return format;
 }
 
 void collectAttributes(const pugi::xml_node& node, AttributeCollection* out) {
@@ -66,8 +47,9 @@ struct Reader {
     Pack* pack = nullptr;
     size_t file_index = kNoIndex;
 
-    const std::string& text() const { return pack->files[file_index].text; }
     const std::string& path() const { return pack->files[file_index].path; }
+
+    SourceNode anchor(const pugi::xml_node& node) const { return SourceNode{file_index, node}; }
 
     // Finds or creates the category at `parent`/`name`, merging into any existing
     // declaration of the same id.
@@ -109,7 +91,7 @@ struct Reader {
         // A category split across files contributes attributes from each declaration;
         // the later one wins on a conflict, matching how the readers merge.
         collectAttributes(node, &pack->categories[index].attributes);
-        pack->categories[index].declarations.push_back(spanOf(node, text(), file_index));
+        pack->categories[index].declarations.push_back(anchor(node));
 
         return index;
     }
@@ -128,7 +110,7 @@ struct Reader {
         Pathable pathable;
         pathable.type = type;
         collectAttributes(node, &pathable.attributes);
-        pathable.source = spanOf(node, text(), file_index);
+        pathable.source = anchor(node);
 
         if (const std::string* category = pathable.attributes.value("type")) {
             pathable.category_id = lowered(*category);
@@ -189,19 +171,13 @@ void resolveCategories(Pack* pack) {
 } // namespace
 
 bool readXmlFile(Pack* pack, size_t file_index) {
-    const std::string& text = pack->files[file_index].text;
-    const std::string& path = pack->files[file_index].path;
-
-    pugi::xml_document doc;
-    pugi::xml_parse_result result = doc.load_buffer(text.data(), text.size(), kParseFlags);
-    if (!result) {
-        pack->addWarning(path, std::string("XML parse failed: ") + result.description() + " at offset " + std::to_string(result.offset));
-        return false;
-    }
+    XmlFile& file = pack->files[file_index];
+    const std::string& path = file.path;
+    if (!file.document) return false;
 
     // The root is <OverlayData>, but be forgiving about what wraps it.
     bool found_root = false;
-    for (pugi::xml_node child : doc.children()) {
+    for (pugi::xml_node child : file.document->children()) {
         if (child.type() != pugi::node_element) continue;
         if (lowered(child.name()) != "overlaydata") continue;
 
@@ -230,10 +206,25 @@ bool loadPack(const DataSource& source, Pack* out, std::string* error) {
     for (const std::string& entry : xml_entries) {
         XmlFile file;
         file.path = entry;
+        file.original_path = source.originalName(entry);
+        if (file.original_path.empty()) file.original_path = entry;
 
+        std::string text;
         std::string read_error;
-        if (!source.readText(entry, &file.text, &read_error)) {
+        if (!source.readText(entry, &text, &read_error)) {
             out->addWarning(entry, "Could not read: " + read_error);
+            continue;
+        }
+
+        file.format = formatOf(text);
+
+        // load_buffer copies, so the document owns its bytes and `text` can go away.
+        file.document = std::make_unique<pugi::xml_document>();
+        pugi::xml_parse_result result = file.document->load_buffer(text.data(), text.size(), kParseFlags);
+        if (!result) {
+            out->addWarning(
+                entry,
+                std::string("XML parse failed: ") + result.description() + " at offset " + std::to_string(result.offset));
             continue;
         }
 

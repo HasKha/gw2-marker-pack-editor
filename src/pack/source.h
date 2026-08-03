@@ -28,6 +28,11 @@ public:
 
     // Normalized names of every file, in no guaranteed order.
     virtual const std::vector<std::string>& entries() const = 0;
+
+    // The entry's name with its original spelling and case. Lookups are normalized, but a
+    // save has to put the file back under the name the pack actually used — rewriting
+    // every path to lowercase would be a gratuitous diff. Empty if not found.
+    virtual std::string originalName(std::string_view path) const = 0;
     virtual bool contains(std::string_view path) const = 0;
     virtual bool read(std::string_view path, std::vector<uint8_t>* out, std::string* error) const = 0;
 

@@ -103,11 +103,18 @@ Three things are lost, because pugixml does not model them:
    have one.
 3. **CRLF line endings**, normalized to LF on parse as the XML spec requires.
 
-2 and 3 are recoverable by recording the shape of the source and reapplying it on save.
-1 is not recoverable from the tree — which is why the writer splices into the original
-bytes rather than reserializing. Every element anchors to its source offset via
-`pugi::xml_node::offset_debug()`, so this is straightforward: keep the original file
-bytes, and rewrite only the byte ranges of nodes the user actually edited.
+2 and 3 are recoverable by recording the shape of the source and reapplying it on save,
+and the writer does exactly that. 1 is not recoverable from the tree at all.
+
+Blank lines between elements are lost for the same reason: they are whitespace-only text
+nodes, and keeping them would fight with the indentation pugixml regenerates on the way
+out.
+
+So a pack **reformats once** on its first save. Measured on `gw2-markers`' `w1.xml`
+(86 lines): 13 blank lines removed, one wrapped attribute list joined onto a single line,
+and `/>` normalized to ` />`. Everything else — comments, attribute order, original
+spelling, values verbatim — comes back unchanged, and the file is stable on every save
+after that. See [architecture.md](architecture.md) for why that trade was taken.
 
 ## Coordinates and units
 

@@ -3,6 +3,7 @@
 #include <imgui.h>
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <string>
 #include <vector>
@@ -59,8 +60,14 @@ struct Cache {
     std::vector<TrailDraw> trails;
 } cache;
 
-// Frontmost marker under the mouse, recomputed each draw().
-size_t hovered_pathable = pack::kNoIndex;
+// Frontmost marker under the mouse, recomputed each draw(). Atomic because the WndProc
+// callback reads it from the game's message thread.
+std::atomic<size_t> hovered_pathable{pack::kNoIndex};
+
+// What to outline as hovered this frame. The live value is only complete once every
+// marker has been tested, so the highlight uses the previous frame's result — a frame of
+// latency nobody can see, and it makes picking visible instead of a guess.
+size_t hover_highlight = pack::kNoIndex;
 
 bool pointInQuad(const ImVec2& p, const ImVec2 quad[4]) {
     // Sign of the cross product against each edge; consistent sign means inside. Works
@@ -303,7 +310,12 @@ void drawMarkers(editor::State& state, const Camera& camera, ImDrawList* list, s
                 list->AddConvexPolyFilled(corners, 4, colour);
             }
 
-            if (selected) list->AddPolyline(corners, 4, IM_COL32(255, 210, 60, 255), true, 2.0f);
+            if (selected) {
+                list->AddPolyline(corners, 4, IM_COL32(255, 210, 60, 255), true, 2.0f);
+            } else if (marker.pathable == hover_highlight) {
+                list->AddPolyline(corners, 4, IM_COL32(255, 255, 255, 160), true, 1.5f);
+            }
+
             if (pointInQuad(mouse, corners)) hovered_pathable = marker.pathable;
             continue;
         }
@@ -328,6 +340,16 @@ void drawMarkers(editor::State& state, const Camera& camera, ImDrawList* list, s
 
         if (mouse.x >= min.x && mouse.x <= max.x && mouse.y >= min.y && mouse.y <= max.y) {
             hovered_pathable = marker.pathable;
+        }
+
+        if (!selected && marker.pathable == hover_highlight) {
+            list->AddRect(
+                ImVec2(min.x - 2.0f, min.y - 2.0f),
+                ImVec2(max.x + 2.0f, max.y + 2.0f),
+                IM_COL32(255, 255, 255, 160),
+                0.0f,
+                0,
+                1.5f);
         }
 
         if (selected) {
@@ -455,11 +477,12 @@ void drawTrails(editor::State& state, const Camera& camera, ImDrawList* list, st
 } // namespace
 
 size_t hoveredPathable() {
-    return hovered_pathable;
+    return hovered_pathable.load();
 }
 
 void draw(editor::State& state, const Camera& camera) {
-    hovered_pathable = pack::kNoIndex;
+    hover_highlight = state.settings.select_in_viewport ? hovered_pathable.load() : pack::kNoIndex;
+    hovered_pathable.store(pack::kNoIndex);
 
     if (!state.loaded || !camera.valid) return;
 

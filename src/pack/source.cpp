@@ -51,6 +51,7 @@ public:
             std::string normalized = normalizePath(relative.generic_string());
             if (normalized.empty()) continue;
 
+            original_names_.emplace(normalized, relative.generic_string());
             entries_.push_back(normalized);
             index_.emplace(std::move(normalized), it->path());
         }
@@ -59,6 +60,11 @@ public:
     }
 
     const std::vector<std::string>& entries() const override { return entries_; }
+
+    std::string originalName(std::string_view path) const override {
+        auto it = original_names_.find(normalizePath(path));
+        return it == original_names_.end() ? std::string() : it->second;
+    }
 
     bool contains(std::string_view path) const override { return index_.find(normalizePath(path)) != index_.end(); }
 
@@ -95,6 +101,7 @@ private:
     std::filesystem::path root_;
     std::vector<std::string> entries_;
     std::unordered_map<std::string, std::filesystem::path> index_;
+    std::unordered_map<std::string, std::string> original_names_;
 };
 
 } // namespace

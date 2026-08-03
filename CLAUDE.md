@@ -79,6 +79,9 @@ hold in any change:
   pack loading later) runs on a worker and is polled from `render()`.
 - **One pack open at a time.** The loaded pack is the single source of truth in memory;
   the zip on disk is only touched on open and on save.
+- **The parsed XML document is the storage.** `Pack` owns a `pugi::xml_document` per file
+  for its whole lifetime; the model indexes into it, saving serializes it, and adding or
+  removing a marker is a node insert or erase. `Pack` is move-only as a result.
 - **World rendering is ImGui draw lists**, not a custom DX11 pipeline.
 
 ## Build environment gotchas
@@ -93,6 +96,16 @@ hold in any change:
   it — the one thing the gizmo needs from imgui 1.82+, and numerically identical to the
   `bool closed` argument 1.80 expects. ImGuizmo itself carries `IMGUI_VERSION_NUM` guards
   for old imgui, so the gizmo is genuinely supported there.
+- **A click on the world never reaches ImGui.** `Nexus/src/UI/UiInput.cpp` only sets
+  `io.MouseDown` when `io.WantCaptureMouse` is *already* true, so `ImGui::IsMouseClicked`
+  can never fire for a click outside an addon window. Anything that reacts to a world
+  click must register a `WndProc` callback (`api->WndProc.Register`) and read
+  `WM_LBUTTONDOWN` itself. Returning 0 from that callback consumes the message; return
+  non-zero to let the game have it.
+- **Nexus never releases a texture.** `Textures.GetOrCreateFromMemory` has no counterpart,
+  so textures live for the session. `resources.cpp` puts a generation counter in each
+  identifier so two packs cannot collide; the cost is that reopening packs accumulates
+  them. Fine for an editor, worth revisiting if it ever isn't.
 - **Icon fonts cannot reach the atlas.** Nexus's `CFontManager` rebuilds every font with
   its *own* glyph ranges (Latin + Latin-Ext, plus CJK/Cyrillic for `FONT_DEFAULT`), so
   FontAwesome's `0xF000-0xF8FF` glyphs are dropped whatever we pass. It also calls
@@ -111,6 +124,9 @@ hold in any change:
 
 - Don't add a marker attribute in more than one place — add it to the attribute table.
 - Don't silently drop unknown XML attributes or comments on save; packs are hand-authored
-  and a lossy round-trip is a bug.
+  and losing either is a bug. Whitespace is the one thing we *do* give up — a pack
+  reformats once on its first save, deliberately. See `docs/architecture.md`.
+- Don't verify pack-layer work by launching the game. `mpe_probe` runs the whole read →
+  model → write → save round trip over every real pack in seconds; use it first.
 - Don't assume an unzipped folder is loadable by Blish HUD — it isn't, reliably. Zipped
   is the shipping format.

@@ -53,27 +53,48 @@ mpe_probe "<...>/markers/haskha_markers.zip" "<...>/markers/hero.blish.pack.zip"
 ```
 src/
   entry.cpp            Nexus entry, AddonDefinition, hands DataLinks to marker_editor
-  marker_editor.*      lifecycle, window registration, settings, wires everything together
+  marker_editor.*      lifecycle, menus, save/open, WndProc for world clicks
+  editor_state.*       State: the open Pack, selection, per-node visibility, settings
   file_dialog.*        NFD on a worker thread (never block the render thread)
-  textures.*           pack images -> Nexus textures -> ImTextureID  (addon layer: needs Nexus)
+  resources.*          icons + .trl pulled from the pack source on demand, budgeted
   pack/                — mpe_pack, no Nexus/imgui dependency
     source.*           DataSource: a pack is a zip OR a folder. Path normalization.
     zip.*              DataSource over a .zip/.taco, via miniz
     attributes.*       THE attribute table: name, kind, default, inheritance
     model.*            Pack / XmlFile / Category / Pathable, explicit vs effective values
-    xml_reader.*       pugixml -> model, recording each node's source byte span
-    xml_writer.*       splices edits into the original bytes (see format.md)
+    xml_reader.*       pugixml -> model; the document is kept and owned by the Pack
+    writer.*           serializes the document back out, rebuilds the zip (format.md)
     trl.*              .trl read/write, byte-exact
   ui/
-    tree_window.*      hierarchical tree, selection
-    property_panel.*   attribute form + "add attribute"
+    tree_window.*      category tree, selection, per-node eye toggles
+    property_panel.*   attribute form + "add attribute" + inherited values
   world/
-    camera.*           MumbleLink -> view/projection, world->screen, screen ray
-    renderer.*         billboards + trail ribbons into an ImGui draw list
-    gizmo.*            ImGuizmo integration, picking
+    camera.*           MumbleLink -> view/projection, world->screen
+    renderer.*         billboards + trail ribbons into an ImGui draw list, hit testing
+    gizmo.*            ImGuizmo translate/rotate, writes back to attributes
 test/
   pack_probe.cpp       the harness
 ```
+
+## Things that are easy to get wrong
+
+Three mechanisms that exist for non-obvious reasons.
+
+**The world renderer caches resolved values per `State::revision`.** Resolving inherited
+attributes walks the category chain, and the largest pack tested has 55,887 markers — doing
+that per marker per frame is not viable inside the render callback. Any edit calls
+`State::touch()`, which bumps the revision and invalidates the cache. Visibility toggles
+deliberately do *not* bump it: they are view state, not edits.
+
+**`resources` decodes at most a few assets per frame.** Arriving on a map with hundreds of
+unseen markers would otherwise decode them all in one frame and hitch. A miss is only
+cached when the file is genuinely absent — caching a "Nexus could not make a texture yet"
+result is what once made every marker fall back to a dot until the pack was reloaded.
+
+**Zip saving is two calls, `buildZip` then `commitZip`.** The usual save target *is* the
+pack still open for reading, and Windows will not rename over a live handle, so the caller
+has to release the source in between. Building first also means a failure never replaces a
+working pack with a half-written one; the previous file is kept as `.bak`.
 
 ## The attribute table is the core abstraction
 
@@ -112,6 +133,31 @@ Two things stay different, and both are recorded on `Pack`:
 
 The directory reader skips dot-directories. Without that, opening a pack repo would walk
 `.git`.
+
+## Saving serializes, it does not diff
+
+An earlier version of the writer spliced replacement start tags into the original bytes,
+so an unedited file came back byte-identical. It was replaced with a plain serializer.
+
+The splice preserved more — it kept intra-tag whitespace, which pugixml cannot represent —
+but it could only ever *rewrite tags that already existed*. Adding a marker, deleting one,
+or creating a pack from scratch all need node insertion, which a splice cannot express
+without also inventing the surrounding indentation. Those are the features that matter
+next, and they fall out of a serializer for free.
+
+The trade was made deliberately: a pack reformats **once**, on its first save, and is
+stable from then on.
+
+So the parsed `pugi::xml_document` is now kept alive for the pack's lifetime — it *is* the
+storage. The model indexes into it with `SourceNode` handles, saving pushes the model's
+attributes back onto those nodes and serializes, and adding or removing a marker becomes a
+node insert or erase. `Pack` is therefore move-only: copying it would leave two packs
+sharing one document.
+
+What still survives a save: comments, processing instructions, the declaration, attribute
+order, original attribute spelling, verbatim attribute values, the BOM, CRLF, and the file
+split. What does not: blank lines between elements, wrapped attribute lists, and `/>`
+without a preceding space.
 
 ## The tree is categories
 

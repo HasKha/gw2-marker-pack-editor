@@ -127,7 +127,7 @@ void drawHeader(const editor::State& state, editor::NodeRef node) {
         ImGui::TextDisabled("%s", category.id.c_str());
 
         std::set<size_t> files;
-        for (const pack::SourceSpan& span : category.declarations) files.insert(span.file);
+        for (const pack::SourceNode& declaration : category.declarations) files.insert(declaration.file);
         std::string where;
         for (size_t file : files) {
             if (file >= state.pack.files.size()) continue;
