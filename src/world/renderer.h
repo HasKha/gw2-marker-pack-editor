@@ -12,4 +12,11 @@ namespace world::renderer {
 // global switches.
 void draw(editor::State& state, const Camera& camera);
 
+// Index into Pack::pathables of whatever is under the mouse, or pack::kNoIndex.
+//
+// Computed during draw() from the very screen rectangles the markers were drawn with, so
+// what you click is exactly what you see — no separate ray cast that could disagree with
+// the picture. Valid until the next draw().
+size_t hoveredPathable();
+
 } // namespace world::renderer

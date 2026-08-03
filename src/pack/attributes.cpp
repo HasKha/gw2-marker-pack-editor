@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cctype>
 #include <charconv>
+#include <cstdio>
 #include <unordered_map>
 
 namespace pack {
@@ -290,6 +291,18 @@ std::string guidToBase64(const std::array<uint8_t, 16>& guid) {
     }
 
     return out;
+}
+
+std::string formatFloat(float value) {
+    // %g rather than %f: no trailing-zero noise, and enough precision to survive a
+    // parse/format cycle without drifting.
+    char buffer[64];
+    std::snprintf(buffer, sizeof(buffer), "%.6g", static_cast<double>(value));
+    return buffer;
+}
+
+std::string formatVec3(const glm::vec3& value) {
+    return formatFloat(value.x) + "," + formatFloat(value.y) + "," + formatFloat(value.z);
 }
 
 int defaultInt(std::string_view key, int fallback) {

@@ -59,6 +59,25 @@ struct Cache {
     std::vector<TrailDraw> trails;
 } cache;
 
+// Frontmost marker under the mouse, recomputed each draw().
+size_t hovered_pathable = pack::kNoIndex;
+
+bool pointInQuad(const ImVec2& p, const ImVec2 quad[4]) {
+    // Sign of the cross product against each edge; consistent sign means inside. Works
+    // for any convex quad, which a projected marker always is.
+    bool positive = false;
+    bool negative = false;
+    for (int i = 0; i < 4; ++i) {
+        const ImVec2& a = quad[i];
+        const ImVec2& b = quad[(i + 1) % 4];
+        const float cross = (b.x - a.x) * (p.y - a.y) - (b.y - a.y) * (p.x - a.x);
+        if (cross > 0.0f) positive = true;
+        if (cross < 0.0f) negative = true;
+        if (positive && negative) return false;
+    }
+    return true;
+}
+
 ImU32 tintOf(const pack::Pack& pack, const pack::Pathable& pathable) {
     uint32_t argb = 0xFFFFFFFFu;
     // `tint` and `color` are aliases; whichever the author used wins.
@@ -248,9 +267,13 @@ void drawMarkers(editor::State& state, const Camera& camera, ImDrawList* list, s
         const float opacity = marker.alpha * fadeFactor(metresToInches(entry.distance), marker.fade_near, marker.fade_far);
         if (opacity <= 0.003f) continue;
 
-        const bool selected = state.selection.contains(editor::NodeRef{editor::NodeKind::Pathable, marker.pathable});
+        const bool selected =
+            state.settings.highlight_3d && state.selection.contains(editor::NodeRef{editor::NodeKind::Pathable, marker.pathable});
         const ImU32 colour = applyOpacity(marker.tint, opacity);
         ImTextureID texture = resources::texture(marker.icon);
+
+        // Drawn back to front, so a later hit is nearer the camera and wins.
+        const ImVec2 mouse = ImGui::GetIO().MousePos;
 
         if (marker.has_rotation) {
             // Fixed in the world, so it foreshortens with the viewing angle. minSize and
@@ -281,6 +304,7 @@ void drawMarkers(editor::State& state, const Camera& camera, ImDrawList* list, s
             }
 
             if (selected) list->AddPolyline(corners, 4, IM_COL32(255, 210, 60, 255), true, 2.0f);
+            if (pointInQuad(mouse, corners)) hovered_pathable = marker.pathable;
             continue;
         }
 
@@ -300,6 +324,10 @@ void drawMarkers(editor::State& state, const Camera& camera, ImDrawList* list, s
         } else {
             // No icon, or it failed to load: a dot still shows the marker is there.
             list->AddCircleFilled(ImVec2(screen.x, screen.y), std::max(2.0f, half * 0.35f), applyOpacity(marker.tint, opacity * 0.7f));
+        }
+
+        if (mouse.x >= min.x && mouse.x <= max.x && mouse.y >= min.y && mouse.y <= max.y) {
+            hovered_pathable = marker.pathable;
         }
 
         if (selected) {
@@ -412,7 +440,8 @@ void drawTrails(editor::State& state, const Camera& camera, ImDrawList* list, st
 
         ImTextureID texture = resources::texture(trail.texture);
 
-        const bool selected = state.selection.contains(editor::NodeRef{editor::NodeKind::Pathable, trail.pathable});
+        const bool selected =
+            state.settings.highlight_3d && state.selection.contains(editor::NodeRef{editor::NodeKind::Pathable, trail.pathable});
 
         TrailDraw effective = trail;
         if (selected) effective.tint = IM_COL32(255, 210, 60, (trail.tint >> IM_COL32_A_SHIFT) & 0xFF);
@@ -425,7 +454,13 @@ void drawTrails(editor::State& state, const Camera& camera, ImDrawList* list, st
 
 } // namespace
 
+size_t hoveredPathable() {
+    return hovered_pathable;
+}
+
 void draw(editor::State& state, const Camera& camera) {
+    hovered_pathable = pack::kNoIndex;
+
     if (!state.loaded || !camera.valid) return;
 
     if (cache.revision != state.revision || cache.pack != &state.pack) rebuild(state);

@@ -72,6 +72,12 @@ bool parseGuid(std::string_view text, std::array<uint8_t, 16>* out);
 
 std::string guidToBase64(const std::array<uint8_t, 16>& guid);
 
+// Value text for a number we are writing back. Only ever applied to a value the user
+// actually changed — an untouched attribute keeps its original text verbatim, which is
+// what makes a byte-exact round trip possible. See Attribute::value in model.h.
+std::string formatFloat(float value);
+std::string formatVec3(const glm::vec3& value);
+
 // Typed reads with the table's documented default as the fallback.
 int defaultInt(std::string_view key, int fallback = 0);
 float defaultFloat(std::string_view key, float fallback = 0.0f);

@@ -15,6 +15,7 @@
 #include "ui/property_panel.h"
 #include "ui/tree_window.h"
 #include "world/camera.h"
+#include "world/gizmo.h"
 #include "world/renderer.h"
 
 namespace marker_editor {
@@ -57,7 +58,9 @@ std::filesystem::path blishhudMarkersFolder() {
     return path;
 }
 
-void openPack(const std::filesystem::path& path) {
+// By value on purpose: Reload passes open_pack_path, which this function reassigns
+// partway through. A reference would alias it and change under us.
+void openPack(std::filesystem::path path) {
     // TODO: move off the render thread once a pack is big enough to stutter. The largest
     // pack tested (56k markers) loads fast enough that it has not been worth it yet.
     state.reset();
@@ -98,6 +101,66 @@ void openPack(const std::filesystem::path& path) {
     log(ELogLevel_INFO, "Opened " + path.filename().string() + " — " + status_message);
 }
 
+void closePack() {
+    state.reset();
+    resources::setSource(nullptr);
+    open_pack_path.clear();
+    status_message.clear();
+}
+
+void drawMenuBar() {
+    if (!ImGui::BeginMenuBar()) return;
+
+    if (ImGui::BeginMenu("File")) {
+        if (ImGui::MenuItem("Open Pack...", nullptr, false, !file_dialog::isPending())) {
+            file_dialog::requestOpenFile(blishhudMarkersFolder(), {{"Marker pack", "zip,taco"}});
+        }
+        if (ImGui::MenuItem("Open Folder...", nullptr, false, !file_dialog::isPending())) {
+            file_dialog::requestOpenFolder(last_folder.empty() ? blishhudMarkersFolder() : last_folder);
+        }
+
+        ImGui::Separator();
+
+        if (ImGui::MenuItem("Reload", nullptr, false, state.loaded)) {
+            openPack(open_pack_path);
+        }
+        if (ImGui::MenuItem("Close", nullptr, false, state.loaded)) {
+            closePack();
+        }
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("Discards unsaved changes.");
+
+        // Saving lands in M5. Shown disabled so the gap is visible rather than surprising.
+        ImGui::MenuItem("Save", nullptr, false, false);
+
+        ImGui::EndMenu();
+    }
+
+    if (ImGui::BeginMenu("Settings")) {
+        ImGui::MenuItem("3D highlight", nullptr, &state.settings.highlight_3d);
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("Outline the selection in the world.");
+
+        ImGui::MenuItem("Select in viewport", nullptr, &state.settings.select_in_viewport);
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("Click a marker in the world to select it.");
+
+        ImGui::EndMenu();
+    }
+
+    ImGui::EndMenuBar();
+}
+
+void drawGizmoControls() {
+    ImGui::TextUnformatted("Gizmo");
+    ImGui::SameLine();
+
+    int mode = static_cast<int>(state.settings.gizmo);
+    ImGui::RadioButton("Disabled", &mode, static_cast<int>(editor::GizmoMode::Disabled));
+    ImGui::SameLine();
+    ImGui::RadioButton("Translate", &mode, static_cast<int>(editor::GizmoMode::Translate));
+    ImGui::SameLine();
+    ImGui::RadioButton("Rotate", &mode, static_cast<int>(editor::GizmoMode::Rotate));
+    state.settings.gizmo = static_cast<editor::GizmoMode>(mode);
+}
+
 void render() {
     if (std::optional<std::filesystem::path> picked = file_dialog::takeResult()) {
         openPack(*picked);
@@ -110,35 +173,38 @@ void render() {
     const world::Camera camera = world::fromMumble(mumble_link, nexus_link);
     world::renderer::draw(state, camera);
 
+    // After the markers so it draws over them, and so it can claim the click first.
+    const bool gizmo_active = world::gizmo::draw(state, camera);
+
+    if (state.settings.select_in_viewport && !gizmo_active && !ImGui::GetIO().WantCaptureMouse &&
+        ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+        const size_t hovered = world::renderer::hoveredPathable();
+        if (hovered != pack::kNoIndex) {
+            const editor::NodeRef node{editor::NodeKind::Pathable, hovered};
+            if (ImGui::GetIO().KeyCtrl) {
+                state.selection.toggle(node);
+            } else {
+                state.selection.set(node);
+            }
+        }
+    }
+
     if (!show_window) return;
 
     ImGui::SetNextWindowSize(ImVec2(760, 520), ImGuiCond_FirstUseEver);
-    if (ImGui::Begin("Marker Pack Editor##MarkerPackEditor", &show_window)) {
-        // Nexus ships imgui 1.80, which predates BeginDisabled/EndDisabled.
+    if (ImGui::Begin("Marker Pack Editor##MarkerPackEditor", &show_window, ImGuiWindowFlags_MenuBar)) {
+        drawMenuBar();
+        drawGizmoControls();
+
         if (file_dialog::isPending()) {
             ImGui::TextDisabled("(file dialog open)");
-        } else {
-            if (ImGui::Button("Open Pack...")) {
-                file_dialog::requestOpenFile(blishhudMarkersFolder(), {{"Marker pack", "zip,taco"}});
-            }
-            ImGui::SameLine();
-            if (ImGui::Button("Open Folder...")) {
-                // Unzipped source tree, for editing a pack repo in place.
-                file_dialog::requestOpenFolder(last_folder.empty() ? blishhudMarkersFolder() : last_folder);
-            }
-            if (ImGui::IsItemHovered()) {
-                ImGui::SetTooltip(
-                    "Open an unzipped pack folder, e.g. a git checkout.\n"
-                    "Blish HUD cannot load unzipped packs — this is for editing the source.");
-            }
-        }
-
-        if (state.loaded) {
-            ImGui::SameLine();
+        } else if (state.loaded) {
             const std::string name =
                 state.pack.from_directory ? open_pack_path.filename().string() + "/" : open_pack_path.filename().string();
             ImGui::TextDisabled("%s%s", name.c_str(), state.dirty ? " *" : "");
             if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", open_pack_path.string().c_str());
+        } else {
+            ImGui::TextDisabled("No pack open. Use File > Open Pack.");
         }
 
         if (!status_message.empty()) ImGui::TextWrapped("%s", status_message.c_str());

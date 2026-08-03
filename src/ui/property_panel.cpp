@@ -13,18 +13,6 @@ namespace ui::property_panel {
 
 namespace {
 
-// Formats a float back to text without the trailing-zero noise printf("%f") produces.
-// Only ever applied to a value the user actually changed, so it cannot dirty untouched
-// attributes — see the note on Attribute::value in pack/model.h.
-std::string formatFloat(float value) {
-    char buffer[64];
-    std::snprintf(buffer, sizeof(buffer), "%.6g", static_cast<double>(value));
-    return buffer;
-}
-
-std::string formatVec3(const glm::vec3& value) {
-    return formatFloat(value.x) + "," + formatFloat(value.y) + "," + formatFloat(value.z);
-}
 
 // Which node kinds an attribute may be set on, so the "add attribute" list only offers
 // things that make sense for what is selected.
@@ -63,7 +51,7 @@ bool editValue(const char* id, pack::ValueKind kind, const std::string& current,
         float value = 0.0f;
         pack::parseFloat(current, &value);
         if (ImGui::DragFloat("##v", &value, 0.05f)) {
-            *out = formatFloat(value);
+            *out = pack::formatFloat(value);
             changed = true;
         }
         break;
@@ -112,7 +100,7 @@ bool editValue(const char* id, pack::ValueKind kind, const std::string& current,
         glm::vec3 value(0.0f);
         pack::parseVec3(current, &value);
         if (ImGui::DragFloat3("##v", &value.x, 0.5f)) {
-            *out = formatVec3(value);
+            *out = pack::formatVec3(value);
             changed = true;
         }
         break;

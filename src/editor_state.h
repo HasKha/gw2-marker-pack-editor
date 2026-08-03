@@ -39,12 +39,21 @@ private:
     std::vector<NodeRef> items_;
 };
 
+enum class GizmoMode { Disabled, Translate, Rotate };
+
+struct Settings {
+    bool highlight_3d = true;
+    bool select_in_viewport = true;
+    GizmoMode gizmo = GizmoMode::Disabled;
+};
+
 struct State {
     pack::Pack pack;
     bool loaded = false;
     bool dirty = false;
     std::string status;
 
+    Settings settings;
     Selection selection;
 
     // Pathables grouped by owning category, built once per load. Without this the tree
