@@ -14,6 +14,7 @@
 #include <glm/gtx/euler_angles.hpp>
 
 #include "trail_edit.h"
+#include "undo.h"
 
 namespace world::gizmo {
 
@@ -116,7 +117,7 @@ std::vector<Target> collectTargets(const editor::State& state) {
         target.node = node;
 
         if (node.kind == editor::NodeKind::Pathable) {
-            if (node.index >= state.pack.pathables.size()) continue;
+            if (node.index >= state.pack.pathables.size() || state.pack.pathables[node.index].grave.deleted) continue;
             if (!markerTransform(state, node.index, &target.position, &target.rotation, &target.height_offset)) continue;
             target.has_rotation = true;
         } else if (node.kind == editor::NodeKind::TrailPoint) {
@@ -137,6 +138,7 @@ void writePosition(editor::State& state, const Target& target, const glm::vec3& 
         return;
     }
 
+    undo::attributes(state, target.node);
     pack::AttributeCollection& attributes = state.pack.pathables[target.node.index].attributes;
     const glm::vec3 stored(drawn_position.x, drawn_position.y - target.height_offset, drawn_position.z);
 
@@ -166,6 +168,7 @@ void applyStyleOnce() {
 }
 
 void writeRotation(editor::State& state, size_t pathable_index, const glm::vec3& radians) {
+    undo::attributes(state, editor::NodeRef{editor::NodeKind::Pathable, pathable_index});
     pack::AttributeCollection& attributes = state.pack.pathables[pathable_index].attributes;
     const glm::vec3 degrees = radians * kRadiansToDegrees;
 
@@ -181,7 +184,7 @@ void writeRotation(editor::State& state, size_t pathable_index, const glm::vec3&
 } // namespace
 
 bool draw(editor::State& state, const Camera& camera) {
-    if (!state.loaded || !camera.valid) return false;
+    if (!state.loaded || !camera.valid || camera.map_open) return false;
     if (state.settings.gizmo == editor::GizmoMode::Disabled) return false;
 
     const std::vector<Target> targets = collectTargets(state);
@@ -221,6 +224,9 @@ bool draw(editor::State& state, const Camera& camera) {
         ImGuizmo::Manipulate(glm::value_ptr(camera.view), glm::value_ptr(camera.projection), operation, mode, glm::value_ptr(model));
 
     if (changed) {
+        // One drag is one undo step, however many frames it spans: the key is the same
+        // every frame and the guard reopens the step rather than starting another.
+        undo::Step step(state, targets.size() > 1 ? "Move selection" : "Move marker", "gizmo");
         // Write only what actually moved. In the combined mode a pure drag would otherwise
         // also stamp rotate="0,0,0" onto a plain billboard — and the mere presence of that
         // attribute switches the marker to a fixed orientation. See docs/format.md.

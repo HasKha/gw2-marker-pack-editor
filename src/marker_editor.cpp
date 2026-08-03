@@ -4,6 +4,7 @@
 #include <imgui.h>
 
 #include <atomic>
+#include <cstring>
 #include <filesystem>
 #include <optional>
 #include <string>
@@ -21,6 +22,7 @@
 #include "ui/trail_editor.h"
 #include "ui/tree_window.h"
 #include "ui/windows.h"
+#include "undo.h"
 #include "world/camera.h"
 #include "world/gizmo.h"
 #include "world/renderer.h"
@@ -99,8 +101,10 @@ void openPack(std::filesystem::path path) {
     // TODO: move off the render thread once a pack is big enough to stutter. The largest
     // pack tested (56k markers) loads fast enough that it has not been worth it yet.
     state.reset();
-    // Its pathable index and its working copy both belong to the pack going away.
+    // Its pathable index and its working copy both belong to the pack going away, and so
+    // does every undo record.
     trail_edit::close();
+    undo::clear();
 
     // Zip or folder — pack::open picks by what the path actually is.
     std::string error;
@@ -270,9 +274,22 @@ void savePack() {
 void closePack() {
     state.reset();
     trail_edit::close();
+    undo::clear();
     resources::setSource(nullptr);
     open_pack_path.clear();
     status_message.clear();
+}
+
+// Undo can change the bytes behind the open trail without going through the trail editor,
+// so the working copy has to be told to reread.
+void applyUndo() {
+    undo::undo(state);
+    trail_edit::refresh(state);
+}
+
+void applyRedo() {
+    undo::redo(state);
+    trail_edit::refresh(state);
 }
 
 void requestAction(PendingAction action, ui::windows::Id owner) {
@@ -323,10 +340,14 @@ void drawMenuBar(ui::windows::Id owner) {
         ImGui::EndMenu();
     }
 
-    if (ui::trail_editor::drawMenu(state, frame_camera) == ui::trail_editor::Request::Export && !file_dialog::isPending()) {
-        dialog_purpose = DialogPurpose::ExportTrail;
-        const std::filesystem::path folder = last_folder.empty() ? blishhudMarkersFolder() : last_folder;
-        file_dialog::requestSaveFile(folder, "trail.trl", {{"Trail data", "trl"}});
+    if (ImGui::BeginMenu("Edit")) {
+        const std::string undo_label = undo::canUndo() ? "Undo " + undo::undoLabel() : std::string("Undo");
+        const std::string redo_label = undo::canRedo() ? "Redo " + undo::redoLabel() : std::string("Redo");
+
+        if (ImGui::MenuItem(undo_label.c_str(), "Ctrl+Z", false, undo::canUndo())) applyUndo();
+        if (ImGui::MenuItem(redo_label.c_str(), "Ctrl+Y", false, undo::canRedo())) applyRedo();
+
+        ImGui::EndMenu();
     }
 
     if (ImGui::BeginMenu("View")) {
@@ -342,6 +363,16 @@ void drawMenuBar(ui::windows::Id owner) {
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("Click a marker in the world to select it.");
 
         ImGui::EndMenu();
+    }
+
+    // Last, and only where it belongs: the Trail menu acts on the trail editor's own
+    // state, so it has no business hanging off the tree or the details window.
+    if (owner == ui::windows::Id::TrailEditor) {
+        if (ui::trail_editor::drawMenu(state, frame_camera) == ui::trail_editor::Request::Export && !file_dialog::isPending()) {
+            dialog_purpose = DialogPurpose::ExportTrail;
+            const std::filesystem::path folder = last_folder.empty() ? blishhudMarkersFolder() : last_folder;
+            file_dialog::requestSaveFile(folder, "trail.trl", {{"Trail data", "trl"}});
+        }
     }
 
     ImGui::EndMenuBar();
@@ -548,6 +579,7 @@ void render() {
     }
 
     resources::beginFrame();
+    undo::beginFrame();
 
     // The world is drawn whether or not any editor window is open — the point is to see
     // the pack in the game.
@@ -606,6 +638,19 @@ void onToggleKeybind(const char* aIdentifier, bool aIsRelease) {
     ui::windows::toggleAll();
 }
 
+// Nexus binds are global, so they fire while a text field has the caret too — where Ctrl+Z
+// means "undo my typing" to ImGui and would mean "undo an edit" here. The field wins.
+void onEditKeybind(const char* aIdentifier, bool aIsRelease) {
+    if (aIsRelease || !state.loaded) return;
+    if (ImGui::GetIO().WantTextInput) return;
+
+    if (std::strcmp(aIdentifier, KEYBIND_UNDO_ID) == 0) {
+        applyUndo();
+    } else if (std::strcmp(aIdentifier, KEYBIND_REDO_ID) == 0) {
+        applyRedo();
+    }
+}
+
 } // namespace
 
 void load(AddonAPI* _api, NexusLinkData* _nexus_link, Mumble::Data* _mumble_link) {
@@ -624,8 +669,14 @@ void load(AddonAPI* _api, NexusLinkData* _nexus_link, Mumble::Data* _mumble_link
     api->QuickAccess.AddContextMenu(QUICKACCESS_ID, nullptr, drawQuickAccess);
     // "(null)" -> registered without a default bind; the user sets it in Nexus settings.
     api->InputBinds.RegisterWithString(KEYBIND_TOGGLE_ID, onToggleKeybind, "(null)");
+    // These two do come with a default: they are the bindings everyone already has in their
+    // fingers, and an editor without them is a nuisance out of the box.
+    api->InputBinds.RegisterWithString(KEYBIND_UNDO_ID, onEditKeybind, "CTRL+Z");
+    api->InputBinds.RegisterWithString(KEYBIND_REDO_ID, onEditKeybind, "CTRL+Y");
     api->WndProc.Register(onWndProc);
     api->Localization.Set(KEYBIND_TOGGLE_ID, "en", "Toggle marker pack editor");
+    api->Localization.Set(KEYBIND_UNDO_ID, "en", "Undo");
+    api->Localization.Set(KEYBIND_REDO_ID, "en", "Redo");
 }
 
 void unload() {
@@ -633,6 +684,8 @@ void unload() {
     api->Renderer.Deregister(drawOptions);
     api->QuickAccess.RemoveContextMenu(QUICKACCESS_ID);
     api->InputBinds.Deregister(KEYBIND_TOGGLE_ID);
+    api->InputBinds.Deregister(KEYBIND_UNDO_ID);
+    api->InputBinds.Deregister(KEYBIND_REDO_ID);
     api->WndProc.Deregister(onWndProc);
     file_dialog::shutdown();
     resources::shutdown();

@@ -5,6 +5,7 @@
 #include <fstream>
 
 #include "resources.h"
+#include "undo.h"
 
 namespace trail_edit {
 
@@ -27,10 +28,28 @@ void reindex() {
     }
 }
 
+// Reads the bytes the pack currently holds for the open trail: the pending edit if there is
+// one, otherwise the file as it ships.
+bool readFromPack(const editor::State& state, pack::trl::Trail* out) {
+    std::string error;
+
+    if (const pack::Pack::AddedAsset* pending = state.pack.findAddedAsset(open_path)) {
+        return pack::trl::read(pending->bytes, out, &error);
+    }
+
+    const pack::DataSource* source = resources::source();
+    std::vector<uint8_t> bytes;
+    if (!source || !source->read(open_path, &bytes, &error)) return false;
+    return pack::trl::read(bytes, out, &error);
+}
+
 // Pushes the working copy back into the pack. Nothing else writes trail bytes: an edit is
 // only real once it is here, and the world redraws from it on the next frame.
 void commit(editor::State& state) {
     if (open_path.empty()) return;
+
+    // Before the write, so the record holds what was there.
+    undo::asset(state, open_path);
 
     state.pack.addAsset(open_path, pack::trl::write(trail));
     // The cache holds the parsed trail the renderer draws; drop it so the next frame reads
@@ -77,8 +96,12 @@ glm::vec3 point(size_t index) {
     return trail.segments[flat[index].first].points[flat[index].second];
 }
 
-bool startsSegment(size_t index) {
-    return index < flat.size() && flat[index].first > 0 && flat[index].second == 0;
+size_t segmentOf(size_t index) {
+    return index < flat.size() ? flat[index].first : 0;
+}
+
+size_t segmentCount() {
+    return trail.segments.size();
 }
 
 bool open(editor::State& state, size_t pathable_index) {
@@ -106,6 +129,8 @@ void close() {
 
 void setMapId(editor::State& state, int32_t map_id) {
     if (!isOpen() || trail.map_id == map_id) return;
+
+    undo::Step step(state, "Set trail map id");
     trail.map_id = map_id;
     commit(state);
 }
@@ -116,12 +141,17 @@ void setPoint(editor::State& state, size_t index, const glm::vec3& position) {
     glm::vec3& target = trail.segments[flat[index].first].points[flat[index].second];
     if (target == position) return;
 
+    // Merged across frames, so dragging a point is one step. A drag driven by the gizmo
+    // opens its own step first and this one nests inside it.
+    undo::Step step(state, "Move trail point", "trailpoint:" + std::to_string(index));
     target = position;
     commit(state);
 }
 
 void erasePoints(editor::State& state, std::vector<size_t> indices) {
     if (!isOpen() || indices.empty()) return;
+
+    undo::Step step(state, "Delete trail points");
 
     // Back to front, so an earlier erase cannot shift a later index out from under us.
     std::sort(indices.begin(), indices.end());
@@ -145,8 +175,44 @@ void erasePoints(editor::State& state, std::vector<size_t> indices) {
     commit(state);
 }
 
+size_t insertPoint(editor::State& state, size_t after, const glm::vec3& position) {
+    if (!isOpen()) return pack::kNoIndex;
+
+    undo::Step step(state, "Add trail point");
+
+    // Into the same run as the point it follows, so inserting in the middle of a trail does
+    // not split it. With nothing to follow it goes on the end of the last run.
+    size_t segment = trail.segments.empty() ? pack::kNoIndex : trail.segments.size() - 1;
+    size_t at = segment == pack::kNoIndex ? 0 : trail.segments[segment].points.size();
+
+    if (after < flat.size()) {
+        segment = flat[after].first;
+        at = flat[after].second + 1;
+    }
+
+    if (segment == pack::kNoIndex) {
+        trail.segments.push_back(pack::trl::Segment{});
+        segment = trail.segments.size() - 1;
+        at = 0;
+    }
+
+    std::vector<glm::vec3>& points = trail.segments[segment].points;
+    points.insert(points.begin() + static_cast<long long>(at), position);
+
+    reindex();
+    commit(state);
+
+    // Back to a flat index for the caller, which is what everything outside speaks.
+    for (size_t i = 0; i < flat.size(); ++i) {
+        if (flat[i].first == segment && flat[i].second == at) return i;
+    }
+    return pack::kNoIndex;
+}
+
 void addArc(editor::State& state, const glm::vec3& centre, float radius, int segments, float angle_start, float angle_end) {
     if (!isOpen() || segments < 1) return;
+
+    undo::Step undo_step(state, "Add circle");
 
     // Both ends included, like make_arc's inclusive range: a 0-360 arc closes on its own
     // first point, which is what the ribbon needs to look continuous.
@@ -167,6 +233,9 @@ void addArc(editor::State& state, const glm::vec3& centre, float radius, int seg
 bool reload(editor::State& state) {
     if (!isOpen()) return false;
 
+    undo::Step step(state, "Reload trail");
+    undo::asset(state, open_path);
+
     // Drop our pending bytes first, or the reread would just hand them back.
     state.pack.dropAddedAsset(open_path);
     resources::forget(open_path);
@@ -174,17 +243,24 @@ bool reload(editor::State& state) {
     // Straight from the source rather than through the cache: cached reads are budgeted a
     // few per frame, and a menu action that silently does nothing when the budget happens
     // to be spent is worse than one that costs one extra read.
-    const pack::DataSource* source = resources::source();
-    std::vector<uint8_t> bytes;
-    std::string error;
-    if (!source || !source->read(open_path, &bytes, &error)) return false;
-
     pack::trl::Trail parsed;
-    if (!pack::trl::read(bytes, &parsed, &error)) return false;
+    if (!readFromPack(state, &parsed)) return false;
 
     trail = std::move(parsed);
     reindex();
     state.touch();
+    return true;
+}
+
+bool refresh(editor::State& state) {
+    if (!isOpen()) return false;
+
+    pack::trl::Trail parsed;
+    if (!readFromPack(state, &parsed)) return false;
+
+    trail = std::move(parsed);
+    reindex();
+    resources::forget(open_path);
     return true;
 }
 

@@ -9,10 +9,12 @@
 #include <string>
 #include <vector>
 
+#include "pathable_edit.h"
+#include "undo.h"
+
 namespace ui::property_panel {
 
 namespace {
-
 
 // Which node kinds an attribute may be set on, so the "add attribute" list only offers
 // things that make sense for what is selected.
@@ -23,16 +25,9 @@ uint8_t appliesMaskFor(const editor::State& state, editor::NodeRef node) {
     return pathable.type == pack::PathableType::Trail ? pack::kAppliesTrail : pack::kAppliesPoi;
 }
 
-pack::AttributeCollection* attributesOf(editor::State& state, editor::NodeRef node) {
-    if (node.kind == editor::NodeKind::Category) {
-        if (node.index >= state.pack.categories.size()) return nullptr;
-        return &state.pack.categories[node.index].attributes;
-    }
-    // A trail point is a coordinate in a .trl, not an XML node: it has no attributes at
-    // all, and the trail editor is where it is edited.
-    if (node.kind != editor::NodeKind::Pathable || node.index >= state.pack.pathables.size()) return nullptr;
-    return &state.pack.pathables[node.index].attributes;
-}
+// A trail point is a coordinate in a .trl, not an XML node: attributesOf gives nullptr for
+// it, and the trail editor is where it is edited.
+using editor::attributesOf;
 
 // Selection indices are into the pack's vectors, so anything that shrinks them can leave
 // a stale ref. Reloading clears the selection, but this runs inside the game's render
@@ -41,6 +36,10 @@ bool isValid(const editor::State& state, editor::NodeRef node) {
     if (node.kind == editor::NodeKind::Category) return node.index < state.pack.categories.size();
     return node.kind == editor::NodeKind::Pathable && node.index < state.pack.pathables.size();
 }
+
+// Deleted this frame, by the button in the header. The entry is still there — tombstones
+// keep their slot — but there is nothing left worth showing for it.
+using editor::isDeleted;
 
 // Draws the editor for one value. Returns the new text when the user changed it.
 // The widget is picked purely from the table's ValueKind.
@@ -124,10 +123,57 @@ bool editValue(const char* id, pack::ValueKind kind, const std::string& current,
     return changed;
 }
 
-void drawHeader(const editor::State& state, editor::NodeRef node) {
+bool open_delete_popup = false;
+
+// A category takes its whole subtree with it, which is more than a single click should do
+// without saying so. There is no undo yet; not saving is the only way back.
+void drawDeletePopup(editor::State& state, editor::NodeRef node) {
+    constexpr const char* kTitle = "Delete category?";
+
+    if (open_delete_popup) {
+        ImGui::OpenPopup(kTitle);
+        open_delete_popup = false;
+    }
+
+    if (!ImGui::BeginPopupModal(kTitle, nullptr, ImGuiWindowFlags_AlwaysAutoResize)) return;
+
+    const pathable_edit::Removal removal = pathable_edit::wouldRemove(state, node);
+    if (node.kind == editor::NodeKind::Category && node.index < state.pack.categories.size()) {
+        ImGui::Text("%s", state.pack.categories[node.index].id.c_str());
+    }
+    ImGui::TextDisabled("Removes %zu categories and %zu markers.", removal.categories, removal.pathables);
+    ImGui::Separator();
+
+    if (ImGui::Button("Delete", ImVec2(110, 0))) {
+        pathable_edit::remove(state, node);
+        ImGui::CloseCurrentPopup();
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Cancel", ImVec2(110, 0))) ImGui::CloseCurrentPopup();
+
+    ImGui::EndPopup();
+}
+
+// Right-aligned on the header's first row. Deleting a marker goes through immediately;
+// deleting a category takes its whole subtree with it, which is worth asking about first.
+void drawDeleteButton(editor::State& state, editor::NodeRef node, bool* out_confirm) {
+    constexpr float kWidth = 60.0f;
+
+    ImGui::SameLine(ImGui::GetWindowContentRegionMax().x - kWidth);
+    if (!ImGui::Button("Delete", ImVec2(kWidth, 0))) return;
+
+    if (node.kind == editor::NodeKind::Category) {
+        *out_confirm = true;
+        return;
+    }
+    pathable_edit::remove(state, node);
+}
+
+void drawHeader(editor::State& state, editor::NodeRef node, bool* out_confirm) {
     if (node.kind == editor::NodeKind::Category) {
         const pack::Category& category = state.pack.categories[node.index];
         ImGui::Text("Category  %s", category.displayName().c_str());
+        drawDeleteButton(state, node, out_confirm);
         ImGui::TextDisabled("%s", category.id.c_str());
 
         std::set<size_t> files;
@@ -144,6 +190,7 @@ void drawHeader(const editor::State& state, editor::NodeRef node) {
 
     const pack::Pathable& pathable = state.pack.pathables[node.index];
     ImGui::Text("%s", pack::toString(pathable.type));
+    drawDeleteButton(state, node, out_confirm);
     ImGui::TextDisabled("%s", pathable.category_id.empty() ? "(no type attribute)" : pathable.category_id.c_str());
     if (pathable.source.file < state.pack.files.size()) {
         ImGui::TextDisabled("in %s", state.pack.files[pathable.source.file].path.c_str());
@@ -196,6 +243,13 @@ void drawExplicit(editor::State& state, editor::NodeRef node) {
             std::string updated;
             const pack::ValueKind kind = def ? def->kind : pack::ValueKind::String;
             if (editValue(attribute.key.c_str(), kind, attribute.value, &updated)) {
+                // Keyed on the field: dragging one number is one step, but moving to the
+                // next attribute starts another.
+                undo::Step step(
+                    state,
+                    "Edit " + attribute.name,
+                    "attr:" + std::to_string(static_cast<int>(node.kind)) + ":" + std::to_string(node.index) + ":" + attribute.key);
+                undo::attributes(state, node);
                 attributes->set(attribute.name, updated);
                 state.touch();
             }
@@ -211,6 +265,8 @@ void drawExplicit(editor::State& state, editor::NodeRef node) {
     }
 
     if (!remove_key.empty()) {
+        undo::Step step(state, "Remove " + remove_key);
+        undo::attributes(state, node);
         attributes->erase(remove_key);
         state.touch();
     }
@@ -271,6 +327,8 @@ void drawInherited(editor::State& state, editor::NodeRef node) {
             ImGui::TableNextColumn();
             ImGui::PushID(row.key.c_str());
             if (ImGui::SmallButton("override")) {
+                undo::Step step(state, "Override " + row.name);
+                undo::attributes(state, node);
                 state.pack.pathables[node.index].attributes.set(row.name, row.value);
                 state.touch();
             }
@@ -313,9 +371,11 @@ void drawAddAttribute(editor::State& state, const std::vector<editor::NodeRef>& 
         if (all_have) continue;
 
         if (ImGui::Selectable(std::string(def.display).c_str())) {
+            undo::Step step(state, "Add " + std::string(def.display));
             for (editor::NodeRef node : targets) {
                 pack::AttributeCollection* attributes = attributesOf(state, node);
                 if (!attributes || attributes->find(def.key)) continue;
+                undo::attributes(state, node);
                 attributes->set(def.display, std::string(def.default_value));
             }
             state.touch();
@@ -382,9 +442,11 @@ void drawMultiSelection(editor::State& state) {
             std::string updated;
             const pack::ValueKind kind = def ? def->kind : pack::ValueKind::String;
             if (editValue(key.c_str(), kind, same ? first->value : std::string(), &updated)) {
+                undo::Step step(state, "Edit " + key + " on " + std::to_string(nodes.size()) + " items", "bulk:" + key);
                 for (editor::NodeRef node : nodes) {
                     pack::AttributeCollection* attributes = attributesOf(state, node);
                     if (!attributes) continue;
+                    undo::attributes(state, node);
                     const pack::Attribute* existing = attributes->find(key);
                     attributes->set(existing ? existing->name : key, updated);
                 }
@@ -431,7 +493,15 @@ void draw(editor::State& state) {
         return;
     }
 
-    drawHeader(state, node);
+    bool confirm_delete = false;
+    drawHeader(state, node, &confirm_delete);
+    if (confirm_delete) open_delete_popup = true;
+    drawDeletePopup(state, node);
+
+    // The header's Delete button just fired. Its attributes are still in memory, but
+    // offering to edit them would be offering to edit something that no longer exists.
+    if (isDeleted(state, node)) return;
+
     ImGui::Separator();
 
     drawExplicit(state, node);

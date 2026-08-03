@@ -40,6 +40,29 @@ void State::rebuildIndex() {
     rebuildVisibility();
 }
 
+pack::AttributeCollection* attributesOf(State& state, NodeRef node) {
+    if (node.kind == NodeKind::Category) {
+        if (node.index >= state.pack.categories.size()) return nullptr;
+        return &state.pack.categories[node.index].attributes;
+    }
+    if (node.kind != NodeKind::Pathable || node.index >= state.pack.pathables.size()) return nullptr;
+    return &state.pack.pathables[node.index].attributes;
+}
+
+const pack::AttributeCollection* attributesOf(const State& state, NodeRef node) {
+    return attributesOf(const_cast<State&>(state), node);
+}
+
+bool isDeleted(const State& state, NodeRef node) {
+    if (node.kind == NodeKind::Category) {
+        return node.index < state.pack.categories.size() && state.pack.categories[node.index].grave.deleted;
+    }
+    if (node.kind == NodeKind::Pathable) {
+        return node.index < state.pack.pathables.size() && state.pack.pathables[node.index].grave.deleted;
+    }
+    return false;
+}
+
 void State::pathableAdded(size_t index, size_t after) {
     if (index >= pack.pathables.size()) return;
 

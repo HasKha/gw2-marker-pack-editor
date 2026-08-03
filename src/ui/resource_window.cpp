@@ -14,6 +14,7 @@
 #include "pack/source.h"
 #include "resources.h"
 #include "ui/tree_window.h"
+#include "undo.h"
 
 namespace ui::resource_window {
 
@@ -120,10 +121,14 @@ void buildIndex(const editor::State& state) {
     index.source = source;
     index.folders.push_back(Folder{});
 
+    // Deleted nodes reference nothing: an image only used by a marker that has been removed
+    // should read as unused, or it could never be cleaned up.
     for (size_t i = 0; i < state.pack.categories.size(); ++i) {
+        if (state.pack.categories[i].grave.deleted) continue;
         collectReferences(state.pack.categories[i].attributes, editor::NodeRef{editor::NodeKind::Category, i});
     }
     for (size_t i = 0; i < state.pack.pathables.size(); ++i) {
+        if (state.pack.pathables[i].grave.deleted) continue;
         collectReferences(state.pack.pathables[i].attributes, editor::NodeRef{editor::NodeKind::Pathable, i});
     }
 
@@ -278,6 +283,9 @@ std::string originalFolder(const std::string& normalized) {
 }
 
 void removeSelected(editor::State& state) {
+    undo::Step step(state, "Remove image");
+    undo::asset(state, selected);
+
     state.pack.removeAsset(selected);
     // The bytes behind the path just changed — a pending add withdrawn, or a file that will
     // not be in the next save. Drop the cached texture so the preview follows.
@@ -375,6 +383,8 @@ void drawSelected(editor::State& state) {
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("Drops the file again. It was never written to the pack.");
     } else if (removed) {
         if (ImGui::Button("Restore")) {
+            undo::Step step(state, "Restore image");
+            undo::asset(state, selected);
             state.pack.restoreAsset(selected);
             resources::forget(selected);
             state.touch();
@@ -464,6 +474,9 @@ void addFile(editor::State& state, const std::filesystem::path& file, std::strin
 
     const pack::DataSource* source = resources::source();
     const bool replacing = (source && source->contains(key)) || state.pack.findAddedAsset(key) != nullptr;
+
+    undo::Step step(state, "Add image");
+    undo::asset(state, key);
 
     state.pack.addAsset(destination, std::move(bytes));
     resources::forget(key);

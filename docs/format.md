@@ -150,8 +150,20 @@ Markers, per `Entity/StandardMarker.World.cs`:
   marker in the right place, on the right plane, with the right normal — and the image
   turned 180 degrees. (Billboards are unaffected in practice: `CreateBillboard` orients
   the quad so the flips cancel.)
-- After projection, on-screen height is clamped between `minsize * 4` and `maxsize * 4`
-  **pixels**, and the model matrix is rescaled to satisfy it.
+- After projection, on-screen height is clamped between `minsize * 4` and `maxsize * 4`,
+  and the model matrix is rescaled to satisfy it. **Those bounds are not in pixels.** The
+  quantity being clamped is
+
+  ```csharp
+  pixelSizeY = bounds.HalfExtents.Y * 2 * Viewport.Height
+  ```
+
+  where `bounds` is in normalized device coordinates. NDC spans **2** across the viewport,
+  so multiplying an NDC extent by the viewport height without halving it gives twice the
+  pixel height. In real pixels the limits are therefore `minsize * 2` and `maxsize * 2` —
+  with the defaults, a marker stops shrinking at **10 px**, not 20. Anything reproducing
+  Blish's picture has to reproduce this, or distant markers pin to a fixed size twice as
+  far out and twice as large.
 - Opacity is `alpha * fade`, where fade ramps linearly between `fadeNear` and `fadeFar`.
 - `occlude="1"` switches the blend state to opaque.
 - `cull` maps to a rasterizer cull direction.

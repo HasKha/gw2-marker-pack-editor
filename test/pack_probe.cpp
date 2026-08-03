@@ -203,6 +203,7 @@ std::filesystem::path save_test_dir;
 int probeSaveRoundTrip(const pack::Pack& loaded, const pack::DataSource& source, const std::filesystem::path& out_dir);
 int probeAssetChanges(pack::Pack& loaded, const pack::DataSource& source, const std::filesystem::path& out_dir);
 int probeAddPathable(pack::Pack& loaded, const pack::DataSource& source, const std::filesystem::path& out_dir);
+int probeRemove(pack::Pack& loaded, const pack::DataSource& source, const std::filesystem::path& out_dir);
 
 // The writer reformats a pack once, so byte equality with the original is not the test.
 // What must hold is that writing is a fixed point: serialize, parse the result, serialize
@@ -501,8 +502,11 @@ int probeModel(const pack::DataSource& archive) {
 
     lintPack(loaded, archive);
 
-    // Last, because it leaves a marker in the model that nothing can take back out yet.
-    if (!save_test_dir.empty()) failures += probeAddPathable(loaded, archive, save_test_dir);
+    // Last, because these leave the model changed.
+    if (!save_test_dir.empty()) {
+        failures += probeAddPathable(loaded, archive, save_test_dir);
+        failures += probeRemove(loaded, archive, save_test_dir);
+    }
 
     return failures;
 }
@@ -771,6 +775,141 @@ int probeAddPathable(pack::Pack& loaded, const pack::DataSource& source, const s
         before,
         reloaded.pathables.size(),
         loaded.categories[category].id.c_str());
+    return failures;
+}
+
+// Deleting tombstones the model entry and lifts the element out of the document. What has
+// to hold: the marker is gone from the file, its category's *other* markers are not, and a
+// deleted category takes its nested children with it.
+int probeRemove(pack::Pack& loaded, const pack::DataSource& source, const std::filesystem::path& out_dir) {
+    // A marker whose category holds more than one, so the check can tell "removed the one"
+    // from "removed the lot".
+    size_t victim = pack::kNoIndex;
+    for (size_t i = 0; i < loaded.pathables.size() && victim == pack::kNoIndex; ++i) {
+        if (loaded.pathables[i].grave.deleted || loaded.pathables[i].category == pack::kNoIndex) continue;
+        size_t siblings = 0;
+        for (const pack::Pathable& other : loaded.pathables) {
+            if (!other.grave.deleted && other.category == loaded.pathables[i].category) ++siblings;
+        }
+        if (siblings > 1) victim = i;
+    }
+    if (victim == pack::kNoIndex) {
+        std::printf("  remove: skipped, no category with two markers\n");
+        return 0;
+    }
+
+    // A category with children, to prove the subtree goes as one.
+    size_t category = pack::kNoIndex;
+    for (size_t i = 0; i < loaded.categories.size(); ++i) {
+        if (!loaded.categories[i].grave.deleted && loaded.categories[i].children.size() > 1) category = i;
+    }
+
+    const size_t victim_category = loaded.pathables[victim].category;
+    const std::string* victim_guid = loaded.pathables[victim].attributes.value("guid");
+    const std::string guid = victim_guid ? *victim_guid : std::string();
+
+    // Every file as it stands now, to compare against after the delete is undone. Putting
+    // an element back in the wrong place would show up here and nowhere else.
+    std::vector<std::string> before_delete(loaded.files.size());
+    for (size_t i = 0; i < loaded.files.size(); ++i) {
+        std::string error;
+        pack::writeXmlFile(loaded, i, &before_delete[i], &error);
+    }
+
+    size_t expected_pathables = 0;
+    for (const pack::Pathable& pathable : loaded.pathables) {
+        if (!pathable.grave.deleted) ++expected_pathables;
+    }
+    --expected_pathables; // the victim
+
+    loaded.removePathable(victim);
+
+    size_t removed_categories = 0;
+    if (category != pack::kNoIndex) {
+        std::vector<size_t> gone;
+        // The editor removes a category's markers first; here the point is the elements, so
+        // the markers are left to dangle in <POIs> exactly as the format allows.
+        loaded.removeCategorySubtree(category, &gone);
+        removed_categories = gone.size();
+    }
+
+    std::error_code ec;
+    std::filesystem::create_directories(out_dir, ec);
+    const std::filesystem::path target = out_dir / (source.root().stem().string() + "-removed.zip");
+    std::filesystem::remove(target, ec);
+
+    const pack::SaveResult saved = pack::buildZip(loaded, source, target);
+    std::string error;
+    if (!saved.ok) {
+        std::printf("  REMOVE FAIL  %s\n", saved.error.c_str());
+        return 1;
+    }
+    if (!pack::commitZip(target, &error)) {
+        std::printf("  REMOVE FAIL  %s\n", error.c_str());
+        return 1;
+    }
+
+    std::unique_ptr<pack::DataSource> reopened = pack::open(target, &error);
+    pack::Pack reloaded;
+    if (!reopened || !pack::loadPack(*reopened, &reloaded, &error)) {
+        std::printf("  REMOVE REOPEN FAIL  %s\n", error.c_str());
+        return 1;
+    }
+
+    int failures = 0;
+
+    if (!guid.empty()) {
+        for (const pack::Pathable& pathable : reloaded.pathables) {
+            const std::string* value = pathable.attributes.value("guid");
+            if (value && *value == guid) {
+                std::printf("  REMOVE: the deleted marker came back\n");
+                ++failures;
+                break;
+            }
+        }
+    }
+
+    // Only what was asked for: its siblings have to survive.
+    if (category == pack::kNoIndex && reloaded.pathables.size() != expected_pathables) {
+        std::printf("  REMOVE: %zu markers after reload, expected %zu\n", reloaded.pathables.size(), expected_pathables);
+        ++failures;
+    }
+
+    if (category != pack::kNoIndex) {
+        const std::string& id = loaded.categories[category].id;
+        if (reloaded.findCategory(id) != nullptr) {
+            std::printf("  REMOVE: category %s came back\n", id.c_str());
+            ++failures;
+        }
+    }
+
+    // Undo: everything goes back exactly where it was, which is the whole point of keeping
+    // the element rather than rebuilding it.
+    loaded.restorePathable(victim);
+    if (category != pack::kNoIndex) loaded.restoreCategorySubtree(category, nullptr);
+
+    size_t identical = 0;
+    for (size_t i = 0; i < loaded.files.size(); ++i) {
+        std::string after;
+        std::string error;
+        pack::writeXmlFile(loaded, i, &after, &error);
+        if (after == before_delete[i]) {
+            ++identical;
+        } else {
+            std::printf("  REMOVE: %s differs after delete + undo\n", loaded.files[i].path.c_str());
+            ++failures;
+        }
+    }
+
+    std::printf(
+        "  remove: 1 marker (of %zu in %s) and %zu categories, reloads to %zu markers, %zu categories; undo restores %zu/%zu files\n",
+        expected_pathables + 1,
+        loaded.categories[victim_category].id.c_str(),
+        removed_categories,
+        reloaded.pathables.size(),
+        reloaded.categories.size(),
+        identical,
+        loaded.files.size());
     return failures;
 }
 

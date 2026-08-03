@@ -57,6 +57,31 @@ struct SourceNode {
     pugi::xml_node node;
 };
 
+// Deleting anything leaves its slot behind. Every index into `categories` and `pathables`
+// is positional — the selection, the tree's per-category lists, the renderer's cache and
+// the trail editor all hold them — so erasing an entry would move every entry after it and
+// invalidate all of them at once. A tombstone moves nothing, and it is what makes undo a
+// flag flip rather than a rebuild.
+//
+// Everything that walks either list skips these. See docs/architecture.md.
+// Where an element sat, so undo can put it back in its place rather than at the end.
+struct Anchor {
+    pugi::xml_node parent;
+    pugi::xml_node previous; // the sibling it followed; null when it was first
+};
+
+struct Tombstone {
+    bool deleted = false;
+
+    // The element, lifted whole out of the file's document and kept: putting it back is a
+    // copy rather than a reconstruction, so comments and spelling survive a delete/undo.
+    // Only set once deleted.
+    std::unique_ptr<pugi::xml_document> detached;
+
+    // One per element in `detached` — a category can be declared in several files.
+    std::vector<Anchor> anchors;
+};
+
 struct Category {
     std::string name; // as written, e.g. "Gorseval"
     std::string key; // lowercased
@@ -69,6 +94,8 @@ struct Category {
     // A category may be declared in several files, or several times in one. Each
     // declaration contributes attributes and has to be editable in place.
     std::vector<SourceNode> declarations;
+
+    Tombstone grave;
 
     std::string displayName() const;
 };
@@ -83,6 +110,7 @@ struct Pathable {
     size_t category = kNoIndex; // resolved index, kNoIndex when the type is dangling
     AttributeCollection attributes;
     SourceNode source;
+    Tombstone grave;
 };
 
 // How the file was written, so a save can put it back the same way. These are the only
@@ -193,6 +221,25 @@ struct Pack {
     // file has none. The editor's own ordering is a separate concern; see
     // State::pathableAdded.
     size_t addPathable(PathableType type, size_t category, size_t after, size_t file, AttributeCollection attributes);
+
+    // Tombstones a pathable and lifts its element out of the document.
+    void removePathable(size_t index);
+
+    // Tombstones a category and everything nested under it. Removing a category's
+    // declarations takes its child categories' elements with them — they are nested inside
+    // — so the children are tombstoned here too and their now-dead node handles cleared.
+    //
+    // Markers are *not* touched: they live in <POIs>, not inside the category, and the
+    // caller decides what happens to them. `out_removed` receives every category index
+    // that was tombstoned, so the caller can find them.
+    void removeCategorySubtree(size_t index, std::vector<size_t>* out_removed);
+
+    // The other half of both, for undo. The element goes back where it was — same parent,
+    // same sibling — and the model is repointed at it. Restoring a category also re-points
+    // every descendant's declaration, since they came back nested inside the copy and their
+    // old handles died with the original.
+    void restorePathable(size_t index);
+    void restoreCategorySubtree(size_t index, std::vector<size_t>* out_restored);
 };
 
 } // namespace pack

@@ -30,13 +30,16 @@ the edited markers show correctly in Blish HUD.**
 | Resources | the pack's images as a folder tree, with reference counts, a preview, and add / remove pending until a save |
 | Trail editor | map id, the point list, drag fields, point handles in the world, and a Trail menu: reload, export, add circle |
 | Tree + properties | category tree with visibility toggles; attribute form generated from the attribute table |
-| World | billboards, trail ribbons, rotation, selection highlight, click-to-pick for markers and trail points |
+| World | billboards, trail ribbons, rotation, selection highlight, click-to-pick for markers and trail points; nothing drawn while the map is open |
 | Selection | ctrl+click in the tree and the world, shift+click ranges in the tree and the point list, world picks reveal the node in the tree |
 | 3D edit | ImGuizmo translate/rotate on the selection — markers and trail points alike — anchored on the first node selected; a group rotation orbits the rest about it |
 | Create | Add POI at the character's position, placed by the selection and copying its attributes |
+| Delete | a marker, or a category and its whole subtree, from the details window. Tombstoned, never erased |
+| Undo / redo | Ctrl+Z / Ctrl+Y and an Edit menu, over every edit there is: attributes, add, delete, images, trails |
 | Write | serializes the owned document; comments, order, spelling, BOM, CRLF and the file split survive. 947/947 files stable on rewrite |
 
-The gap: nothing can be **deleted** — no marker, no category — and there is no undo.
+The gap: creating a **trail** or a **category** — everything else about building a pack from
+existing parts is there.
 
 Before touching the pack layer, run:
 
@@ -67,13 +70,8 @@ measured.
 
 Roughly in order.
 
-### 1. Delete, and the rest of create
+### 1. The rest of create
 
-Adding a POI works; the mechanism is described in [architecture.md](architecture.md). What
-is left:
-
-- **Delete** a POI, a trail and a category. This is the one that needs the strategy
-  decision below, and nothing else in this list is blocked by it.
 - Add a **trail** and a **category**. A trail needs a `.trl` to point at — an empty one
   written as a pending asset, which the trail editor can then fill.
 - Insert a point into a trail, and reorder points. Deleting them already works.
@@ -84,53 +82,24 @@ is left:
 
 Watch out:
 
-- `Pathable::category` and every index in `State::pathables_by_category`,
-  `orphan_pathables`, `Selection`, `trail_edit` and the renderer cache are **positional**.
-  Erasing from `Pack::pathables` invalidates all of them — tombstone entries instead of
-  erasing, or rebuild the index and remap the selection. Adding sidesteps this by appending
-  only; deleting cannot. Tombstoning also makes undo simpler; see [2](#2-undo--redo).
 - A new category needs a declaration appended, or the writer will not know where to put it.
-- `Pack` is move-only. That is deliberate; do not "fix" it by adding a copy constructor.
-
-### 2. Undo / redo
-
-Deferred twice. **Preliminary read: feasible, and cheaper than feared — but only if it is
-built before add/delete, not after.**
-
-The reason it is cheap is that edits do not touch the XML document. `AttributeCollection`
-on the model is the live edited state; `writer.cpp` syncs it onto `pugi::xml_node`s only
-at save. So every edit that exists today is "set or erase attribute *k* on node *n*", and
-an undo stack of `(node, key, old, new)` covers all of it — the property panel and the
-gizmo both funnel through the same attribute writes.
-
-What actually needs deciding:
-
-- **One choke point.** Every mutation already calls `State::touch()`; undo needs the
-  edits recorded there or immediately around it, not at each call site, or the "no
-  copy-paste" rule gets violated one attribute at a time.
-- **Drag coalescing.** A gizmo drag calls `touch()` every frame. One drag must become one
-  undo step — open the step on `ImGuizmo::IsUsing()`'s rising edge, close it on the
-  falling edge.
-- **Structural edits are the hard half**, and only because of positional indices. If
-  delete tombstones rather than erases, an undo is just un-tombstoning and indices never
-  move; if it erases, undo has to reparse and rebuild, which also invalidates the
-  selection. This is the argument for settling [1](#1-delete-and-the-rest-of-create)'s deletion strategy
-  first.
-- Visibility toggles must **not** be undoable — they are view state and deliberately do
-  not bump the revision.
-
-Verdict to confirm while implementing: attribute-level undo is a small, contained change.
-Structural undo is affordable only under the tombstone design. Decide the deletion
-strategy before writing either.
+- `Pack` is move-only, and `Category` / `Pathable` are now move-only too, since a tombstone
+  owns a document. That is deliberate; do not "fix" it by adding copy constructors.
+- Anything new that mutates the pack needs an `undo::Step` around it and the matching
+  capture inside, or it will be the one edit Ctrl+Z cannot take back.
 
 ### Built, not yet exercised in game
 
-Compiles clean and is in `bin/Release`, but nobody has driven it in GW2 yet:
+Confirmed in game: adding and deleting markers and categories, and removing an image
+through the resources window (including the folder save that deletes it from disk). Still
+undriven:
 
 - **The trail editor**, end to end: the map id field, the point list, the handles in the
   world, dragging a point with the gizmo, delete, reload, export, and add circle.
-- **Add POI.** Its pack-layer half — the node insert and the reload — *is* covered without
-  the game, by `mpe_probe`'s add check on all three test packs.
+- **Undo / redo.** Its pack-layer half is covered without the game: `mpe_probe` deletes a
+  marker and a category subtree, restores both, and requires every file to serialize
+  byte-identically to before the delete. What is unverified is the *feel* — whether a drag
+  really comes back in one Ctrl+Z, and whether the Nexus binds behave in game.
 
 Known rough edges:
 
@@ -141,10 +110,9 @@ Known rough edges:
   gizmo skips trail pathables themselves.
 - Window positions are whatever ImGui's `imgui.ini` remembers; visibility is not persisted
   at all yet — see [settings](#smaller-work-unblocked).
-- `saveToDirectory`'s asset half — writing added images into a folder pack and **deleting**
+- `saveToDirectory`'s asset half — writing added images into a folder pack and deleting
   removed ones from disk — is the one write path `mpe_probe` does not exercise, because the
-  test folder is a real git checkout. The write half is confirmed by hand; the delete half
-  is not.
+  test folder is a real git checkout. Both halves are confirmed by hand instead.
 - The resources window lists images only. `.trl` files are resources too and are already
   counted as references; showing them is a one-line change to `kImageExtensions` if it
   turns out to be wanted.
@@ -165,5 +133,5 @@ Known rough edges:
 
 ## Open questions
 
-1. Delete strategy — tombstone or erase. It decides how hard undo and the index rebuild
-   are. (See [1](#1-delete-and-the-rest-of-create) and [2](#2-undo--redo).)
+None open. The last one — tombstone or erase — was settled by building it: tombstones, for
+the reasons in [architecture.md](architecture.md).

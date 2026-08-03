@@ -17,7 +17,9 @@ enum class Request { None, Export };
 // drag fields for the selected one.
 Request draw(editor::State& state, const world::Camera& camera);
 
-// The Trail menu, drawn in the shared menu bar. Greyed out when no trail is open.
+// The Trail menu. Drawn only in this window's own menu bar — it acts on the trail editor's
+// state, so it has no business in the tree or the details window. Greyed out when no trail
+// is open.
 Request drawMenu(editor::State& state, const world::Camera& camera);
 
 // Writes the working copy to a .trl the user picked.

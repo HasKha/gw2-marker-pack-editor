@@ -8,7 +8,6 @@
 #include <vector>
 
 #include "trail_edit.h"
-#include "ui/windows.h"
 
 namespace ui::trail_editor {
 
@@ -103,8 +102,16 @@ void drawHeader(editor::State& state, const world::Camera& camera) {
 
 void drawPointList(editor::State& state) {
     const size_t count = trail_edit::pointCount();
+    const size_t segments = trail_edit::segmentCount();
 
-    ImGui::TextDisabled("%zu points   '>' starts a new segment", count);
+    // A .trl can hold several runs of points, drawn as separate ribbons. When it does, each
+    // row says which run it is in; when it does not, the column would be a constant.
+    const bool show_segment = segments > 1;
+    if (show_segment) {
+        ImGui::TextDisabled("%zu points in %zu segments", count, segments);
+    } else {
+        ImGui::TextDisabled("%zu points", count);
+    }
 
     // A trail can carry thousands of points — one pack ships 55k across its trails — so
     // only the rows actually on screen are emitted.
@@ -115,16 +122,11 @@ void drawPointList(editor::State& state) {
             const size_t index = static_cast<size_t>(row);
             const glm::vec3 position = trail_edit::point(index);
 
+            char segment[24] = "";
+            if (show_segment) std::snprintf(segment, sizeof(segment), "s%zu ", trail_edit::segmentOf(index));
+
             char label[96];
-            std::snprintf(
-                label,
-                sizeof(label),
-                "%s%4zu   %8.2f, %8.2f, %8.2f",
-                trail_edit::startsSegment(index) ? "> " : "  ",
-                index,
-                position.x,
-                position.y,
-                position.z);
+            std::snprintf(label, sizeof(label), "%s%4zu   %8.2f, %8.2f, %8.2f", segment, index, position.x, position.y, position.z);
 
             ImGui::PushID(row);
             if (ImGui::Selectable(label, state.selection.contains(pointRef(index)))) selectPoint(state, index);
@@ -133,10 +135,30 @@ void drawPointList(editor::State& state) {
     }
 }
 
-void drawSelectedPoint(editor::State& state) {
+// Adds a point where the character is standing: after the selected one, or at the end of
+// the trail when nothing is selected. Walking the route and dropping points is how these
+// are authored, and a point can be dragged afterwards like any other.
+void drawAddPoint(editor::State& state, const world::Camera& camera, size_t selected) {
+    if (!ImGui::Button("Add point")) {
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip(
+                "Adds a point at the character's position,\n"
+                "after the selected one, or at the end.");
+        }
+        return;
+    }
+
+    if (!camera.valid) return;
+
+    const size_t added = trail_edit::insertPoint(state, selected, camera.player);
+    if (added != pack::kNoIndex) state.selection.set(pointRef(added));
+}
+
+void drawSelectedPoint(editor::State& state, const world::Camera& camera) {
     const size_t index = selectedPoint(state);
     if (index == pack::kNoIndex) {
-        ImGui::TextDisabled("Select a point to edit its position.");
+        ImGui::TextDisabled("No point selected.");
+        drawAddPoint(state, camera, pack::kNoIndex);
         return;
     }
 
@@ -154,6 +176,9 @@ void drawSelectedPoint(editor::State& state) {
     if (changed) trail_edit::setPoint(state, index, position);
 
     const std::vector<size_t> selected = selectedPoints(state);
+
+    drawAddPoint(state, camera, index);
+    ImGui::SameLine();
     if (ImGui::Button("Delete selected")) {
         trail_edit::erasePoints(state, selected);
         // Every index after the first deletion has moved; keeping the old refs would point
@@ -218,8 +243,6 @@ Request drawMenu(editor::State& state, const world::Camera& camera) {
         // Only the centre follows the character; the rest is whatever was used last.
         circle.centre = camera.player;
         open_circle_popup = true;
-        // The dialog belongs to the trail editor window, so make sure there is one.
-        ui::windows::visible(ui::windows::Id::TrailEditor) = true;
     }
 
     ImGui::EndMenu();
@@ -250,12 +273,13 @@ Request draw(editor::State& state, const world::Camera& camera) {
     constexpr float kFooterHeight = 150.0f;
     const float available = ImGui::GetContentRegionAvail().y;
 
-    ImGui::BeginChild("##points", ImVec2(0, std::max(80.0f, available - kFooterHeight)), true);
+    // No border: the separators above and below already say where the list starts and ends.
+    ImGui::BeginChild("##points", ImVec2(0, std::max(80.0f, available - kFooterHeight)), false);
     drawPointList(state);
     ImGui::EndChild();
 
     ImGui::Separator();
-    drawSelectedPoint(state);
+    drawSelectedPoint(state, camera);
 
     return Request::None;
 }

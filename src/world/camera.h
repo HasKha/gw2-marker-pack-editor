@@ -42,6 +42,10 @@ struct Camera {
 
     uint32_t map_id = 0;
 
+    // The full map is up. The camera keeps updating behind it, so nothing else notices,
+    // but drawing markers over the map is drawing them in the wrong place entirely.
+    bool map_open = false;
+
     // Projects to screen pixels. Returns false when the point is behind the camera, in
     // which case the screen position is meaningless.
     bool project(const glm::vec3& world, glm::vec2* out_screen) const;

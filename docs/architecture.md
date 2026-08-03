@@ -56,7 +56,8 @@ mpe_probe "<...>/markers/haskha_markers.zip" "<...>/markers/hero.blish.pack.zip"
 src/
   entry.cpp            Nexus entry, AddonDefinition, hands DataLinks to marker_editor
   marker_editor.*      lifecycle, the windows and the shared menu bar, save/open, WndProc
-  pathable_edit.*      creating markers: what a new one is and where it belongs
+  pathable_edit.*      creating and deleting markers and categories
+  undo.*               the undo/redo stack: before/after images of what changed
   trail_edit.*         the open trail's working copy, shared by its window and the gizmo
   editor_state.*       State: the open Pack, selection, per-node visibility, settings
   file_dialog.*        NFD on a worker thread (never block the render thread)
@@ -126,7 +127,9 @@ Two consequences of every window being closable:
 
 - **The menu bar is drawn in each large window**, from one shared `drawMenuBar`, so File
   and View are reachable from whichever one is open. The Toolbar has no menu bar; a bar
-  would be taller than its contents.
+  would be taller than its contents. The one exception to "the same bar everywhere" is the
+  Trail menu, which is drawn last and only in the trail editor, because it acts on that
+  window's own state.
 - **A modal has an owner.** An ImGui popup is scoped to the window that opened it, so the
   discard-changes confirmation records which window's menu asked for it and is only begun
   there. If that window is closed while the modal is up, the pending action is dropped
@@ -166,6 +169,71 @@ that silently does nothing because the budget was spent is worse than one extra 
 `Save to file` exports a copy outside the pack — for a zip pack there is no other coherent
 meaning, since a single `.trl` cannot be written back into the archive on its own.
 
+## Undo records images, not inverses
+
+`undo` stores what a thing looked like before and after, and applying a step is assignment.
+Nothing computes an inverse operation, because that is where undo systems go wrong: an
+inverse has to be re-derived correctly for every edit, forever.
+
+There are only three kinds of record, and every edit in the editor is made of them:
+
+| Record | Before / after | Covers |
+|---|---|---|
+| attributes | the node's whole `AttributeCollection` | the property panel, the gizmo, add attribute, bulk edit |
+| existence | the tombstone flag | adding a marker, deleting a marker or a category |
+| asset | the pending add/remove for one path | added images, removed images, every `.trl` edit |
+
+Snapshots are affordable because the units are small: an attribute collection is a handful
+of strings, existence is a bool. Only assets are bulky — an image or a `.trl` is held twice
+— so the stack is capped at 100 steps rather than growing without bound.
+
+This works **only** because deleting tombstones instead of erasing. No index ever moves, so
+a record taken now still points at the same thing ten edits later. Restoring a deleted
+category also relies on the element being kept whole: put the copy back, then find the
+descendants' declaration handles again inside it, since the originals died with the parent.
+
+Two details worth knowing:
+
+- **Steps coalesce by key across consecutive frames.** A gizmo drag writes attributes every
+  frame; the guard reopens the same step as long as the key matches and the last frame was
+  the previous one, so a drag is one entry and two drags are two. The property panel keys on
+  the field being dragged, so moving to another attribute starts a new step.
+- **Records that change nothing are dropped when the step closes**, and a step left empty is
+  popped. Clicking into a field and out again does not fill the stack with no-ops.
+
+Undo bumps the revision like any other edit, drops selection entries whose node no longer
+exists, and — from the caller, not from `undo` — tells the trail editor to reread, since its
+working copy is a cache of bytes that just changed underneath it.
+
+## Deleting leaves a tombstone
+
+Nothing is ever erased from `Pack::categories` or `Pack::pathables`. Both are indexed
+positionally by the selection, `State::pathables_by_category`, the hidden flags, the
+renderer's cache and the trail editor, so erasing one entry would move every entry after it
+and invalidate all of them at once. Instead each entry carries a `Tombstone`:
+
+- `deleted` marks it gone. Everything that walks either list skips it — the tree, the
+  renderer's rebuild, `countByType`, the writer's attribute sync, the resources window's
+  reference scan, the gizmo. A missed check shows up as a deleted thing still doing
+  something.
+- `detached` owns the element itself, lifted out of the file's document into a document of
+  its own, and the model's `SourceNode` is repointed at that copy. The element is gone from
+  what gets serialized, but it is kept **whole** — attributes, spelling, child comments —
+  so putting it back is a copy rather than a reconstruction.
+
+That second half is what makes undo affordable: with indices stable and the element
+preserved, undoing a delete is a flag flip plus an `insert_copy`, not a reparse.
+
+Deleting a **category** removes each of its declarations, and since child categories are
+nested inside them, the whole subtree's elements go in one operation — the descendants are
+tombstoned too and their now-dangling node handles cleared. Markers are separate: they live
+in `<POIs>`, not inside the category, so `pathable_edit::remove` deletes them explicitly
+first. The pack layer deliberately does not do that for you; leaving them would be valid
+XML, just markers with a dangling `type`.
+
+The cost of tombstones is memory that is not reclaimed until the pack is reloaded, which
+for an editor session is nothing.
+
 ## A new marker is appended, not inserted
 
 `Pack::pathables`, `State::pathables_by_category`, the selection and the renderer cache are
@@ -182,8 +250,7 @@ Where the marker appears is decided in the two places that actually care:
   `pathables_by_category` after its sibling. That list *is* the tree order; it only happens
   to match the vector order on a freshly loaded pack.
 
-Deleting will not have this luxury, which is why the deletion strategy — tombstone or
-erase — is still an open question in [plan.md](plan.md).
+Deleting gets the same property a different way; see the tombstone section above.
 
 ## Assets are pending until a save
 
@@ -346,11 +413,18 @@ custom DX11 pipeline is needed:
    position early.
 3. Cull by `MapID` against `Context.MapID`, then by `fadeNear`/`fadeFar`.
 4. Project each marker centre to screen, size the quad from `iconSize * 2`, clamp its
-   on-screen height between `minSize * 4` and `maxSize * 4` pixels the way
-   `StandardMarker.World.cs` does, and push a textured quad into the draw list, sorted
-   back-to-front. Billboard unless `rotate*` is set.
+   on-screen height to what `StandardMarker.World.cs` ends up with — `minSize * 2` and
+   `maxSize * 2` **real** pixels, because the quantity Blish clamps is twice the pixel
+   height; see [format.md](format.md) — and push a textured quad into the draw list,
+   sorted back-to-front. Billboard unless `rotate*` is set.
 5. Trails: project each `.trl` point, emit a triangle strip of quads along the polyline,
    breaking into separate ribbons at each `(0,0,0)` segment terminator.
+
+Nothing is drawn into the world while the **full map is open** (`Context.IsMapOpen` from
+MumbleLink, carried on `Camera`). The camera keeps updating behind the map, so without the
+check the markers would sit at positions that mean nothing over it. `renderer::draw` bails
+*after* clearing its hover state, so a click on the map cannot select whatever the mouse
+was last over in the world either.
 
 Known limitation: no depth buffer, so markers are not occluded by world geometry. That
 matches how the pack looks in Blish HUD with `occlude` off and is acceptable for an

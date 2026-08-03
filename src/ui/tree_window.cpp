@@ -162,19 +162,32 @@ RowGroup groupOf(const editor::State& state, editor::NodeRef node) {
 }
 
 // The rows of one level, in the order the tree draws them. Must stay in step with
-// drawCategoryRow, or a range would cover rows the user did not see between the ends.
+// drawCategoryRow, or a range would cover rows the user did not see between the ends —
+// which is why deleted entries are filtered out here as well.
 std::vector<editor::NodeRef> rowsOf(const editor::State& state, const RowGroup& group) {
     std::vector<editor::NodeRef> rows;
+
+    auto addCategory = [&](size_t index) {
+        if (index < state.pack.categories.size() && !state.pack.categories[index].grave.deleted) {
+            rows.push_back({editor::NodeKind::Category, index});
+        }
+    };
+    auto addPathable = [&](size_t index) {
+        if (index < state.pack.pathables.size() && !state.pack.pathables[index].grave.deleted) {
+            rows.push_back({editor::NodeKind::Pathable, index});
+        }
+    };
+
     switch (group.kind) {
     case RowGroup::Kind::Roots:
-        for (size_t root : state.pack.roots) rows.push_back({editor::NodeKind::Category, root});
+        for (size_t root : state.pack.roots) addCategory(root);
         break;
     case RowGroup::Kind::Orphans:
-        for (size_t pathable : state.orphan_pathables) rows.push_back({editor::NodeKind::Pathable, pathable});
+        for (size_t pathable : state.orphan_pathables) addPathable(pathable);
         break;
     case RowGroup::Kind::Category:
-        for (size_t child : state.pack.categories[group.category].children) rows.push_back({editor::NodeKind::Category, child});
-        for (size_t pathable : state.pathables_by_category[group.category]) rows.push_back({editor::NodeKind::Pathable, pathable});
+        for (size_t child : state.pack.categories[group.category].children) addCategory(child);
+        for (size_t pathable : state.pathables_by_category[group.category]) addPathable(pathable);
         break;
     }
     return rows;
@@ -277,6 +290,8 @@ void drawRow(
 }
 
 void drawPathableRow(editor::State& state, size_t pathable_index) {
+    if (state.pack.pathables[pathable_index].grave.deleted) return;
+
     const editor::NodeRef node{editor::NodeKind::Pathable, pathable_index};
 
     ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen | ImGuiTreeNodeFlags_SpanFullWidth;
@@ -292,10 +307,21 @@ void drawPathableRow(editor::State& state, size_t pathable_index) {
 
 void drawCategoryRow(editor::State& state, size_t category_index) {
     const pack::Category& category = state.pack.categories[category_index];
+    if (category.grave.deleted) return;
+
     const editor::NodeRef node{editor::NodeKind::Category, category_index};
 
-    const size_t own_pathables = state.pathables_by_category[category_index].size();
-    const bool has_children = !category.children.empty() || own_pathables > 0;
+    // Counted rather than taken from the list's size: a deleted marker keeps its slot in
+    // it, and a category showing "(3)" over two rows would be a lie.
+    size_t own_pathables = 0;
+    for (size_t index : state.pathables_by_category[category_index]) {
+        if (!state.pack.pathables[index].grave.deleted) ++own_pathables;
+    }
+
+    bool has_children = own_pathables > 0;
+    for (size_t child : category.children) {
+        has_children = has_children || !state.pack.categories[child].grave.deleted;
+    }
 
     ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_SpanFullWidth;
     if (!has_children) flags |= ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen;
@@ -344,11 +370,15 @@ void draw(editor::State& state) {
 
     for (size_t root : state.pack.roots) drawCategoryRow(state, root);
 
-    if (!state.orphan_pathables.empty()) {
+    size_t orphans = 0;
+    for (size_t index : state.orphan_pathables) {
+        if (!state.pack.pathables[index].grave.deleted) ++orphans;
+    }
+
+    if (orphans > 0) {
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.00f, 0.70f, 0.30f, 1.00f));
         if (reveal_orphans) ImGui::SetNextItemOpen(true);
-        const bool open =
-            ImGui::TreeNodeEx("##orphans", ImGuiTreeNodeFlags_SpanFullWidth, "Unresolved (%zu)", state.orphan_pathables.size());
+        const bool open = ImGui::TreeNodeEx("##orphans", ImGuiTreeNodeFlags_SpanFullWidth, "Unresolved (%zu)", orphans);
         ImGui::PopStyleColor();
         if (open) {
             for (size_t pathable_index : state.orphan_pathables) drawPathableRow(state, pathable_index);

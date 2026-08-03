@@ -78,6 +78,7 @@ bool writeXmlFile(const Pack& pack, size_t file_index, std::string* out, std::st
     }
 
     for (const Category& category : pack.categories) {
+        if (category.grave.deleted) continue; // its elements are out of the document already
         for (size_t d = 0; d < category.declarations.size(); ++d) {
             const SourceNode& declaration = category.declarations[d];
             if (declaration.file != file_index || !declaration.node) continue;
@@ -88,6 +89,7 @@ bool writeXmlFile(const Pack& pack, size_t file_index, std::string* out, std::st
     }
 
     for (const Pathable& pathable : pack.pathables) {
+        if (pathable.grave.deleted) continue; // its element now lives in the tombstone
         if (pathable.source.file != file_index || !pathable.source.node) continue;
         syncAttributes(pathable.source.node, pathable.attributes);
     }

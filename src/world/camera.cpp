@@ -85,6 +85,7 @@ Camera fromMumble(const Mumble::Data* mumble, const NexusLinkData* nexus_link) {
     camera.up = toGlm(mumble->CameraTop);
     camera.player = toGlm(mumble->AvatarPosition);
     camera.map_id = mumble->Context.MapID;
+    camera.map_open = mumble->Context.IsMapOpen != 0;
 
     if (!isFinite(camera.position) || !isFinite(camera.front)) return camera;
     if (glm::length(camera.front) < 0.0001f) return camera;

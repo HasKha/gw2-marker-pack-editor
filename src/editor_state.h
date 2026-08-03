@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <cstddef>
 #include <filesystem>
 #include <string>
@@ -44,6 +45,13 @@ public:
     void clear() { items_.clear(); }
     void set(NodeRef node);
     void toggle(NodeRef node);
+
+    // Drops entries the predicate rejects. What an undo needs: a node it has just
+    // un-created is not something the user can still have selected.
+    template <typename Predicate>
+    void retainIf(Predicate keep) {
+        items_.erase(std::remove_if(items_.begin(), items_.end(), [&](const NodeRef& node) { return !keep(node); }), items_.end());
+    }
     // Replaces the selection wholesale. The caller's order is kept, so whatever it puts
     // first becomes the anchor.
     void setAll(std::vector<NodeRef> nodes) { items_ = std::move(nodes); }
@@ -127,5 +135,15 @@ struct State {
         ++revision;
     }
 };
+
+// The attributes a node owns, or nullptr for one that has none — a trail point, or a stale
+// index. Lives here rather than in whichever window needed it first, because by now three
+// of them do.
+pack::AttributeCollection* attributesOf(State& state, NodeRef node);
+const pack::AttributeCollection* attributesOf(const State& state, NodeRef node);
+
+// True for a node that has been deleted. Tombstones keep their slot, so an index alone
+// does not tell you whether the thing is still there.
+bool isDeleted(const State& state, NodeRef node);
 
 } // namespace editor

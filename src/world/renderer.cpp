@@ -19,6 +19,22 @@ namespace {
 // offset either side of the path, scaled by trailScale.
 constexpr float kTrailHalfWidth = 20.0f * kMetresPerInch;
 
+// What minSize and maxSize multiply up to, in real pixels.
+//
+// StandardMarker.World.cs clamps between minSize*4 and maxSize*4, but the quantity it
+// clamps is not a pixel height:
+//
+//     pixelSizeY = bounds.HalfExtents.Y * 2 * Viewport.Height
+//
+// `bounds` is in normalized device coordinates, which span **2** across the viewport, so
+// multiplying an NDC extent by the viewport height without halving it yields twice the
+// pixel height. Its floor of minSize*4 therefore bites at minSize*2 real pixels.
+//
+// Matching that is the point: this editor exists to show what Blish will show. With the
+// literal *4 a marker pins to a fixed size twice as far out and twice as large, which is
+// the "icons never get smaller in the distance" bug this replaced.
+constexpr float kBlishSizeLimit = 2.0f;
+
 // Resolved once per pack revision so the per-frame loop never walks the category chain.
 // The largest pack tested has 55,887 markers; doing inherited-attribute lookups for each
 // of them every frame is not viable inside the render callback.
@@ -157,6 +173,7 @@ void rebuild(editor::State& state) {
 
     for (size_t i = 0; i < state.pack.pathables.size(); ++i) {
         const pack::Pathable& pathable = state.pack.pathables[i];
+        if (pathable.grave.deleted) continue;
         if (pathable.type == pack::PathableType::Route) continue; // deprecated, never drawn
 
         const int map_id = state.pack.effectiveInt(pathable, "mapid");
@@ -327,10 +344,11 @@ void drawMarkers(editor::State& state, const Camera& camera, ImDrawList* list, s
         }
 
         const float camera_distance = glm::length(marker.position - camera.position);
-        // Blish scales the unit quad by iconSize * 2, then clamps the on-screen height
-        // between minSize*4 and maxSize*4 pixels.
+        // Blish scales the unit quad by iconSize * 2, then clamps its on-screen height
+        // between minSize*4 and maxSize*4 of *its* pixel measure — which is twice the real
+        // pixel height. See kBlishPixelScale.
         float pixels = camera.pixelSize(marker.icon_size * 2.0f, camera_distance);
-        pixels = std::clamp(pixels, marker.min_size * 4.0f, marker.max_size * 4.0f);
+        pixels = std::clamp(pixels, marker.min_size * kBlishSizeLimit, marker.max_size * kBlishSizeLimit);
         if (pixels < 1.0f) continue;
 
         const float half = pixels * 0.5f;
@@ -544,7 +562,10 @@ void draw(editor::State& state, const Camera& camera) {
     hover_point_highlight = state.settings.select_in_viewport ? hovered_trail_point.load() : pack::kNoIndex;
     hovered_trail_point.store(pack::kNoIndex);
 
-    if (!state.loaded || !camera.valid) return;
+    // With the map up the world is not on screen; markers drawn over it would sit at
+    // meaningless positions. Bailing after the hover reset above also means nothing stays
+    // hovered, so a click on the map cannot select what was underneath it.
+    if (!state.loaded || !camera.valid || camera.map_open) return;
 
     if (cache.revision != state.revision || cache.pack != &state.pack) rebuild(state);
 

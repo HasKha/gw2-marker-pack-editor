@@ -21,4 +21,20 @@ namespace pathable_edit {
 // next to.
 size_t addPoi(editor::State& state, const glm::vec3& position);
 
+// What deleting `node` would take with it. A category takes its whole subtree: the
+// categories nested under it and every marker in any of them.
+struct Removal {
+    size_t categories = 0;
+    size_t pathables = 0;
+
+    bool empty() const { return categories == 0 && pathables == 0; }
+};
+
+Removal wouldRemove(const editor::State& state, editor::NodeRef node);
+
+// Deletes `node`, and clears the selection: the thing it pointed at is gone. Nothing is
+// erased from the pack's vectors — see the tombstone note in docs/architecture.md — so
+// every other index survives.
+Removal remove(editor::State& state, editor::NodeRef node);
+
 } // namespace pathable_edit
