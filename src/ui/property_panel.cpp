@@ -441,7 +441,8 @@ void draw(editor::State& state) {
 
     if (node.kind == editor::NodeKind::Pathable) {
         ImGui::Separator();
-        if (ImGui::CollapsingHeader("Inherited")) drawInherited(state, node);
+        ImGui::TextDisabled("Inherited");
+        drawInherited(state, node);
     }
 }
 

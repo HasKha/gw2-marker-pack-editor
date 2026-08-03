@@ -2,39 +2,11 @@
 
 #include <miniz.h>
 
-#include <algorithm>
-#include <cctype>
-
 namespace pack::zip {
 
 struct Archive::Impl {
     mz_zip_archive zip{};
 };
-
-std::string normalizePath(std::string_view path) {
-    std::string out;
-    out.reserve(path.size());
-
-    for (char c : path) {
-        char normalized = (c == '\\') ? '/' : static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-        // Collapse doubled slashes as we go rather than in a second pass.
-        if (normalized == '/' && !out.empty() && out.back() == '/') continue;
-        out.push_back(normalized);
-    }
-
-    auto is_space = [](char c) { return std::isspace(static_cast<unsigned char>(c)) != 0; };
-    size_t begin = 0;
-    size_t end = out.size();
-    while (begin < end && is_space(out[begin])) ++begin;
-    while (end > begin && is_space(out[end - 1])) --end;
-    out = out.substr(begin, end - begin);
-
-    size_t dots = 0;
-    while (dots < out.size() && out[dots] == '.') ++dots;
-    out.erase(0, dots);
-
-    return out;
-}
 
 Archive::~Archive() {
     close();
@@ -94,16 +66,6 @@ void Archive::close() {
     index_.clear();
 }
 
-std::vector<std::string> Archive::entriesWithExtension(std::string_view extension) const {
-    std::vector<std::string> out;
-    for (const std::string& entry : entries_) {
-        if (entry.size() >= extension.size() && entry.compare(entry.size() - extension.size(), extension.size(), extension) == 0) {
-            out.push_back(entry);
-        }
-    }
-    return out;
-}
-
 bool Archive::contains(std::string_view path) const {
     return index_.find(normalizePath(path)) != index_.end();
 }
@@ -137,13 +99,6 @@ bool Archive::read(std::string_view path, std::vector<uint8_t>* out, std::string
         return false;
     }
 
-    return true;
-}
-
-bool Archive::readText(std::string_view path, std::string* out, std::string* error) const {
-    std::vector<uint8_t> bytes;
-    if (!read(path, &bytes, error)) return false;
-    out->assign(reinterpret_cast<const char*>(bytes.data()), bytes.size());
     return true;
 }
 

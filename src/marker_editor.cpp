@@ -9,8 +9,8 @@
 
 #include "editor_state.h"
 #include "file_dialog.h"
+#include "pack/source.h"
 #include "pack/xml_reader.h"
-#include "pack/zip.h"
 #include "ui/property_panel.h"
 #include "ui/tree_window.h"
 
@@ -27,6 +27,10 @@ bool show_window = true;
 // Absolute path of the pack currently open, empty when none is.
 std::filesystem::path open_pack_path;
 std::string status_message;
+
+// Where the folder browser starts next time. A pack repo rarely lives under the Blish
+// HUD markers folder, so defaulting there every time would be a nuisance.
+std::filesystem::path last_folder;
 
 editor::State state;
 
@@ -55,15 +59,16 @@ void openPack(const std::filesystem::path& path) {
     // pack tested (56k markers) loads fast enough that it has not been worth it yet.
     state.reset();
 
-    pack::zip::Archive archive;
+    // Zip or folder — pack::open picks by what the path actually is.
     std::string error;
-    if (!archive.open(path, &error)) {
+    std::unique_ptr<pack::DataSource> source = pack::open(path, &error);
+    if (!source) {
         status_message = "Could not open " + path.filename().string() + ": " + error;
         log(ELogLevel_WARNING, status_message);
         return;
     }
 
-    if (!pack::loadPack(archive, &state.pack, &error)) {
+    if (!pack::loadPack(*source, &state.pack, &error)) {
         status_message = "Could not read " + path.filename().string() + ": " + error;
         log(ELogLevel_WARNING, status_message);
         return;
@@ -71,7 +76,8 @@ void openPack(const std::filesystem::path& path) {
 
     state.rebuildIndex();
     state.loaded = true;
-    open_pack_path = path;
+    open_pack_path = state.pack.source_path;
+    if (state.pack.from_directory) last_folder = state.pack.source_path;
 
     status_message = std::to_string(state.pack.categories.size()) + " categories, " +
                      std::to_string(state.pack.countByType(pack::PathableType::Poi)) + " POIs, " +
@@ -96,14 +102,29 @@ void render() {
     if (ImGui::Begin("Marker Pack Editor##MarkerPackEditor", &show_window)) {
         // Nexus ships imgui 1.80, which predates BeginDisabled/EndDisabled.
         if (file_dialog::isPending()) {
-            ImGui::TextDisabled("Open Pack... (dialog open)");
-        } else if (ImGui::Button("Open Pack...")) {
-            file_dialog::requestOpenFile(blishhudMarkersFolder(), {{"Marker pack", "zip,taco"}});
+            ImGui::TextDisabled("(file dialog open)");
+        } else {
+            if (ImGui::Button("Open Pack...")) {
+                file_dialog::requestOpenFile(blishhudMarkersFolder(), {{"Marker pack", "zip,taco"}});
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Open Folder...")) {
+                // Unzipped source tree, for editing a pack repo in place.
+                file_dialog::requestOpenFolder(last_folder.empty() ? blishhudMarkersFolder() : last_folder);
+            }
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip(
+                    "Open an unzipped pack folder, e.g. a git checkout.\n"
+                    "Blish HUD cannot load unzipped packs — this is for editing the source.");
+            }
         }
 
         if (state.loaded) {
             ImGui::SameLine();
-            ImGui::TextDisabled("%s%s", open_pack_path.filename().string().c_str(), state.dirty ? " *" : "");
+            const std::string name =
+                state.pack.from_directory ? open_pack_path.filename().string() + "/" : open_pack_path.filename().string();
+            ImGui::TextDisabled("%s%s", name.c_str(), state.dirty ? " *" : "");
+            if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", open_pack_path.string().c_str());
         }
 
         if (!status_message.empty()) ImGui::TextWrapped("%s", status_message.c_str());

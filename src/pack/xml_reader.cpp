@@ -215,19 +215,15 @@ bool readXmlFile(Pack* pack, size_t file_index) {
     return true;
 }
 
-bool loadPack(const zip::Archive& archive, Pack* out, std::string* error) {
+bool loadPack(const DataSource& source, Pack* out, std::string* error) {
     *out = Pack{};
 
-    if (!archive.isOpen()) {
-        if (error) *error = "Archive is not open";
-        return false;
-    }
+    out->source_path = source.root();
+    out->from_directory = source.isDirectory();
 
-    out->source_file = archive.sourceFile();
-
-    std::vector<std::string> xml_entries = archive.entriesWithExtension(".xml");
+    std::vector<std::string> xml_entries = source.entriesWithExtension(".xml");
     // Deterministic order matters: a category declared in two files merges in load order,
-    // and archive order is not guaranteed to be stable across zip writers.
+    // and neither zip order nor directory-iteration order is guaranteed stable.
     std::sort(xml_entries.begin(), xml_entries.end());
 
     out->files.reserve(xml_entries.size());
@@ -236,8 +232,8 @@ bool loadPack(const zip::Archive& archive, Pack* out, std::string* error) {
         file.path = entry;
 
         std::string read_error;
-        if (!archive.readText(entry, &file.text, &read_error)) {
-            out->addWarning(entry, "Could not read from archive: " + read_error);
+        if (!source.readText(entry, &file.text, &read_error)) {
+            out->addWarning(entry, "Could not read: " + read_error);
             continue;
         }
 

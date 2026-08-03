@@ -92,7 +92,14 @@ struct Warning {
 };
 
 struct Pack {
-    std::filesystem::path source_file;
+    // The .zip/.taco file, or the folder, this pack was read from.
+    std::filesystem::path source_path;
+
+    // True when source_path is an unzipped folder. Saving writes files back in place
+    // rather than rebuilding an archive — and a folder is an editing convenience only,
+    // since Blish HUD does not reliably load unzipped packs.
+    bool from_directory = false;
+
     std::vector<XmlFile> files;
     std::vector<Category> categories; // flat; tree via parent/children indices
     std::vector<size_t> roots;

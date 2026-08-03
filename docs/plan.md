@@ -41,7 +41,11 @@ In `C:\Users\Giorgio\Documents\Guild Wars 2\addons\blishhud\markers`:
 | `haskha_markers.zip` | 80 entries, 10 hand-authored xml at the root, `Data/`, comments throughout | the round-trip target — losing a comment here is a bug |
 | `hero.blish.pack.zip` | 1918 entries, 64 xml, 140 trl, 1375 png; `_markerCategories.xml` + `map<id>.xml` | large, popular, and already TmfLib `PackWriter` output — the scale and machine-generated case |
 
-Others in that folder are not test targets.
+Plus `C:\Users\Giorgio\Documents\git\gw2-markers` as a **folder**, which must produce the
+same model as the zip built from it.
+
+Others in that folder are not test targets, but `mpe_probe` accepts them and running it
+over all of them is how the format claims in `format.md` were measured.
 
 ## Milestones
 
@@ -88,12 +92,15 @@ Measured by `mpe_probe` across all 9 packs:
 - [x] **Open Pack…** now actually loads the pack into the editor
 - [x] Tree top level decided: categories only, see [architecture.md](architecture.md)
 - [x] `ui/tree_window` — category hierarchy, pathables under their category, ctrl+click
-      multi-select, "Unresolved" node for dangling `type`s, name filter
+      multi-select, "Unresolved" node for dangling `type`s
 - [x] `ui/property_panel` — form generated from the attribute table; the widget for each
       value comes from its `ValueKind`, no attribute is named in the UI code
 - [x] Add / remove attribute, with the picker filtered to what applies to the selection
-- [x] Inherited values greyed out, showing the category they come from, with "override"
+- [x] Inherited values always shown, greyed out, with the category they come from and an
+      "override" button
 - [x] Multi-select bulk edit, `<multiple values>` where the selection disagrees
+- [x] **Open Folder…** — load an unzipped pack source tree (e.g. the `gw2-markers` git
+      checkout) as well as a zip, through a shared `pack::DataSource`
 - [ ] Verify in game
 - [ ] Shift+click range select
 - [ ] Fill in enum value lists so `ValueKind::Enum` gets a dropdown instead of a text box

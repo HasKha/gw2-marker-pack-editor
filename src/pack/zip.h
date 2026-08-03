@@ -7,23 +7,20 @@
 #include <unordered_map>
 #include <vector>
 
-namespace pack::zip {
+#include "pack/source.h"
 
-// Normalizes a resource path the way TmfLib's AsyncSafeZipArchive does:
-//   backslashes to forward slashes, collapse doubled slashes, lowercase, trim
-//   surrounding whitespace, strip leading dots.
-// Blish HUD resolves every icon/texture/traildata reference through this, so a pack can
-// spell the same file three different ways and still load. We have to match it or icons
-// that work in Blish will silently go missing here.
-std::string normalizePath(std::string_view path);
+namespace pack::zip {
 
 // A marker pack archive opened for reading. Entry names are normalized on open, so
 // lookups are case- and separator-insensitive.
-class Archive
+//
+// Most code should go through pack::open() rather than naming this directly — a pack can
+// equally be a folder on disk.
+class Archive : public DataSource
 {
 public:
     Archive() = default;
-    ~Archive();
+    ~Archive() override;
 
     Archive(const Archive&) = delete;
     Archive& operator=(const Archive&) = delete;
@@ -32,20 +29,11 @@ public:
     void close();
     bool isOpen() const { return open_; }
 
-    // Normalized names of every file entry, in archive order.
-    const std::vector<std::string>& entries() const { return entries_; }
-
-    // Normalized names ending in the given extension, e.g. ".xml". Extension must be
-    // lowercase.
-    std::vector<std::string> entriesWithExtension(std::string_view extension) const;
-
-    bool contains(std::string_view path) const;
-
-    // Reads an entry whole. path is normalized internally.
-    bool read(std::string_view path, std::vector<uint8_t>* out, std::string* error) const;
-    bool readText(std::string_view path, std::string* out, std::string* error) const;
-
-    const std::filesystem::path& sourceFile() const { return source_; }
+    const std::vector<std::string>& entries() const override { return entries_; }
+    bool contains(std::string_view path) const override;
+    bool read(std::string_view path, std::vector<uint8_t>* out, std::string* error) const override;
+    const std::filesystem::path& root() const override { return source_; }
+    bool isDirectory() const override { return false; }
 
 private:
     // mz_zip_archive is an incomplete type here on purpose: miniz.h pulls in a lot and

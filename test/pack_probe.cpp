@@ -8,14 +8,15 @@
 #include <cstdio>
 #include <filesystem>
 #include <map>
+#include <memory>
 #include <set>
 #include <string>
 #include <vector>
 
 #include "pack/model.h"
+#include "pack/source.h"
 #include "pack/trl.h"
 #include "pack/xml_reader.h"
-#include "pack/zip.h"
 
 namespace {
 
@@ -142,7 +143,7 @@ void checkOffsets(const pugi::xml_node& node, const std::string& source, OffsetS
     }
 }
 
-void probeXmlRoundTrip(const pack::zip::Archive& archive, RoundTripStats* stats) {
+void probeXmlRoundTrip(const pack::DataSource& archive, RoundTripStats* stats) {
     for (const std::string& entry : archive.entriesWithExtension(".xml")) {
         ++stats->files;
 
@@ -196,7 +197,7 @@ void probeXmlRoundTrip(const pack::zip::Archive& archive, RoundTripStats* stats)
 
 // Problems a pack author would want to fix. Distinct from the reader's warnings: nothing
 // here stops a pack loading, it is just wrong or suspicious.
-void lintPack(const pack::Pack& loaded, const pack::zip::Archive& archive) {
+void lintPack(const pack::Pack& loaded, const pack::DataSource& archive) {
     std::printf("  -- lint --\n");
     bool clean = true;
     auto report = [&](const char* what, const std::string& detail) {
@@ -304,7 +305,7 @@ void lintPack(const pack::Pack& loaded, const pack::zip::Archive& archive) {
     for (const pack::Pathable& pathable : loaded.pathables) {
         for (const char* key : {"iconfile", "texture", "traildata"}) {
             const std::string* path = loaded.effectiveValue(pathable, key);
-            if (path && !path->empty()) referenced.insert(pack::zip::normalizePath(*path));
+            if (path && !path->empty()) referenced.insert(pack::normalizePath(*path));
         }
     }
     std::vector<std::string> unused;
@@ -329,7 +330,7 @@ void lintPack(const pack::Pack& loaded, const pack::zip::Archive& archive) {
 // Loads the pack through the real reader and reports what came out, plus the things a
 // pack author would want flagged: dangling category references, resources referenced but
 // not present in the archive, and .trl files that do not read.
-int probeModel(const pack::zip::Archive& archive) {
+int probeModel(const pack::DataSource& archive) {
     pack::Pack loaded;
     std::string error;
     if (!pack::loadPack(archive, &loaded, &error)) {
@@ -435,17 +436,24 @@ int probeModel(const pack::zip::Archive& archive) {
 int probePack(const std::filesystem::path& file) {
     std::printf("\n=== %s ===\n", file.filename().string().c_str());
 
-    pack::zip::Archive archive;
     std::string error;
-    if (!archive.open(file, &error)) {
+    std::unique_ptr<pack::DataSource> source = pack::open(file, &error);
+    if (!source) {
         std::printf("  FAILED TO OPEN: %s\n", error.c_str());
         return 1;
     }
+    const pack::DataSource& archive = *source;
 
     const size_t xml = archive.entriesWithExtension(".xml").size();
     const size_t trl = archive.entriesWithExtension(".trl").size();
     const size_t png = archive.entriesWithExtension(".png").size();
-    std::printf("  %zu entries: %zu xml, %zu trl, %zu png\n", archive.entries().size(), xml, trl, png);
+    std::printf(
+        "  %s | %zu entries: %zu xml, %zu trl, %zu png\n",
+        archive.isDirectory() ? "folder" : "archive",
+        archive.entries().size(),
+        xml,
+        trl,
+        png);
 
     RoundTripStats stats;
     probeXmlRoundTrip(archive, &stats);

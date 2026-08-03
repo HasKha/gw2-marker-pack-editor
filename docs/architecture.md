@@ -57,12 +57,13 @@ src/
   file_dialog.*        NFD on a worker thread (never block the render thread)
   textures.*           pack images -> Nexus textures -> ImTextureID  (addon layer: needs Nexus)
   pack/                — mpe_pack, no Nexus/imgui dependency
+    source.*           DataSource: a pack is a zip OR a folder. Path normalization.
+    zip.*              DataSource over a .zip/.taco, via miniz
     attributes.*       THE attribute table: name, kind, default, inheritance
     model.*            Pack / XmlFile / Category / Pathable, explicit vs effective values
     xml_reader.*       pugixml -> model, recording each node's source byte span
     xml_writer.*       splices edits into the original bytes (see format.md)
     trl.*              .trl read/write, byte-exact
-    zip.*              miniz read of the pack archive, TmfLib path normalization
   ui/
     tree_window.*      hierarchical tree, selection
     property_panel.*   attribute form + "add attribute"
@@ -88,6 +89,29 @@ survives a round-trip and shows up in the property panel as a raw text field.
 The table also has to carry the explicit-vs-inherited distinction, because the property
 panel needs to show the effective value while making clear whether it is set here or
 came from an ancestor category — see [format.md](format.md).
+
+## A pack is a zip or a folder
+
+Everything above `pack/source.h` reads through the abstract `DataSource`, with two
+implementations: `zip::Archive` and a directory reader. TmfLib draws the same line
+(`IDataReader` / `ZipArchiveReader` / `DirectoryReader`).
+
+The folder case exists so a pack's **source tree** can be edited in place — a git checkout
+like `gw2-markers` rather than the built zip. That matters because the zip is a build
+artifact: editing it and then rebuilding from source would throw the edits away.
+
+Both paths behave identically. The same `normalizePath` applies to directory entries, so a
+folder and the zip built from it resolve resources the same way — verified by running
+`mpe_probe` over both and getting identical models.
+
+Two things stay different, and both are recorded on `Pack`:
+
+- `from_directory` decides how a save is written: files back in place, or a rebuilt archive.
+- A folder is an **editing convenience, not a shippable pack**. Blish HUD does not reliably
+  load unzipped packs, so the UI says so on the button tooltip.
+
+The directory reader skips dot-directories. Without that, opening a pack repo would walk
+`.git`.
 
 ## The tree is categories
 
