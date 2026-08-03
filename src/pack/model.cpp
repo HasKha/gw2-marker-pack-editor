@@ -2,6 +2,8 @@
 
 #include <algorithm>
 
+#include "pack/source.h" // normalizePath, so asset paths key the same way lookups do
+
 namespace pack {
 
 const Attribute* AttributeCollection::find(std::string_view key) const {
@@ -108,6 +110,53 @@ size_t Pack::countByType(PathableType type) const {
 
 void Pack::addWarning(std::string file, std::string message) {
     warnings.push_back(Warning{std::move(file), std::move(message)});
+}
+
+const Pack::AddedAsset* Pack::findAddedAsset(std::string_view path) const {
+    const std::string key = normalizePath(path);
+    auto it = std::find_if(added_assets.begin(), added_assets.end(), [&](const AddedAsset& asset) { return asset.path == key; });
+    return it == added_assets.end() ? nullptr : &*it;
+}
+
+bool Pack::isAssetRemoved(std::string_view path) const {
+    const std::string key = normalizePath(path);
+    return std::find(removed_assets.begin(), removed_assets.end(), key) != removed_assets.end();
+}
+
+void Pack::addAsset(std::string original_path, std::vector<uint8_t> bytes) {
+    const std::string key = normalizePath(original_path);
+    restoreAsset(key);
+
+    auto it = std::find_if(added_assets.begin(), added_assets.end(), [&](const AddedAsset& asset) { return asset.path == key; });
+    if (it != added_assets.end()) {
+        it->original_path = std::move(original_path);
+        it->bytes = std::move(bytes);
+        return;
+    }
+
+    added_assets.push_back(AddedAsset{key, std::move(original_path), std::move(bytes)});
+}
+
+void Pack::removeAsset(std::string_view path) {
+    const std::string key = normalizePath(path);
+
+    auto pending = std::find_if(added_assets.begin(), added_assets.end(), [&](const AddedAsset& asset) { return asset.path == key; });
+    if (pending != added_assets.end()) {
+        added_assets.erase(pending);
+        return;
+    }
+
+    if (std::find(removed_assets.begin(), removed_assets.end(), key) == removed_assets.end()) removed_assets.push_back(key);
+}
+
+void Pack::restoreAsset(std::string_view path) {
+    const std::string key = normalizePath(path);
+    removed_assets.erase(std::remove(removed_assets.begin(), removed_assets.end(), key), removed_assets.end());
+}
+
+void Pack::clearAssetChanges() {
+    added_assets.clear();
+    removed_assets.clear();
 }
 
 } // namespace pack

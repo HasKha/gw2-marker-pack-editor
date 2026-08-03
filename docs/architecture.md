@@ -14,6 +14,7 @@ for what is done and what is next see [plan.md](plan.md).
 | World rendering | ImGui draw list + hand-built matrices | see [Rendering](#rendering) |
 | Tree top level | categories only; XML files never appear as nodes | see [The tree is categories](#the-tree-is-categories) |
 | Packs open | exactly one at a time | keeps the model a single source of truth |
+| UI shape | several small windows, not one big one | see [The UI is windows](#the-ui-is-windows) |
 | Group transform | anchored on the first node selected; a rotation orbits the rest | see [The gizmo anchor](#the-gizmo-anchor) |
 | Shipping format | zip in, zip out | Blish HUD fails to load images from unzipped folders |
 
@@ -54,7 +55,7 @@ mpe_probe "<...>/markers/haskha_markers.zip" "<...>/markers/hero.blish.pack.zip"
 ```
 src/
   entry.cpp            Nexus entry, AddonDefinition, hands DataLinks to marker_editor
-  marker_editor.*      lifecycle, menus, save/open, WndProc for world clicks
+  marker_editor.*      lifecycle, the windows and the shared menu bar, save/open, WndProc
   editor_state.*       State: the open Pack, selection, per-node visibility, settings
   file_dialog.*        NFD on a worker thread (never block the render thread)
   resources.*          icons + .trl pulled from the pack source on demand, budgeted
@@ -67,8 +68,10 @@ src/
     writer.*           serializes the document back out, rebuilds the zip (format.md)
     trl.*              .trl read/write, byte-exact
   ui/
+    windows.*          the window registry: titles, visibility, View menu, options page
     tree_window.*      category tree, selection (ctrl / shift range), per-node eye toggles
     property_panel.*   attribute form + "add attribute" + inherited values
+    resource_window.*  the pack's images, what references them, add / remove
   world/
     camera.*           MumbleLink -> view/projection, world->screen
     renderer.*         billboards + trail ribbons into an ImGui draw list, hit testing
@@ -96,6 +99,69 @@ result is what once made every marker fall back to a dot until the pack was relo
 pack still open for reading, and Windows will not rename over a live handle, so the caller
 has to release the source in between. Building first also means a failure never replaces a
 working pack with a half-written one; the previous file is kept as `.bak`.
+
+## The UI is windows
+
+One window holding both the tree and the details forced the gizmo into whatever screen
+that window was not covering. The editor is instead five independent windows, each
+closable, each remembering its own place:
+
+| Window | Contents |
+|---|---|
+| Tree | pack header, category hierarchy, selection, visibility toggles |
+| Details | the attribute form for the selection |
+| Toolbar | gizmo mode, and the create/place controls as they arrive |
+| Trail editor | the open trail's map id and points, with drag fields for the selected one |
+| Resources | the pack's images: folder tree, references, preview, add / remove |
+
+`ui/windows.*` is the registry: one table row per window with its title, its menu label
+and its default visibility, and everything else — the View menu, the Nexus options
+checkboxes, the keybind's hide-and-restore — is generated from that table. Adding a window
+is one row plus its draw function.
+
+Two consequences of every window being closable:
+
+- **The menu bar is drawn in each large window**, from one shared `drawMenuBar`, so File
+  and View are reachable from whichever one is open. The Toolbar has no menu bar; a bar
+  would be taller than its contents.
+- **A modal has an owner.** An ImGui popup is scoped to the window that opened it, so the
+  discard-changes confirmation records which window's menu asked for it and is only begun
+  there. If that window is closed while the modal is up, the pending action is dropped
+  rather than left armed.
+
+Actions that reload or close the pack are applied at the *end* of the frame. They free the
+vectors every window has just drawn from, and a menu click happens partway through that.
+
+The Nexus options page carries a checkbox per window, because a window closed with its X
+would otherwise only come back through a keybind that is unbound by default.
+
+## Assets are pending until a save
+
+The `DataSource` is read-only, and for a zip it is the very archive still open for reading,
+so an added image cannot go anywhere at the moment it is added. `Pack::added_assets` and
+`Pack::removed_assets` hold both kinds of change until a save resolves them: `buildZip`
+writes the adds in and leaves the removals out, `saveToDirectory` writes and deletes files
+on disk, and the caller clears the lists afterwards.
+
+Two things fall out of that:
+
+- **`resources` looks at the pending adds first.** Otherwise a freshly added icon would
+  read as missing everywhere until the pack was saved and reopened. And because Nexus hands
+  back the *existing* texture for an identifier it has already seen, changing the bytes
+  behind a path has to go through `resources::forget`, which drops the cache entry and bumps
+  the generation so the next load asks under a name Nexus has not seen.
+- **An added file takes its folder's existing spelling.** The window works in normalized
+  (lowercase) paths, so writing one straight back would put `data/icons/x.png` beside an
+  existing `Data/icons/` — two directories in the archive differing only in case.
+
+What references an image comes from the attribute table: every attribute whose kind is
+`Path` is a reference, so `iconfile`, `texture`, `traildata` and anything added later are
+all counted without being named in the UI. The counts and the folder tree are rebuilt per
+`State::revision`, not per frame, for the same reason the world renderer caches.
+
+The resources window previews **only the selected image**, deliberately. Nexus never
+releases a texture, so drawing a thumbnail per row would pin every image in a 1,375-image
+pack in memory for the session the first time the folder was opened.
 
 ## The gizmo anchor
 

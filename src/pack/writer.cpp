@@ -152,14 +152,26 @@ SaveResult buildZip(const Pack& pack, const DataSource& source, const std::files
         return result;
     }
 
+    // An added asset whose path is already in the source replaces it where it stands;
+    // whatever is left over is appended after the source's own entries.
+    std::unordered_map<std::string, size_t> pending_adds;
+    for (size_t i = 0; i < pack.added_assets.size(); ++i) pending_adds.emplace(pack.added_assets[i].path, i);
+
     bool failed = false;
     for (const std::string& entry : source.entries()) {
+        if (pack.isAssetRemoved(entry)) {
+            ++result.assets_removed;
+            continue;
+        }
+
         std::string name = source.originalName(entry);
         if (name.empty()) name = entry;
 
         const std::string* replacement = nullptr;
         auto it = rewritten.by_path.find(entry);
         if (it != rewritten.by_path.end()) replacement = &it->second;
+
+        auto added = pending_adds.find(entry);
 
         std::vector<uint8_t> bytes;
         const void* data = nullptr;
@@ -168,6 +180,12 @@ SaveResult buildZip(const Pack& pack, const DataSource& source, const std::files
         if (replacement) {
             data = replacement->data();
             size = replacement->size();
+        } else if (added != pending_adds.end()) {
+            const Pack::AddedAsset& asset = pack.added_assets[added->second];
+            data = asset.bytes.data();
+            size = asset.bytes.size();
+            pending_adds.erase(added);
+            ++result.assets_added;
         } else {
             std::string read_error;
             if (!source.read(entry, &bytes, &read_error)) {
@@ -184,6 +202,22 @@ SaveResult buildZip(const Pack& pack, const DataSource& source, const std::files
             break;
         }
         ++result.entries_written;
+    }
+
+    // Iterated over the pack's own order rather than the map's, so two runs produce the
+    // same archive.
+    for (const Pack::AddedAsset& asset : pack.added_assets) {
+        if (failed) break;
+        if (pending_adds.find(asset.path) == pending_adds.end()) continue;
+
+        const std::string& name = asset.original_path.empty() ? asset.path : asset.original_path;
+        if (!mz_zip_writer_add_mem(&zip, name.c_str(), asset.bytes.data(), asset.bytes.size(), MZ_DEFAULT_COMPRESSION)) {
+            result.error = "Could not write " + name + " to the archive";
+            failed = true;
+            break;
+        }
+        ++result.entries_written;
+        ++result.assets_added;
     }
 
     if (!failed && !mz_zip_writer_finalize_archive(&zip)) {
@@ -267,6 +301,35 @@ SaveResult saveToDirectory(const Pack& pack, const std::filesystem::path& root) 
             return result;
         }
         ++result.entries_written;
+    }
+
+    for (const Pack::AddedAsset& asset : pack.added_assets) {
+        const std::filesystem::path destination = root / (asset.original_path.empty() ? asset.path : asset.original_path);
+
+        std::error_code ec;
+        std::filesystem::create_directories(destination.parent_path(), ec);
+
+        std::ofstream file(destination, std::ios::binary | std::ios::trunc);
+        if (file) file.write(reinterpret_cast<const char*>(asset.bytes.data()), static_cast<std::streamsize>(asset.bytes.size()));
+        if (!file) {
+            result.error = "Could not write " + destination.string();
+            return result;
+        }
+        ++result.entries_written;
+        ++result.assets_added;
+    }
+
+    // The destructive half of a folder save. A zip save only ever writes a new archive, but
+    // here the file really is deleted, so a failure is reported rather than swallowed. The
+    // path is the normalized (lowercased) one, which resolves because Windows compares file
+    // names case-insensitively.
+    for (const std::string& removed : pack.removed_assets) {
+        std::error_code ec;
+        if (std::filesystem::remove(root / removed, ec)) {
+            ++result.assets_removed;
+        } else if (ec) {
+            result.warnings.push_back("Could not delete " + removed + ": " + ec.message());
+        }
     }
 
     result.ok = true;

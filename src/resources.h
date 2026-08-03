@@ -6,6 +6,7 @@
 #include <memory>
 #include <string>
 
+#include "pack/model.h"
 #include "pack/source.h"
 #include "pack/trl.h"
 
@@ -31,8 +32,26 @@ void beginFrame();
 void setSource(std::unique_ptr<pack::DataSource> source);
 const pack::DataSource* source();
 
-// nullptr until the image is available, or if it does not exist / fails to decode.
+// An image added in the editor is not in the DataSource until the pack is saved, so the
+// cache has to look at the pack's pending adds first — otherwise a new icon would show as
+// missing until a save and reopen. The pointer must outlive the addon; it is the one
+// long-lived State.
+void setPendingAssets(const pack::Pack* pack);
+
+// Drops one cached texture. Needed when the bytes behind a path change — a pending add
+// replaced or withdrawn — because a cache hit would otherwise keep the old image forever.
+void forget(const std::string& path);
+
+// A decoded image and the pixel size Nexus reports for it. `texture` is nullptr until the
+// image is available, or if it does not exist / fails to decode.
+struct Image {
+    ImTextureID texture = nullptr;
+    int width = 0;
+    int height = 0;
+};
+
 // Paths are resolved through pack::normalizePath, so any spelling a pack uses works.
+Image image(const std::string& path);
 ImTextureID texture(const std::string& path);
 
 // nullptr if the file is missing or unparseable. The returned Trail is owned by the

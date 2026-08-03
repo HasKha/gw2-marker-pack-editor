@@ -1,4 +1,5 @@
 #include "world/gizmo.h"
+#include <editor_state.h>
 
 #include <imgui.h>
 

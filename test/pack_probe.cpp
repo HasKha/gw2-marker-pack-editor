@@ -201,6 +201,7 @@ void probeXmlRoundTrip(const pack::DataSource& archive, RoundTripStats* stats) {
 // Defined further down, next to the other save machinery.
 std::filesystem::path save_test_dir;
 int probeSaveRoundTrip(const pack::Pack& loaded, const pack::DataSource& source, const std::filesystem::path& out_dir);
+int probeAssetChanges(pack::Pack& loaded, const pack::DataSource& source, const std::filesystem::path& out_dir);
 
 // The writer reformats a pack once, so byte equality with the original is not the test.
 // What must hold is that writing is a fixed point: serialize, parse the result, serialize
@@ -492,7 +493,10 @@ int probeModel(const pack::DataSource& archive) {
     probeWriter(loaded);
 
     int failures = 0;
-    if (!save_test_dir.empty()) failures += probeSaveRoundTrip(loaded, archive, save_test_dir);
+    if (!save_test_dir.empty()) {
+        failures += probeSaveRoundTrip(loaded, archive, save_test_dir);
+        failures += probeAssetChanges(loaded, archive, save_test_dir);
+    }
 
     lintPack(loaded, archive);
 
@@ -592,6 +596,84 @@ int probeSaveRoundTrip(const pack::Pack& loaded, const pack::DataSource& source,
     // Left on disk on purpose: the point of --save-test is to be able to look at what the
     // writer produced.
     reopened.reset();
+    return failures;
+}
+
+// Adding and removing a file is not an XML edit, so the round trip above says nothing
+// about it: buildZip has to bring Pack::added_assets in and leave Pack::removed_assets out.
+//
+// Mutates `loaded` and puts it back the way it was, so the checks that follow are not
+// looking at a pack with pending changes on it.
+int probeAssetChanges(pack::Pack& loaded, const pack::DataSource& source, const std::filesystem::path& out_dir) {
+    // Any non-XML entry will do; the writer does not care what is inside it.
+    std::string victim;
+    for (const std::string& entry : source.entries()) {
+        if (entry.size() > 4 && entry.compare(entry.size() - 4, 4, ".xml") != 0) {
+            victim = entry;
+            break;
+        }
+    }
+    if (victim.empty()) {
+        std::printf("  asset changes: skipped, no non-xml entry to remove\n");
+        return 0;
+    }
+
+    const std::string added = "mpe-probe-added.bin";
+    const std::vector<uint8_t> payload = {'m', 'p', 'e', 0x00, 0x01};
+
+    loaded.addAsset(added, payload);
+    loaded.removeAsset(victim);
+
+    std::error_code ec;
+    std::filesystem::create_directories(out_dir, ec);
+    const std::filesystem::path target = out_dir / (source.root().stem().string() + "-assets.zip");
+    std::filesystem::remove(target, ec);
+
+    int failures = 0;
+    const pack::SaveResult saved = pack::buildZip(loaded, source, target);
+
+    std::string error;
+    if (!saved.ok) {
+        std::printf("  ASSET FAIL  %s\n", saved.error.c_str());
+        ++failures;
+    } else if (!pack::commitZip(target, &error)) {
+        std::printf("  ASSET FAIL  %s\n", error.c_str());
+        ++failures;
+    } else if (std::unique_ptr<pack::DataSource> reopened = pack::open(target, &error)) {
+        if (!reopened->contains(added)) {
+            std::printf("  ASSET: %s did not make it into the archive\n", added.c_str());
+            ++failures;
+        }
+        if (reopened->contains(victim)) {
+            std::printf("  ASSET: %s survived being removed\n", victim.c_str());
+            ++failures;
+        }
+
+        std::vector<uint8_t> bytes;
+        std::string read_error;
+        if (reopened->read(added, &bytes, &read_error) && bytes != payload) {
+            std::printf("  ASSET: %s came back with different bytes\n", added.c_str());
+            ++failures;
+        }
+
+        const size_t expected = source.entries().size(); // one added, one removed
+        if (reopened->entries().size() != expected) {
+            std::printf("  ASSET: entry count %zu, expected %zu\n", reopened->entries().size(), expected);
+            ++failures;
+        }
+
+        std::printf(
+            "  asset changes: +%zu -%zu, %zu entries, removed %s\n",
+            saved.assets_added,
+            saved.assets_removed,
+            reopened->entries().size(),
+            victim.c_str());
+    } else {
+        std::printf("  ASSET REOPEN FAIL  %s\n", error.c_str());
+        ++failures;
+    }
+
+    loaded.clearAssetChanges();
     return failures;
 }
 

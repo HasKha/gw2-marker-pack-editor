@@ -3,6 +3,7 @@
 #include <pugixml.hpp>
 
 #include <cstddef>
+#include <cstdint>
 #include <filesystem>
 #include <memory>
 #include <string>
@@ -131,6 +132,34 @@ struct Pack {
     std::vector<size_t> roots;
     std::vector<Pathable> pathables;
     std::vector<Warning> warnings;
+
+    // ── Pending asset changes ─────────────────────────────────────────────────
+    // Images and other non-XML files the editor has added or marked for deletion. They
+    // cannot be applied as they are made: the DataSource is read-only, and for a zip it is
+    // the very archive still open for reading. A save resolves both and the lists are
+    // cleared.
+    struct AddedAsset {
+        std::string path; // normalized, for lookups
+        std::string original_path; // the spelling a save writes
+        std::vector<uint8_t> bytes;
+    };
+
+    std::vector<AddedAsset> added_assets;
+    std::vector<std::string> removed_assets; // normalized
+
+    const AddedAsset* findAddedAsset(std::string_view path) const;
+    bool isAssetRemoved(std::string_view path) const;
+
+    // Adds, or replaces an add already pending for the same path. Also cancels a pending
+    // removal of it: putting a file back is a replacement, not both at once.
+    void addAsset(std::string original_path, std::vector<uint8_t> bytes);
+
+    // Marks a file for deletion on the next save. A file that only ever existed as a
+    // pending add just goes away.
+    void removeAsset(std::string_view path);
+    void restoreAsset(std::string_view path);
+    bool hasAssetChanges() const { return !added_assets.empty() || !removed_assets.empty(); }
+    void clearAssetChanges();
 
     const Category* findCategory(std::string_view id) const;
     Category* findCategory(std::string_view id);

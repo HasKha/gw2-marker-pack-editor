@@ -56,6 +56,8 @@ bool revealOpens(size_t category_index) {
 // Label for a pathable. Packs rarely give markers a title, so fall back to whatever
 // identifies it: the trail's data file, the marker's icon, then its position.
 std::string pathableLabel(const pack::Pack& pack, size_t index) {
+    if (index >= pack.pathables.size()) return "(stale)";
+
     const pack::Pathable& pathable = pack.pathables[index];
 
     auto basename = [](const std::string& path) {
@@ -319,6 +321,16 @@ void drawCategoryRow(editor::State& state, size_t category_index) {
 }
 
 } // namespace
+
+std::string nodePath(const pack::Pack& pack, editor::NodeRef node) {
+    if (node.kind == editor::NodeKind::Category) {
+        return node.index < pack.categories.size() ? pack.categories[node.index].id : "(stale)";
+    }
+    if (node.index >= pack.pathables.size()) return "(stale)";
+
+    const std::string& type = pack.pathables[node.index].category_id;
+    return type.empty() ? "(no type)" : type;
+}
 
 void draw(editor::State& state) {
     if (!state.loaded) {
