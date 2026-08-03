@@ -1,7 +1,7 @@
 # MarkerPackEditor — plan
 
 Roadmap and current state. Living document: update it in the same change that makes it
-stale.
+stale. It holds *what is left and in what order* — not how anything works.
 
 Sibling docs — keep this file free of their content:
 [architecture.md](architecture.md) (how it is built and why) ·
@@ -20,28 +20,18 @@ nothing in the addon may be specific to that pack.
 
 ## Current state
 
-M0 complete and verified in game: the addon loads, the window shows, the keybind toggles
-it, and **Open Pack…** opens the native dialog without stalling the frame. It does not
-read the pack yet.
+The full loop works and is confirmed in game: **open a pack, edit it, save it back.**
 
-M1 done: the pack layer reads every pack in the markers folder — zip, XML, attributes
-with inheritance, and `.trl`.
+| Area | State |
+|---|---|
+| Read | zip and folder sources, XML, attribute inheritance, `.trl`. 937/937 files across 9 test packs |
+| Tree + properties | category tree with visibility toggles; attribute form generated from the attribute table |
+| World | billboards, trail ribbons, rotation, selection highlight, click-to-pick |
+| 3D edit | ImGuizmo translate/rotate on one selected POI, writing straight back to attributes |
+| Write | serializes the owned document; comments, order, spelling, BOM, CRLF and the file split survive. 947/947 files stable on rewrite |
 
-M2 done and verified in game: **Open Pack…** and **Open Folder…** both load, the tree
-shows the category hierarchy with selection, and the property panel edits attributes.
-
-M3 done and verified in game: markers and trails draw in the world from the MumbleLink
-camera, with per-node visibility toggles in the tree.
-
-M4 done and verified in game: markers can be clicked in the world to select them, and a
-selected POI can be dragged or rotated with ImGuizmo.
-
-M5 built, **not yet verified in game**: the editor can save. A zip is rebuilt whole with
-the previous one kept as `.bak`; a folder pack has its `.xml` files rewritten in place.
-
-**The next thing anyone should do is save a pack and load it in Blish HUD.** Everything up
-to M4 is confirmed working in game; saving is confirmed only by `mpe_probe`, which proves
-the bytes are self-consistent but not that Blish accepts them.
+Two things are unproven: **no saved pack has been loaded in Blish HUD yet**, and the
+editor has no way to add or delete anything.
 
 Before touching the pack layer, run:
 
@@ -62,194 +52,152 @@ In `C:\Users\Giorgio\Documents\Guild Wars 2\addons\blishhud\markers`:
 | `hero.blish.pack.zip` | 1918 entries, 64 xml, 140 trl, 1375 png; `_markerCategories.xml` + `map<id>.xml` | large, popular, and already TmfLib `PackWriter` output — the scale and machine-generated case |
 
 Plus `C:\Users\Giorgio\Documents\git\gw2-markers` as a **folder**, which must produce the
-same model as the zip built from it.
+same model as the zip built from it. Others in that folder are not test targets, but
+`mpe_probe` accepts them and running it over all of them is how the format claims were
+measured.
 
-Others in that folder are not test targets, but `mpe_probe` accepts them and running it
-over all of them is how the format claims in `format.md` were measured.
+---
 
-## Milestones
+## Next up
 
-### M0 — Scaffold ✅
-- [x] Repo structure, `.clang-format`, `.gitignore`, `.gitattributes`, LICENSE, README
-- [x] CMake with all FetchContent modules
-- [x] `entry.cpp` + `marker_editor` module: window, options, quick access, keybind
-- [x] `file_dialog` on a worker thread, defaulting to the Blish HUD markers folder
-- [x] Configures and builds clean -> `bin/Release/MarkerPackEditor.dll`
-- [ ] Verify it loads in game and the Open Pack dialog appears without stalling the frame
+Roughly in order. 1 is a one-off check; 2 unblocks comfortable use of everything else.
 
-Learned while building M0, now recorded in `CLAUDE.md`: imgui is 1.80 and lacks
-`BeginDisabled`; `WIN32_LEAN_AND_MEAN` breaks gw2relib; CMake 4 rejects miniz's repo
-CMakeLists so we use the release amalgamation.
+### 1. Prove a saved pack loads in Blish HUD
 
-### M1 — Read a pack
-- [x] `mpe_pack` static lib + `mpe_probe` console harness, so format work is testable
-      without launching the game
-- [x] `pack/zip` — miniz, with TmfLib's path normalization
-- [x] `pack/attributes` — the attribute table, ~75 entries with kinds, defaults and
-      inheritance
-- [x] `pack/model` — Pack / XmlFile / Category / Pathable, explicit vs effective values
-- [x] `pack/xml_reader` — pugixml -> model, case-insensitive, keeps unknown attributes,
-      records each node's source byte span
-- [x] `pack/trl` — read and write, byte-exact
-- [x] Load `gw2-markers` end to end with correct counts
-- [x] Tested against all 9 packs in the markers folder
-- [x] Decided how routes are handled — carried through untouched, see Resolved below
-- [ ] Fill in enum value lists from the gw2pathing.com attribute pages (needed by M2's
-      property panel, not by the reader)
+Save `haskha_markers`, drop it in the markers folder, load it in Blish HUD, confirm the
+markers still show. `mpe_probe` proves the bytes are self-consistent, not that Blish
+accepts them. Until this passes, saving is not really done.
 
-Measured by `mpe_probe` across all 9 packs:
+### 2. Split the UI into separate windows
 
-| | |
-|---|---|
-| XML files parsed | 937 / 937, zero failures |
-| Elements anchored to a source byte offset | 146,146 / 146,146 |
-| `.trl` files read | 8,288 / 8,288, zero failures |
-| `.trl` byte-exact round trip | 8,288 / 8,288 |
-| Largest pack modelled | `tw_ALL_IN_ONE`: 14,430 categories, 55,887 POIs, 1,196 trails |
-| Routes found | 0 |
+One window that owns both the tree and the details is wrong: it forces the gizmo into
+whatever screen the big window is not covering. Break it into windows the user places
+themselves, each independently closable, with a **View** menu listing all of them.
 
-### M2 — Tree + properties
-- [x] **Open Pack…** now actually loads the pack into the editor
-- [x] Tree top level decided: categories only, see [architecture.md](architecture.md)
-- [x] `ui/tree_window` — category hierarchy, pathables under their category, ctrl+click
-      multi-select, "Unresolved" node for dangling `type`s
-- [x] `ui/property_panel` — form generated from the attribute table; the widget for each
-      value comes from its `ValueKind`, no attribute is named in the UI code
-- [x] Add / remove attribute, with the picker filtered to what applies to the selection
-- [x] Inherited values always shown, greyed out, with the category they come from and an
-      "override" button
-- [x] Multi-select bulk edit, `<multiple values>` where the selection disagrees
-- [x] **Open Folder…** — load an unzipped pack source tree (e.g. the `gw2-markers` git
-      checkout) as well as a zip, through a shared `pack::DataSource`
-- [ ] Verify in game
-- [ ] Shift+click range select
-- [ ] Fill in enum value lists so `ValueKind::Enum` gets a dropdown instead of a text box
+| Window | Contents | State |
+|---|---|---|
+| Tree | the main window: category hierarchy, selection, visibility toggles | exists, needs to shed the details panel |
+| Details | the attribute form for the selection | exists, needs its own window |
+| Toolbar | gizmo mode, new POI, and whatever comes later | new |
+| Trail editor | see [3](#3-trail-editor) | new |
+| Resources | see [4](#4-resources-window) | new |
 
-### M3 — Draw it
-- [x] `world/camera` — view/projection from MumbleLink, world-to-screen, FOV parsed out of
-      the Mumble identity JSON
-- [x] `resources` — icons and `.trl` data pulled from the pack source on demand, budgeted
-      to a few decodes per frame so arriving on a map cannot hitch
-- [x] `world/renderer` — billboards with `iconSize`, `heightOffset`, `alpha`,
-      `color`/`tint`, `minSize`/`maxSize` clamping and distance fade
-- [x] Trail ribbons, including `isWall`, with Blish's exact half-width and UV scale
-- [x] Highlight the tree selection in the world
-- [x] Per-node visibility toggles in the tree — eye / eye-slash icons, cascading down the
-      category tree. View state only: never saved, never marks the pack dirty
-- [x] Window visibility exposed as a checkbox on the Nexus options page, so closing the
-      window is recoverable without a keybind
-- [x] Verified in game: positions, camera transform, image loading and sizes all correct
-- [x] Marker rotation, including the sign-derived UV mapping that a naive corner mapping
-      gets 180 degrees wrong
-- [ ] Select in the world to select in the tree (needs M4's picking)
-- [ ] `animspeed` — trail textures do not scroll yet
+Points to settle while doing it:
 
-### M4 — Edit in 3D
-- [x] Click-to-select in the viewport, frontmost hit wins; ctrl+click extends. Driven by a
-      Nexus `WndProc` callback, because Nexus never forwards a world click to ImGui — see
-      the note in `CLAUDE.md`
-- [x] Hover outline in the world, so picking is visible rather than guessed at
-- [x] ImGuizmo translate / rotate on a single selected POI
-- [x] Gizmo edits write straight back into the attributes, so the property panel and the
-      world stay in step
-- [x] Menu bar: File (Open Pack / Open Folder / Reload / Close / Save) and Settings
-      (3D highlight, Select in viewport); gizmo mode radio at the top of the window
-- [ ] Verify in game — particularly the rotate gizmo's axis mapping
-- [ ] Trail points selectable and draggable individually
-- [ ] Undo / redo *(deferred by request)*
+- **The menu bar cannot live in a closable window.** Today File/Settings hang off the
+  single window; if Tree can be closed, they go with it. Either the Toolbar window is the
+  one that always carries the menus, or the menus move somewhere that cannot be closed.
+- Nexus options currently expose one "show window" checkbox. It needs one per window, or
+  the View menu has to be reachable another way after everything is closed.
+- Window visibility and layout should persist — see [settings](#smaller-work-unblocked).
 
-Scale is deliberately absent: a marker has no scale transform, only `iconSize`, which the
-property panel already edits.
+### 3. Trail editor
 
-### M5 — Write a pack
-- [x] `pack/writer` — serializes the document the pack was parsed into. Comments, the
-      declaration, attribute order, original spelling, values, the BOM, CRLF and the file
-      split all survive; blank lines and intra-tag whitespace do not, so a pack reformats
-      once on first save. Still **not** modelled on TmfLib's `PackWriter`, which also
-      flattens the file structure and drops comments; see `format.md`
-- [x] `pack/trl` write, preserving `(0,0,0)` segment terminators *(done in M1)*
-- [x] Zip write, Save and Save As; folder packs update their `.xml` files in place
-- [x] Fixed-point test in `mpe_probe`, plus an opt-in `--save-test` that writes a real zip,
-      reads it back and compares
-- [x] Dirty tracking, confirm-on-close/reload with a Save-first option, previous zip kept
-      as `.bak`
-- [ ] Load a saved pack in Blish HUD and confirm it still works
+There is no trail editing at all today: a `.trl` is read, drawn, and written back
+unchanged. The window should:
 
-Measured by `mpe_probe --save-test` over all 9 packs plus the `gw2-markers` folder:
+- List the points of the selected trail, editable as numbers, with add / insert / delete
+  and reorder.
+- Select a point in the list to select it in the world, and vice versa; drag it with the
+  gizmo. (This is the "trail points selectable and draggable individually" item that has
+  been deferred twice.)
+- Generate geometry the way `gw2-markers/scripts/shared.py` does by hand today —
+  `make_circle` / `make_arc` around a centre at a radius, in game inches, plus at least a
+  straight line between two points. That script is the spec: the editor should make those
+  scripts unnecessary.
+- Respect `(0,0,0)` segment terminators as real breaks in the point list, not as points.
 
-| | |
-|---|---|
-| Files stable on rewrite | **947 of 947** — write, reparse, write again, identical |
-| Full save → reopen → compare | all 10 sources: every entry preserved, every XML identical, model unchanged |
+### 4. Resources window
 
-Stability is the property that matters now that byte equality with the original is
-deliberately given up: the first save reformats, and no save after it changes anything it
-did not have to.
+Inspect, add and remove the images a pack carries. Needs the `DataSource` to grow a write
+path for binary entries (today only `.xml` is rewritten), and needs a way to answer "what
+references this icon" so removing one is not silently destructive.
 
-### M6 — Create and edit structure
+### 5. Add and delete
+
 The writer became a serializer specifically to make this possible, so it is unblocked.
-Adding or removing a marker is now a `pugi::xml_node` insert or erase on the document the
+Adding or removing a marker is a `pugi::xml_node` insert or erase on the document the
 `Pack` owns, plus the matching entry in `Pack::pathables` / `categories`.
 
-- [ ] Add / delete a POI, a trail and a category
-- [ ] Place a marker at the player's position (MumbleLink `AvatarPosition`)
-- [ ] Create a new pack from scratch — needs a `Pack` built without a `DataSource`, and a
-      first save that writes a zip from nothing
-- [ ] Undo / redo *(deferred from M4; worth doing before add/delete gets used in anger)*
-- [ ] Trail points selectable and draggable individually
-- [ ] Settings persisted to `MarkerPackEditor/settings.json`
-- [ ] Move pack loading off the render thread if a large pack starts to stutter
-- [ ] Validation pass in the UI, reusing what `mpe_probe`'s lint already checks
-- [ ] README with screenshots, GitHub releases
+- Add / delete a POI, a trail and a category.
+- Place a marker at the player's position (MumbleLink `AvatarPosition`).
+- Create a new pack from scratch — needs a `Pack` built without a `DataSource`, and a
+  first save that writes a zip from nothing.
 
-Watch out when implementing add/delete:
+Watch out:
+
 - `Pathable::category` and every index in `State::pathables_by_category`,
-  `orphan_pathables`, `Selection` and the renderer cache are positional. Erasing from
-  `Pack::pathables` invalidates all of them — rebuild the index and clear or remap the
-  selection, or mark entries dead instead of erasing.
+  `orphan_pathables`, `Selection` and the renderer cache are **positional**. Erasing from
+  `Pack::pathables` invalidates all of them — tombstone entries instead of erasing, or
+  rebuild the index and remap the selection. Tombstoning also makes undo simpler; see
+  [6](#6-undo--redo).
 - A new node needs its `SourceNode.file` set, and a category needs a declaration appended,
-  or the writer will not know where to put it.
+  or the writer will not know where to put it. The sensible default file is the one the
+  node's siblings are already in.
 - `Pack` is move-only. That is deliberate; do not "fix" it by adding a copy constructor.
+
+### 6. Undo / redo
+
+Deferred twice. **Preliminary read: feasible, and cheaper than feared — but only if it is
+built before add/delete, not after.**
+
+The reason it is cheap is that edits do not touch the XML document. `AttributeCollection`
+on the model is the live edited state; `writer.cpp` syncs it onto `pugi::xml_node`s only
+at save. So every edit that exists today is "set or erase attribute *k* on node *n*", and
+an undo stack of `(node, key, old, new)` covers all of it — the property panel and the
+gizmo both funnel through the same attribute writes.
+
+What actually needs deciding:
+
+- **One choke point.** Every mutation already calls `State::touch()`; undo needs the
+  edits recorded there or immediately around it, not at each call site, or the "no
+  copy-paste" rule gets violated one attribute at a time.
+- **Drag coalescing.** A gizmo drag calls `touch()` every frame. One drag must become one
+  undo step — open the step on `ImGuizmo::IsUsing()`'s rising edge, close it on the
+  falling edge.
+- **Structural edits are the hard half**, and only because of positional indices. If
+  delete tombstones rather than erases, an undo is just un-tombstoning and indices never
+  move; if it erases, undo has to reparse and rebuild, which also invalidates the
+  selection. This is the argument for settling [5](#5-add-and-delete)'s deletion strategy
+  first.
+- Visibility toggles must **not** be undoable — they are view state and deliberately do
+  not bump the revision.
+
+Verdict to confirm while implementing: attribute-level undo is a small, contained change.
+Structural undo is affordable only under the tombstone design. Decide the deletion
+strategy before writing either.
+
+### 7. Selection
+
+- **Shift+click range select is not implemented anywhere.** `tree_window::selectNode`
+  handles `KeyCtrl` only; `Selection` already documents its ordering as existing so the
+  last-clicked item can anchor a range, but nothing uses it. Needs a flattened view of the
+  visible tree rows to define what "range" means.
+- Ctrl+click works in both the tree and the viewport. Shift+click in the viewport should
+  do whatever it ends up meaning in the tree, so the two stay consistent.
+- **The gizmo should appear on a multi-selection**, anchored on the first node selected,
+  with any transform applied to all selected nodes. Today `world::gizmo::draw` bails on
+  `selection.size() != 1`, and `Selection::primary()` returns the *last* item — the anchor
+  wants the first, so either add an accessor or reconsider what `primary()` means for the
+  details panel. A rotate applied to a group has to be decided too: rotate each marker in
+  place, or orbit them about the anchor.
+
+### Smaller work, unblocked
+
+- **Enum value lists** from the gw2pathing.com attribute pages, so `ValueKind::Enum` gets
+  a dropdown instead of a text box.
+- **`animspeed`** — parsed and stored, but trail textures do not scroll.
+- **Settings persisted** to `MarkerPackEditor/settings.json`: gizmo mode, the Settings
+  menu toggles, and the new per-window visibility.
+- **Validation pass in the UI**, reusing what `mpe_probe`'s lint already checks.
+- **Move pack loading off the render thread** if a large pack starts to stutter. 56k
+  markers has not been slow enough to need it.
+- **README with screenshots, GitHub releases.**
 
 ## Open questions
 
-1. **Blank lines on save.** The serializer drops whitespace-only text nodes, so the blank
-   lines `gw2-markers` uses to group POIs go away — 13 of them in `w1.xml`. They are
-   organizational in the same way comments are, and comments *are* kept. Preserving them
-   would mean keeping whitespace text nodes that contain more than one newline and
-   dropping the rest, which interacts with how pugixml indents mixed content and needs
-   testing. Raised with the user, not yet decided.
-2. **`.taco` vs `.zip`.** Both are zips. Confirm TaimiHUD and Blish HUD accept both from
-   the markers folder.
-3. **`animspeed`** is parsed and stored but the renderer does not scroll trail textures.
-4. **Occlusion.** No depth buffer, so markers draw over world geometry regardless of
-   `occlude`. Matches how a pack looks in Blish with occlude off; a DX11 backend behind
-   the renderer interface is the way out if it ever matters.
-
-### Resolved
-
-- ~~**FOV.**~~ Nexus exposes no parsed identity — there is no `DL_MUMBLE_LINK_IDENTITY`
-  and `Nexus.h` does not mention `Identity` at all. `world/camera` parses the `fov` field
-  (vertical, radians) out of the raw identity JSON in `Mumble::Data::Identity`, caching by
-  the identity string so the JSON is only touched when the game changes it.
-
-- ~~**Tree top level.**~~ Categories only; XML files never appear as nodes. Measured: of
-  31,817 categories across the 9 test packs, exactly **one** is declared in more than one
-  file, and it is a root wrapper. Files are tracked as metadata, not hierarchy. See
-  [architecture.md](architecture.md).
-- ~~**Routes.**~~ Deprecated and unimplemented upstream: TmfLib's `UnpackRoutePoi` returns
-  null with a "deprecated route type" TODO, Pathing's `StandardRoute` is an empty class,
-  and no `<route>` appears in any of the 9 packs tested. We parse and carry them through
-  untouched, and do not model them.
-
-- ~~**Round-trip fidelity.**~~ Was the biggest risk; measured with `mpe_probe` over all 9
-  packs in the markers folder. pugixml parses **937/937** XML files with zero failures,
-  and **146,146/146,146** elements resolve to a source byte offset. It cannot reproduce
-  intra-tag whitespace, so the writer **splices edits into the original bytes** rather
-  than reserializing the tree. Details in [format.md](format.md).
-
-- ~~**Coordinate units.**~~ From `Pathing/ref/hlsl/marker.hlsl`: positions are metres,
-  distance attributes are inches, conversion is `/ 0.0254`. Blish's internal Z-up space
-  is its own business and not part of the format. Still worth verifying empirically in M3.
-- ~~**ImGuizmo pin.**~~ Tag `1.83` compiles against the RaidcoreGG imgui 1.80 fork. Still
-  to confirm it *behaves* correctly there once M4 starts.
+1. Group rotate semantics — rotate each marker in place, or orbit the selection about the
+   anchor? (See [7](#7-selection).)
+2. Where the menu bar lives once the main window is closable. (See [2](#2-split-the-ui-into-separate-windows).)
+3. Delete strategy — tombstone or erase. It decides how hard undo and the index rebuild
+   are. (See [5](#5-add-and-delete) and [6](#6-undo--redo).)

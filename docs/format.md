@@ -236,8 +236,8 @@ Rotate, ScaleOnMapWithZoom, Schedule, Script, ShowHide, Size, Specialization, Te
 Tip, Toggle, TrailData, TrailScale, TriggerRange, Type, Visibility.
 
 Each page is at `https://gw2pathing.com/docs/marker-dev/attributes/<lowercase-name>`.
-Fetch these when filling in the attribute table in M1 — they give value ranges and
-semantics the source alone does not.
+Fetch these when filling in the attribute table's enum value lists — they give value
+ranges and semantics the source alone does not.
 
 `GUID` is base64 of 16 raw bytes, not canonical UUID text.
 
