@@ -29,27 +29,63 @@ include(nfd)
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${PROJECT_SOURCE_DIR}/bin/")
 
+# ── mpe_pack ──────────────────────────────────────────────────────────────────
+# Everything that understands the marker pack format, and nothing that knows about
+# Nexus, imgui or the game. Keeping this layer standalone is what lets the console
+# harness below exercise it without launching GW2.
+add_library(mpe_pack STATIC)
+
+file(GLOB_RECURSE PACK_SOURCES
+    "src/pack/*.h"
+    "src/pack/*.cpp"
+)
+target_sources(mpe_pack PRIVATE ${PACK_SOURCES})
+source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" PREFIX "" FILES ${PACK_SOURCES})
+
+target_include_directories(mpe_pack PUBLIC "src/")
+target_link_libraries(mpe_pack PUBLIC
+    glm::glm
+    pugixml::pugixml
+    miniz
+)
+
+# ── MarkerPackEditor ──────────────────────────────────────────────────────────
+# The Nexus addon itself.
 add_library(MarkerPackEditor SHARED)
 
 file(GLOB_RECURSE SOURCES
     "src/*.h"
     "src/*.cpp"
 )
+list(REMOVE_ITEM SOURCES ${PACK_SOURCES})
 target_sources(MarkerPackEditor PRIVATE ${SOURCES})
 source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" PREFIX "" FILES ${SOURCES})
 
 target_include_directories(MarkerPackEditor PRIVATE "src/")
 target_link_libraries(MarkerPackEditor PRIVATE
+    mpe_pack
     imgui
     imguizmo
     mumble
     nexus
     gw2relib
     nlohmann_json::nlohmann_json
-    glm::glm
-    pugixml::pugixml
-    miniz
     nfd
     shell32  # SHGetKnownFolderPath
     ole32    # CoTaskMemFree
 )
+
+# ── mpe_probe ─────────────────────────────────────────────────────────────────
+# Console harness: loads a pack and reports what it found, what it could not parse,
+# and whether it survives a byte-exact round trip. Run it on real packs instead of
+# guessing.
+add_executable(mpe_probe)
+
+file(GLOB_RECURSE PROBE_SOURCES
+    "test/*.h"
+    "test/*.cpp"
+)
+target_sources(mpe_probe PRIVATE ${PROBE_SOURCES})
+source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" PREFIX "" FILES ${PROBE_SOURCES})
+
+target_link_libraries(mpe_probe PRIVATE mpe_pack)

@@ -29,8 +29,23 @@ Elements (compared case-insensitively): `overlaydata`, `markercategory`, `pois`,
 
 - `markercategory` nodes nest and live directly under `overlaydata`.
 - `poi`, `trail` and `route` live under a `pois` node.
-- **`route` is a third pathable type.** TmfLib reads it; its `PackWriter` throws
-  `InvalidOperationException` on it. Our reader must not choke on it.
+- **`route` is deprecated and unimplemented.** TmfLib's `UnpackRoutePoi` is a stub whose
+  body is `// TODO: Log deprecated route type` and `return null`, so Blish silently drops
+  every route. Pathing's `StandardRoute` is an empty class. No `<route>` exists in any of
+  the 9 packs tested. We parse it and carry it through untouched; nothing more.
+
+### A trail's map id comes from its .trl, not its XML
+
+`PathablePrototypeBuilder.UnpackTrailPoi` reads the `.trl` header and then does
+`AddOrUpdateAttribute("mapid", ...)` — **overwriting** whatever the XML said. So for a
+trail the `.trl` header is authoritative and the XML `mapid` attribute is ignored.
+
+Two consequences for the renderer and the linter: a `mapid` on a `<trail>` is decorative,
+and a disagreement between the two is not an error, just a dead attribute.
+
+Also from that function: a trail whose `traildata` file is **missing from the archive, or
+fails to parse, is dropped entirely** — `UnpackTrailPoi` returns null. Same for a `<trail>`
+with no `traildata` attribute at all.
 
 Attribute names are **lowercased** on read (`NanoXmlBase`), so lookups are
 case-insensitive. Vendor prefixes (`bh-`, configured via
@@ -39,6 +54,12 @@ attribute.
 
 A POI's category is the dot-joined path of ancestor `name` attributes, matched
 case-insensitively (`PathingCategory` uses `StringComparer.OrdinalIgnoreCase`).
+
+TmfLib requires `mapid` and all three of `xpos`/`ypos`/`zpos` on a POI and bails on one
+that is missing them. **Packs contain such POIs anyway**: `hero.blish.pack` has 679
+position-less POIs carrying `ingamevisibility="0"` and an `empty.png` icon, used as
+invisible anchors for toggles and achievements. Blish drops every one of them. Our reader
+keeps them so they round-trip; the renderer must skip anything without a position.
 
 ### Explicit vs aggregated attributes
 
@@ -51,16 +72,42 @@ TmfLib treats this as a first-class distinction, and so should we:
 The property panel needs both: show the effective value, but make clear whether it is
 explicit here or inherited, and let the user override or clear it.
 
-### Real packs are not strictly valid XML
+### Real packs do parse with a conformant parser — measured
 
-TmfLib does **not** use a standard XML parser. It ships a vendored, lenient `NanoXml`
-parser. That strongly implies packs in the wild contain markup a conformant parser
-rejects, and Blish HUD accepts them anyway.
+TmfLib ships a vendored `NanoXml` rather than using a standard parser, which suggested
+packs in the wild might contain markup a conformant parser rejects. **Measured, and it
+does not hold.** `mpe_probe` over every pack in the Blish HUD markers folder:
 
-**Risk for us:** pugixml is a conformant parser. A pack that loads in Blish may fail to
-load here. Must be tested against real third-party packs in M1, not just `gw2-markers`.
-If it bites, options are pugixml's lenient parse flags, a pre-sanitizing pass, or
-porting NanoXml's tolerance.
+| | |
+|---|---|
+| Packs | 9 (`haskha_markers`, `hero.blish.pack`, `LadyElyssa`, `LadyElyssaAP`, `tw_ALL_IN_ONE`, `TehsTrails`, `moar`, `apo_markers`, `PEAK`) |
+| XML files | 937 |
+| pugixml parse failures | **0** |
+| Elements | 146,146 |
+| Elements resolvable to a source byte offset | **146,146** |
+
+So NanoXml is presumably historical or a performance choice, not a tolerance
+requirement. pugixml is fine. Re-run the probe if a pack ever fails to load.
+
+### What pugixml does *not* preserve
+
+It keeps the document tree faithfully — comments, attribute order, attribute casing,
+values, and the whitespace *between* elements all survive a parse/serialize cycle,
+provided you parse with `parse_full | parse_ws_pcdata` and serialize with `format_raw`.
+
+Three things are lost, because pugixml does not model them:
+
+1. **Whitespace inside a tag.** ` />` comes back as `/>`, and an attribute list wrapped
+   across several lines is collapsed onto one. Hand-authored packs use both heavily.
+2. **The UTF-8 BOM**, stripped on parse. `hero.blish.pack` and other TmfLib-written packs
+   have one.
+3. **CRLF line endings**, normalized to LF on parse as the XML spec requires.
+
+2 and 3 are recoverable by recording the shape of the source and reapplying it on save.
+1 is not recoverable from the tree — which is why the writer splices into the original
+bytes rather than reserializing. Every element anchors to its source offset via
+`pugi::xml_node::offset_debug()`, so this is straightforward: keep the original file
+bytes, and rewrite only the byte ranges of nodes the user actually edited.
 
 ## Coordinates and units
 
@@ -158,6 +205,17 @@ semantics the source alone does not.
 
 `GUID` is base64 of 16 raw bytes, not canonical UUID text.
 
+### GUID is optional, and applies to trails too
+
+`StandardMarker`/`StandardTrail`'s `Populate_Guid` both accept a `guid` attribute and, when
+it is absent or empty, assign `Guid.NewGuid()` — **a fresh random value on every load**.
+
+The GUID is the key for `BehaviorStates`: `_hiddenUntilMapChange`, `_hiddenUntilTimer`,
+`_hiddenInShard`. So it is what makes the `behavior` attribute's "hide until map
+change / daily reset / once per instance" persistence stick, and what lets Blish remember
+an individually hidden object. Without a stable GUID those states silently reset each
+session. A pathable with no `behavior` and no need for per-object hiding loses nothing.
+
 ## TRL
 
 Per `TmfLib/Reader/TrlFileReader.cs` and `gw2-markers/scripts/trltools.py`:
@@ -174,6 +232,23 @@ float32 x, y, z    repeated to EOF, in the same order as xpos/ypos/zpos
 - A zero-length or truncated file yields no sections rather than an error.
 - TmfLib reads the three floats and assigns them `x, z, y` before building its `Vector3`
   — that is its Y-up to Z-up swap, not a quirk of the file layout.
+
+### Terminator conventions vary, including within one pack — measured
+
+There is no single convention, so a writer that normalizes will dirty files it did not
+edit. Observed across 8,288 `.trl` files:
+
+- Most files terminate **every** segment, including the last, so the stream ends with a
+  `(0,0,0)`.
+- `gw2-markers`' own `Data/febe/*.trl`, written by its `scripts/trltools.py`, use **no
+  terminators at all** — while `Data/*.trl` in the same pack do. Both conventions ship
+  together.
+- Real packs contain **runs** of consecutive terminators, and occasionally leading ones.
+  One file in `tw_ALL_IN_ONE` carries 22 degenerate terminators.
+
+So `pack/trl` stores a per-segment `terminators_after` count plus a `leading_terminators`
+count, rather than inferring separators on write. With that, all 8,288 files round-trip
+byte-for-byte.
 
 ## Writing
 

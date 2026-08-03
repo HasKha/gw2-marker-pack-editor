@@ -20,10 +20,24 @@ nothing in the addon may be specific to that pack.
 
 ## Current state
 
-M0 done: the addon builds and produces `bin/Release/MarkerPackEditor.dll`, opens a
-window, and can pick a pack file through a native dialog. It does not read the pack yet.
+M0 complete and verified in game: the addon loads, the window shows, the keybind toggles
+it, and **Open Pack…** opens the native dialog without stalling the frame. It does not
+read the pack yet.
 
-Next up is M1.
+M1 essentially done: the pack layer reads every pack in the markers folder — zip, XML,
+attributes with inheritance, and `.trl`. Nothing is wired into the addon UI yet; the
+reader is exercised by `mpe_probe`, not by the game.
+
+### Test packs
+
+In `C:\Users\Giorgio\Documents\Guild Wars 2\addons\blishhud\markers`:
+
+| Pack | Shape | Why |
+|---|---|---|
+| `haskha_markers.zip` | 80 entries, 10 hand-authored xml at the root, `Data/`, comments throughout | the round-trip target — losing a comment here is a bug |
+| `hero.blish.pack.zip` | 1918 entries, 64 xml, 140 trl, 1375 png; `_markerCategories.xml` + `map<id>.xml` | large, popular, and already TmfLib `PackWriter` output — the scale and machine-generated case |
+
+Others in that folder are not test targets.
 
 ## Milestones
 
@@ -40,17 +54,31 @@ Learned while building M0, now recorded in `CLAUDE.md`: imgui is 1.80 and lacks
 CMakeLists so we use the release amalgamation.
 
 ### M1 — Read a pack
-- [ ] `pack/zip` — list and extract entries from a `.zip`/`.taco` with miniz, using
-      TmfLib's path normalization (lowercase, `\`→`/`, collapse `//`, trim leading `.`)
-- [ ] `pack/attributes` — the attribute table, seeded from `format.md` and filled in
-      from the gw2pathing.com attribute pages
-- [ ] `pack/model` — Pack / XmlFile / Category / Poi / Trail / Route, with explicit vs
-      aggregated attribute resolution
-- [ ] `pack/xml_reader` — pugixml -> model, case-insensitive, keeps unknown attributes
-- [ ] `pack/trl` — read `.trl`, splitting into segments at `(0,0,0)`
-- [ ] Load `gw2-markers` end to end and log a correct count of categories/POIs/trails
-- [ ] **Test against third-party packs**, not just `gw2-markers` — TmfLib's lenient
-      NanoXml parser implies real packs exist that pugixml will reject
+- [x] `mpe_pack` static lib + `mpe_probe` console harness, so format work is testable
+      without launching the game
+- [x] `pack/zip` — miniz, with TmfLib's path normalization
+- [x] `pack/attributes` — the attribute table, ~75 entries with kinds, defaults and
+      inheritance
+- [x] `pack/model` — Pack / XmlFile / Category / Pathable, explicit vs effective values
+- [x] `pack/xml_reader` — pugixml -> model, case-insensitive, keeps unknown attributes,
+      records each node's source byte span
+- [x] `pack/trl` — read and write, byte-exact
+- [x] Load `gw2-markers` end to end with correct counts
+- [x] Tested against all 9 packs in the markers folder
+- [x] Decided how routes are handled — carried through untouched, see Resolved below
+- [ ] Fill in enum value lists from the gw2pathing.com attribute pages (needed by M2's
+      property panel, not by the reader)
+
+Measured by `mpe_probe` across all 9 packs:
+
+| | |
+|---|---|
+| XML files parsed | 937 / 937, zero failures |
+| Elements anchored to a source byte offset | 146,146 / 146,146 |
+| `.trl` files read | 8,288 / 8,288, zero failures |
+| `.trl` byte-exact round trip | 8,288 / 8,288 |
+| Largest pack modelled | `tw_ALL_IN_ONE`: 14,430 categories, 55,887 POIs, 1,196 trails |
+| Routes found | 0 |
 
 ### M2 — Tree + properties
 - [ ] `ui/tree_window` — hierarchy with selection
@@ -98,21 +126,25 @@ CMakeLists so we use the release amalgamation.
    alongside a "Categories" section. Categories can be split across files, which argues
    against (b) as the only view. Leaning towards (a) as the default with a toggle for a
    file-oriented view — decide during M2.
-2. **Round-trip fidelity.** The biggest open risk. pugixml preserves comments and
-   attribute order but not original whitespace/indentation, and it is a *conformant*
-   parser where TmfLib is deliberately lenient. Two failure modes to test in M1:
-   packs that pugixml refuses to parse at all, and packs that parse but do not
-   reserialize byte-identically. Fallback for the second is surgical text edits over the
-   original bytes; for the first, lenient parse flags or a sanitizing pass.
-3. **FOV.** `Mumble::Identity::FOV` comes from the identity JSON, which Nexus parses;
+2. **FOV.** `Mumble::Identity::FOV` comes from the identity JSON, which Nexus parses;
    confirm whether Nexus exposes a parsed `Identity` via DataLink or whether we parse
    `Mumble::Data::Identity` ourselves.
-4. **`.taco` vs `.zip`.** Both are zips. Confirm TaimiHUD and Blish HUD accept both from
+3. **`.taco` vs `.zip`.** Both are zips. Confirm TaimiHUD and Blish HUD accept both from
    the markers folder.
-5. **Routes.** `route` is a real pathable type that TmfLib reads and its writer refuses.
-   Decide in M1 whether we model routes properly or just carry them through untouched.
+*(nothing blocking)*
 
 ### Resolved
+
+- ~~**Routes.**~~ Deprecated and unimplemented upstream: TmfLib's `UnpackRoutePoi` returns
+  null with a "deprecated route type" TODO, Pathing's `StandardRoute` is an empty class,
+  and no `<route>` appears in any of the 9 packs tested. We parse and carry them through
+  untouched, and do not model them.
+
+- ~~**Round-trip fidelity.**~~ Was the biggest risk; measured with `mpe_probe` over all 9
+  packs in the markers folder. pugixml parses **937/937** XML files with zero failures,
+  and **146,146/146,146** elements resolve to a source byte offset. It cannot reproduce
+  intra-tag whitespace, so the writer **splices edits into the original bytes** rather
+  than reserializing the tree. Details in [format.md](format.md).
 
 - ~~**Coordinate units.**~~ From `Pathing/ref/hlsl/marker.hlsl`: positions are metres,
   distance attributes are inches, conversion is `/ 0.0254`. Blish's internal Z-up space

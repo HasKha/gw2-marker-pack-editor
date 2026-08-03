@@ -30,6 +30,23 @@ New for this project:
 | `ImGuizmo` | 3D translate/rotate/scale gizmo |
 | `glm` | vec3/mat4 for the projection and the matrices ImGuizmo consumes |
 
+## Build targets
+
+Three targets, because the pack layer is worth keeping testable outside the game:
+
+| Target | Kind | Contents |
+|---|---|---|
+| `mpe_pack` | static lib | `src/pack/**` — the format. Links only pugixml, miniz, glm. **Knows nothing about Nexus, imgui or the game.** |
+| `MarkerPackEditor` | shared lib | everything else in `src/` — the addon. Links `mpe_pack` plus imgui, ImGuizmo, Nexus, Mumble, gw2relib, NFD |
+| `mpe_probe` | console exe | `test/**` — harness that loads real packs and reports what it found. Links `mpe_pack` only |
+
+`mpe_probe` is how format work gets verified: it runs against every pack in the Blish HUD
+markers folder without launching GW2. Run it after any change to `src/pack/`.
+
+```
+mpe_probe "<...>/markers/haskha_markers.zip" "<...>/markers/hero.blish.pack.zip"
+```
+
 ## Module layout
 
 ```
@@ -37,14 +54,14 @@ src/
   entry.cpp            Nexus entry, AddonDefinition, hands DataLinks to marker_editor
   marker_editor.*      lifecycle, window registration, settings, wires everything together
   file_dialog.*        NFD on a worker thread (never block the render thread)
-  pack/
+  textures.*           pack images -> Nexus textures -> ImTextureID  (addon layer: needs Nexus)
+  pack/                — mpe_pack, no Nexus/imgui dependency
     attributes.*       THE attribute table: name, kind, default, inheritance
-    model.*            Pack / XmlFile / Category / Poi / Trail / Route in memory
-    xml_reader.*       pugixml -> model
-    xml_writer.*       model -> pugixml, preserving comments/order/casing
-    trl.*              .trl read/write
-    zip.*              miniz read/write of the pack archive
-    textures.*         pack images -> Nexus textures -> ImTextureID
+    model.*            Pack / XmlFile / Category / Pathable, explicit vs effective values
+    xml_reader.*       pugixml -> model, recording each node's source byte span
+    xml_writer.*       splices edits into the original bytes (see format.md)
+    trl.*              .trl read/write, byte-exact
+    zip.*              miniz read of the pack archive, TmfLib path normalization
   ui/
     tree_window.*      hierarchical tree, selection
     property_panel.*   attribute form + "add attribute"
@@ -52,6 +69,8 @@ src/
     camera.*           MumbleLink -> view/projection, world->screen, screen ray
     renderer.*         billboards + trail ribbons into an ImGui draw list
     gizmo.*            ImGuizmo integration, picking
+test/
+  pack_probe.cpp       the harness
 ```
 
 ## The attribute table is the core abstraction

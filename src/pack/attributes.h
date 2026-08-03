@@ -1,0 +1,80 @@
+#pragma once
+
+#include <glm/vec3.hpp>
+
+#include <array>
+#include <cstdint>
+#include <string>
+#include <string_view>
+#include <vector>
+
+namespace pack {
+
+// How an attribute's text is meant to be interpreted. The value itself is always stored
+// verbatim as written in the file; this only says how to read it and how the property
+// panel should present it.
+enum class ValueKind : uint8_t {
+    String,
+    Int,
+    Float,
+    Bool, // "1"/"0", also accepts true/false
+    Color, // RRGGBB or AARRGGBB, optional leading '#'
+    Path, // resource path into the archive
+    Guid, // base64 of 16 raw bytes
+    Vec3, // "x,y,z"
+    Enum, // one of a fixed set of words
+};
+
+enum AppliesTo : uint8_t {
+    kAppliesCategory = 1 << 0,
+    kAppliesPoi = 1 << 1,
+    kAppliesTrail = 1 << 2,
+    kAppliesPathable = kAppliesPoi | kAppliesTrail,
+    kAppliesAll = kAppliesCategory | kAppliesPoi | kAppliesTrail,
+};
+
+// One row of the attribute table. Adding an attribute to the format means adding exactly
+// one of these — parsing, serialization, the property form and the "add attribute"
+// picker all read from the same table.
+struct AttributeDef {
+    std::string_view key; // canonical lowercase lookup key
+    std::string_view display; // spelling used when *we* write a new attribute
+    ValueKind kind = ValueKind::String;
+    uint8_t applies_to = kAppliesAll;
+    bool inherits = false; // set on a category, inherited by its markers
+    std::string_view default_value; // as it would appear in XML; empty means none
+    std::string_view doc;
+};
+
+const std::vector<AttributeDef>& attributeTable();
+
+// Case-insensitive lookup. Returns nullptr for attributes we do not know about; those
+// are still kept verbatim on the node so they survive a round trip.
+const AttributeDef* findAttribute(std::string_view name);
+
+// Lowercases a name to get its lookup key.
+//
+// Vendor prefixes ("bh-...") are deliberately NOT stripped: TmfLib folds them into the
+// base attribute, but an editor has to keep `bh-color` and `color` distinct so both
+// round-trip and both show separately in the property panel.
+std::string attributeKey(std::string_view name);
+
+// ── Value parsing ─────────────────────────────────────────────────────────────
+// All are permissive in the same places the reference implementations are, and all
+// leave *out untouched and return false when the text does not parse.
+
+bool parseInt(std::string_view text, int* out);
+bool parseFloat(std::string_view text, float* out);
+bool parseBool(std::string_view text, bool* out);
+bool parseColor(std::string_view text, uint32_t* out_argb);
+bool parseVec3(std::string_view text, glm::vec3* out);
+bool parseGuid(std::string_view text, std::array<uint8_t, 16>* out);
+
+std::string guidToBase64(const std::array<uint8_t, 16>& guid);
+
+// Typed reads with the table's documented default as the fallback.
+int defaultInt(std::string_view key, int fallback = 0);
+float defaultFloat(std::string_view key, float fallback = 0.0f);
+bool defaultBool(std::string_view key, bool fallback = false);
+
+} // namespace pack

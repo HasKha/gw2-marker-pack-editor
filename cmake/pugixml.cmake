@@ -6,7 +6,7 @@ include(FetchContent)
 FetchContent_Declare(
     pugixml
     GIT_REPOSITORY https://github.com/zeux/pugixml.git
-    GIT_TAG v1.15
+    GIT_TAG v1.16
 )
 
 set(PUGIXML_BUILD_TESTS OFF CACHE BOOL "" FORCE)

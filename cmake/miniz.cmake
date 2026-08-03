@@ -10,7 +10,7 @@ include(FetchContent)
 # a self-contained miniz.c/miniz.h pair with no build system at all.
 FetchContent_Declare(
     miniz
-    URL https://github.com/richgel999/miniz/releases/download/3.0.2/miniz-3.0.2.zip
+    URL https://github.com/richgel999/miniz/releases/download/3.1.2/miniz-3.1.2.zip
 )
 
 FetchContent_MakeAvailable(miniz)

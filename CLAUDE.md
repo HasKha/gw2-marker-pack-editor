@@ -85,7 +85,14 @@ hold in any change:
 
 - **Nexus ships imgui 1.80** (RaidcoreGG fork). It predates `BeginDisabled`/`EndDisabled`,
   `ImGuiTableFlags`-era tables, and much else from later versions. Check `imgui.h` in
-  `build/_deps/imgui-src/` before reaching for a modern API.
+  `build/_deps/imgui-src/` before reaching for a modern API. This is fixed by Nexus — we
+  cannot upgrade it, so every other dependency has to live with it.
+- **ImGuizmo is built gizmo-only, on purpose.** Its CMakeLists compiles all six widgets in
+  the repo as one target and four of them require imgui 1.90+. `cmake/imguizmo.cmake`
+  declares a target over `src/ImGuizmo.cpp` alone and defines `ImDrawFlags_Closed=1` for
+  it — the one thing the gizmo needs from imgui 1.82+, and numerically identical to the
+  `bool closed` argument 1.80 expects. ImGuizmo itself carries `IMGUI_VERSION_NUM` guards
+  for old imgui, so the gizmo is genuinely supported there.
 - **Do not define `WIN32_LEAN_AND_MEAN`.** It drops winsock from `<Windows.h>`, and
   gw2relib's `Game/VdfContext.h` uses `IN_ADDR`. `NOMINMAX` is fine and is set globally.
 - **CMake 4 rejects `cmake_minimum_required` below 3.5.** miniz's repo CMakeLists trips
