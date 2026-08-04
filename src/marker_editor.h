@@ -6,8 +6,9 @@
 namespace marker_editor {
 
 constexpr const char* ADDON_NAME = "Marker Pack Editor";
+// Nexus resolves this to <game>/addons/MarkerPackEditor and creates it; settings.cpp puts
+// settings.json inside.
 constexpr const char* SETTINGS_FOLDER = "MarkerPackEditor";
-constexpr const char* SETTINGS_FILE = "MarkerPackEditor/settings.json";
 constexpr const char* QUICKACCESS_ID = "QA_MarkerPackEditor";
 constexpr const char* KEYBIND_TOGGLE_ID = "KB_MarkerPackEditor_Toggle";
 constexpr const char* KEYBIND_UNDO_ID = "KB_MarkerPackEditor_Undo";

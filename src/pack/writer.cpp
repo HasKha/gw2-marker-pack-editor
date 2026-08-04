@@ -135,7 +135,7 @@ std::filesystem::path pendingPath(const std::filesystem::path& target) {
 
 } // namespace
 
-SaveResult buildZip(const Pack& pack, const DataSource& source, const std::filesystem::path& target) {
+SaveResult buildZip(const Pack& pack, const DataSource* source, const std::filesystem::path& target) {
     SaveResult result;
 
     RewrittenFiles rewritten = rewriteAll(pack);
@@ -159,19 +159,30 @@ SaveResult buildZip(const Pack& pack, const DataSource& source, const std::files
     std::unordered_map<std::string, size_t> pending_adds;
     for (size_t i = 0; i < pack.added_assets.size(); ++i) pending_adds.emplace(pack.added_assets[i].path, i);
 
+    // XML the source did not have. Every file of a pack created in the editor is one of
+    // these, and so would a file added to an existing pack be.
+    std::unordered_map<std::string, const std::string*> pending_files;
+    for (const XmlFile& file : pack.files) {
+        auto it = rewritten.by_path.find(file.path);
+        if (it != rewritten.by_path.end()) pending_files.emplace(file.path, &it->second);
+    }
+
     bool failed = false;
-    for (const std::string& entry : source.entries()) {
+    for (const std::string& entry : source ? source->entries() : std::vector<std::string>{}) {
         if (pack.isAssetRemoved(entry)) {
             ++result.assets_removed;
             continue;
         }
 
-        std::string name = source.originalName(entry);
+        std::string name = source->originalName(entry);
         if (name.empty()) name = entry;
 
         const std::string* replacement = nullptr;
         auto it = rewritten.by_path.find(entry);
-        if (it != rewritten.by_path.end()) replacement = &it->second;
+        if (it != rewritten.by_path.end()) {
+            replacement = &it->second;
+            pending_files.erase(entry);
+        }
 
         auto added = pending_adds.find(entry);
 
@@ -190,7 +201,7 @@ SaveResult buildZip(const Pack& pack, const DataSource& source, const std::files
             ++result.assets_added;
         } else {
             std::string read_error;
-            if (!source.read(entry, &bytes, &read_error)) {
+            if (!source->read(entry, &bytes, &read_error)) {
                 result.warnings.push_back("Skipped " + entry + ": " + read_error);
                 continue;
             }
@@ -199,6 +210,21 @@ SaveResult buildZip(const Pack& pack, const DataSource& source, const std::files
         }
 
         if (!mz_zip_writer_add_mem(&zip, name.c_str(), data, size, MZ_DEFAULT_COMPRESSION)) {
+            result.error = "Could not write " + name + " to the archive";
+            failed = true;
+            break;
+        }
+        ++result.entries_written;
+    }
+
+    for (const XmlFile& file : pack.files) {
+        if (failed) break;
+
+        auto it = pending_files.find(file.path);
+        if (it == pending_files.end()) continue;
+
+        const std::string& name = file.original_path.empty() ? file.path : file.original_path;
+        if (!mz_zip_writer_add_mem(&zip, name.c_str(), it->second->data(), it->second->size(), MZ_DEFAULT_COMPRESSION)) {
             result.error = "Could not write " + name + " to the archive";
             failed = true;
             break;

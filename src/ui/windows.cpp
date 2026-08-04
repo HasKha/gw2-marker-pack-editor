@@ -13,17 +13,18 @@ constexpr size_t kCount = static_cast<size_t>(Id::Count);
 struct Definition {
     const char* title; // with the ##id suffix
     const char* label; // what the View menu and the options page call it
+    const char* key; // what the settings file calls it
     bool visible_by_default;
 };
 
 // One row per window, in View menu order. Everything a window needs to be known by lives
 // here rather than being spelled out at each use.
 constexpr Definition kWindows[kCount] = {
-    {"Marker Pack Editor##MPE_Tree", "Tree", true},
-    {"Marker Details##MPE_Details", "Details", true},
-    {"Marker Toolbar##MPE_Toolbar", "Toolbar", true},
-    {"Trail Editor##MPE_Trail", "Trail Editor", false},
-    {"Pack Resources##MPE_Resources", "Resources", false},
+    {"Marker Pack Editor##MPE_Tree", "Tree", "tree", true},
+    {"Marker Details##MPE_Details", "Details", "details", true},
+    {"Marker Toolbar##MPE_Toolbar", "Toolbar", "toolbar", true},
+    {"Trail Editor##MPE_Trail", "Trail Editor", "trail_editor", false},
+    {"Pack Resources##MPE_Resources", "Resources", "resources", false},
 };
 
 bool shown[kCount] = {
@@ -59,6 +60,10 @@ void hideAll() {
 
 const char* title(Id id) {
     return kWindows[indexOf(id)].title;
+}
+
+const char* key(Id id) {
+    return kWindows[indexOf(id)].key;
 }
 
 bool& visible(Id id) {

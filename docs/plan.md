@@ -36,6 +36,7 @@ the edited markers show correctly in Blish HUD.**
 | Create | Add POI, Trail and Category from the toolbar, placed by the selection. A POI copies the selected marker's attributes; a trail comes with an empty `.trl` |
 | Delete | a marker, or a category and its whole subtree, from the details window. Tombstoned, never erased |
 | Undo / redo | Ctrl+Z / Ctrl+Y and an Edit menu, over every edit there is: attributes, add, delete, images, trails |
+| Settings | the Settings toggles, gizmo mode, which windows are open and where the browsers start, kept in `settings.json` |
 | Write | serializes the owned document; comments, order, spelling, BOM, CRLF and the file split survive. 947/947 files stable on rewrite |
 
 A pack can be edited end to end and grown new branches. What it cannot do is start from
@@ -70,19 +71,13 @@ measured.
 
 Roughly in order.
 
-### 1. Settings persisted
-
-To `MarkerPackEditor/settings.json` — the constant is already declared and unused, and
-nlohmann_json is already a dependency. Gizmo mode, the Settings menu toggles and per-window
-visibility all reset on every game start today, which is the last daily papercut.
-
-### 2. A pack from scratch
+### 1. A pack from scratch
 
 Needs a `Pack` built without a `DataSource` — one empty XML file, an `<OverlayData>` root —
 and a first save that writes a zip from nothing. Everything after that already works:
 categories, markers, trails and images can all be added to it.
 
-### 3. Whatever is still thin
+### 2. Whatever is still thin
 
 - Reorder a trail's points. Adding and deleting them already work.
 - More shape tools beside the circle: a straight line between two points is the obvious
@@ -116,8 +111,8 @@ editor, and undo/redo. What is left is not doubt about whether it works, but the
   game before deciding it is fine.
 - A trail is still moved a point at a time; there is no "move the whole trail" handle. The
   gizmo skips trail pathables themselves.
-- Window positions are whatever ImGui's `imgui.ini` remembers; visibility is not persisted
-  at all yet — see [1](#1-settings-persisted).
+- Window positions are whatever ImGui's `imgui.ini` remembers. Visibility is ours and is
+  persisted; position is not, deliberately.
 - `saveToDirectory`'s asset half — writing added images into a folder pack and deleting
   removed ones from disk — is the one write path `mpe_probe` does not exercise, because the
   test folder is a real git checkout. Both halves are confirmed by hand instead.

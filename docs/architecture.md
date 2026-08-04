@@ -62,6 +62,7 @@ src/
   editor_state.*       State: the open Pack, selection, per-node visibility, settings
   file_dialog.*        NFD on a worker thread (never block the render thread)
   resources.*          icons + .trl pulled from the pack source on demand, budgeted
+  settings.*           the few things that outlive a session, as settings.json
   pack/                — mpe_pack, no Nexus/imgui dependency
     source.*           DataSource: a pack is a zip OR a folder. Path normalization.
     zip.*              DataSource over a .zip/.taco, via miniz
@@ -173,6 +174,21 @@ rather than through `resources`, whose reads are budgeted a few per frame: a men
 that silently does nothing because the budget was spent is worse than one extra read.
 `Save to file` exports a copy outside the pack — for a zip pack there is no other coherent
 meaning, since a single `.trl` cannot be written back into the archive on its own.
+
+## Settings compare rather than notify
+
+`settings::update` runs every frame and writes only when something it persists has moved.
+Nothing calls it to announce a change, which means a setting added later cannot be added to
+the file and then forgotten at the six places that might change it. The comparison is field
+by field against the last written values rather than against a rebuilt snapshot, so the
+common case — nothing happened — allocates nothing.
+
+What is persisted is small on purpose: the Settings menu toggles, the gizmo mode, which
+windows are open, and where the two file browsers should start. **Nothing about a pack**
+goes in there. Visibility toggles, the selection and the open trail all belong to a pack
+rather than to the editor, and a settings file that remembered them would be wrong the
+moment a different pack was opened. Window *positions* are ImGui's business and already
+live in its own `imgui.ini`.
 
 ## Undo records images, not inverses
 

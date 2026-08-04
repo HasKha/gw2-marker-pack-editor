@@ -525,7 +525,7 @@ int probeSaveRoundTrip(const pack::Pack& loaded, const pack::DataSource& source,
     const std::filesystem::path target = out_dir / (source.root().stem().string() + "-resaved.zip");
     std::filesystem::remove(target, ec);
 
-    const pack::SaveResult saved = pack::buildZip(loaded, source, target);
+    const pack::SaveResult saved = pack::buildZip(loaded, &source, target);
     if (!saved.ok) {
         std::printf("  SAVE FAIL  %s\n", saved.error.c_str());
         return 1;
@@ -640,7 +640,7 @@ int probeAssetChanges(pack::Pack& loaded, const pack::DataSource& source, const 
     std::filesystem::remove(target, ec);
 
     int failures = 0;
-    const pack::SaveResult saved = pack::buildZip(loaded, source, target);
+    const pack::SaveResult saved = pack::buildZip(loaded, &source, target);
 
     std::string error;
     if (!saved.ok) {
@@ -728,7 +728,7 @@ int probeAddPathable(pack::Pack& loaded, const pack::DataSource& source, const s
     std::filesystem::remove(target, ec);
 
     int failures = 0;
-    const pack::SaveResult saved = pack::buildZip(loaded, source, target);
+    const pack::SaveResult saved = pack::buildZip(loaded, &source, target);
 
     std::string error;
     if (!saved.ok) {
@@ -840,7 +840,7 @@ int probeRemove(pack::Pack& loaded, const pack::DataSource& source, const std::f
     const std::filesystem::path target = out_dir / (source.root().stem().string() + "-removed.zip");
     std::filesystem::remove(target, ec);
 
-    const pack::SaveResult saved = pack::buildZip(loaded, source, target);
+    const pack::SaveResult saved = pack::buildZip(loaded, &source, target);
     std::string error;
     if (!saved.ok) {
         std::printf("  REMOVE FAIL  %s\n", saved.error.c_str());
@@ -952,7 +952,7 @@ int probeAddCategory(pack::Pack& loaded, const pack::DataSource& source, const s
     const std::filesystem::path target = out_dir / (source.root().stem().string() + "-category.zip");
     std::filesystem::remove(target, ec);
 
-    const pack::SaveResult saved = pack::buildZip(loaded, source, target);
+    const pack::SaveResult saved = pack::buildZip(loaded, &source, target);
     std::string error;
     if (!saved.ok) {
         std::printf("  ADD CATEGORY FAIL  %s\n", saved.error.c_str());
@@ -1029,6 +1029,85 @@ int probePack(const std::filesystem::path& file) {
     return (stats.parse_failed > 0 || model_failures > 0) ? 1 : 0;
 }
 
+// A pack created in the editor has no DataSource, so its save is the one path that writes
+// an archive out of nothing but the model. Needs no input pack, so it runs once.
+int probeNewPack(const std::filesystem::path& out_dir) {
+    pack::Pack created = pack::createPack("markers.xml", "mpeprobe", "MPE Probe");
+    if (created.categories.size() != 1 || created.files.size() != 1) {
+        std::printf("  NEW PACK FAIL  createPack gave %zu files, %zu categories\n", created.files.size(), created.categories.size());
+        return 1;
+    }
+
+    const size_t child = created.addCategory(0, "branch", 0);
+    if (child == pack::kNoIndex) {
+        std::printf("  NEW PACK FAIL  could not add a category to it\n");
+        return 1;
+    }
+
+    pack::AttributeCollection attributes;
+    attributes.set("type", created.categories[child].id);
+    attributes.set("xpos", "1");
+    attributes.set("ypos", "2");
+    attributes.set("zpos", "3");
+    if (created.addPathable(pack::PathableType::Poi, child, pack::kNoIndex, 0, std::move(attributes)) == pack::kNoIndex) {
+        std::printf("  NEW PACK FAIL  could not add a marker to it\n");
+        return 1;
+    }
+
+    std::error_code ec;
+    std::filesystem::create_directories(out_dir, ec);
+    const std::filesystem::path target = out_dir / "new-pack.zip";
+    std::filesystem::remove(target, ec);
+
+    // No source: everything in the archive comes from the model.
+    const pack::SaveResult saved = pack::buildZip(created, nullptr, target);
+    std::string error;
+    if (!saved.ok) {
+        std::printf("  NEW PACK FAIL  %s\n", saved.error.c_str());
+        return 1;
+    }
+    if (!pack::commitZip(target, &error)) {
+        std::printf("  NEW PACK FAIL  %s\n", error.c_str());
+        return 1;
+    }
+
+    std::unique_ptr<pack::DataSource> reopened = pack::open(target, &error);
+    pack::Pack reloaded;
+    if (!reopened || !pack::loadPack(*reopened, &reloaded, &error)) {
+        std::printf("  NEW PACK REOPEN FAIL  %s\n", error.c_str());
+        return 1;
+    }
+
+    int failures = 0;
+    if (reloaded.categories.size() != 2 || reloaded.pathables.size() != 1) {
+        std::printf(
+            "  NEW PACK: reloaded %zu categories and %zu markers, expected 2 and 1\n",
+            reloaded.categories.size(),
+            reloaded.pathables.size());
+        ++failures;
+    }
+    if (reloaded.pathables.size() == 1 && reloaded.pathables[0].category == pack::kNoIndex) {
+        std::printf("  NEW PACK: the marker's type did not resolve\n");
+        ++failures;
+    }
+
+    const pack::Category* root = reloaded.findCategory("mpeprobe");
+    if (!root) {
+        std::printf("  NEW PACK: the root category did not come back\n");
+        ++failures;
+    } else if (const std::string* display = root->attributes.value("displayname"); !display || *display != "MPE Probe") {
+        std::printf("  NEW PACK: DisplayName did not survive\n");
+        ++failures;
+    }
+
+    std::printf(
+        "\n=== new pack ===\n  %zu entries, %zu categories, %zu markers, reopens clean\n",
+        reopened->entries().size(),
+        reloaded.categories.size(),
+        reloaded.pathables.size());
+    return failures;
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -1052,6 +1131,8 @@ int main(int argc, char** argv) {
     for (const std::filesystem::path& pack : packs) {
         failures += probePack(pack);
     }
+
+    if (!save_test_dir.empty()) failures += probeNewPack(save_test_dir);
 
     std::printf("\n");
     return failures == 0 ? 0 : 1;

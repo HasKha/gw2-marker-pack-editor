@@ -75,7 +75,9 @@ void forget(const std::string& path) {
 }
 
 Image image(const std::string& path) {
-    if (!api || !data_source || path.empty()) return {};
+    // No source at all is normal for a pack created in the editor: everything it has is a
+    // pending asset until the first save.
+    if (!api || path.empty()) return {};
 
     const std::string key = pack::normalizePath(path);
     auto it = textures.find(key);
@@ -92,7 +94,7 @@ Image image(const std::string& path) {
     // Added in the editor and not saved yet: those bytes are the truth for this path.
     if (const pack::Pack::AddedAsset* added = pending_pack ? pending_pack->findAddedAsset(key) : nullptr) {
         bytes = added->bytes;
-    } else if (!data_source->read(key, &bytes, &error) || bytes.empty()) {
+    } else if (!data_source || !data_source->read(key, &bytes, &error) || bytes.empty()) {
         // The file genuinely is not in the pack. Remember that so it is not retried.
         textures.emplace(key, Image{});
         return {};
@@ -122,7 +124,7 @@ ImTextureID texture(const std::string& path) {
 }
 
 const pack::trl::Trail* trail(const std::string& path) {
-    if (!data_source || path.empty()) return nullptr;
+    if (path.empty()) return nullptr;
 
     const std::string key = pack::normalizePath(path);
     auto it = trails.find(key);
@@ -143,7 +145,7 @@ const pack::trl::Trail* trail(const std::string& path) {
         bytes = added->bytes;
         have_bytes = true;
     } else {
-        have_bytes = data_source->read(key, &bytes, &error);
+        have_bytes = data_source && data_source->read(key, &bytes, &error);
     }
 
     if (have_bytes) {

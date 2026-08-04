@@ -10,6 +10,9 @@ enum class Id { Tree, Details, Toolbar, TrailEditor, Resources, Count };
 // Window title, including the ##id suffix that keeps ImGui's state per window.
 const char* title(Id id);
 
+// Stable name for the settings file. Unlike the enum's order, this may not change.
+const char* key(Id id);
+
 bool& visible(Id id);
 
 // Hides everything, or brings back whatever was last hidden. What the keybind and the

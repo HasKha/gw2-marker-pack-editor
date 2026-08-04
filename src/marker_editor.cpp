@@ -16,6 +16,7 @@
 #include "pack/xml_reader.h"
 #include "pathable_edit.h"
 #include "resources.h"
+#include "settings.h"
 #include "trail_edit.h"
 #include "ui/property_panel.h"
 #include "ui/resource_window.h"
@@ -72,11 +73,17 @@ DialogPurpose dialog_purpose = DialogPurpose::OpenFile;
 // The confirmation belongs to whichever window's menu asked for it. An ImGui popup is
 // scoped to the window that opened it, and the same menu bar is now drawn in every large
 // window, so without an owner three windows would fight over one popup id.
-enum class PendingAction { None, Close, Reload };
+enum class PendingAction { None, Close, Reload, NewPack };
 PendingAction pending_action = PendingAction::None;
 bool confirm_pending = false; // the action is waiting on the modal
 bool open_confirm_popup = false; // OpenPopup on the owner's next frame
 ui::windows::Id confirm_owner = ui::windows::Id::Tree;
+
+// New Pack asks for a few details first, in a popup owned the same way.
+bool open_new_pack_popup = false;
+char new_pack_name[64] = "mypack";
+char new_pack_display[96] = "My Pack";
+char new_pack_file[64] = "markers.xml";
 
 void log(ELogLevel level, const std::string& message) {
     api->Log(level, ADDON_NAME, message.c_str());
@@ -222,14 +229,9 @@ void savePackTo(const std::filesystem::path& target, bool as_directory) {
         return;
     }
 
-    const pack::DataSource* source = resources::source();
-    if (!source) {
-        status_message = "Save failed: the pack's source is no longer open";
-        log(ELogLevel_WARNING, status_message);
-        return;
-    }
-
-    const pack::SaveResult result = pack::buildZip(state.pack, *source, target);
+    // Null for a pack made in the editor: there is nothing to carry forward, so the archive
+    // is built from the pack's own files alone.
+    const pack::SaveResult result = pack::buildZip(state.pack, resources::source(), target);
     if (!result.ok) {
         status_message = "Save failed: " + result.error;
         log(ELogLevel_WARNING, status_message);
@@ -271,6 +273,39 @@ void savePack() {
     savePackTo(open_pack_path, state.pack.from_directory);
 }
 
+// A pack that exists only in memory: no source, no path, and dirty from the start, so
+// closing it warns and saving it has to go through Save As.
+void newPack(const std::string& file_name, const std::string& category_name, const std::string& display_name) {
+    state.reset();
+    trail_edit::close();
+    undo::clear();
+    resources::setSource(nullptr);
+    open_pack_path.clear();
+
+    state.pack = pack::createPack(file_name, category_name, display_name);
+    if (state.pack.categories.empty()) {
+        // The only way this fails is a name that cannot be an id segment.
+        state.reset();
+        status_message = "That name will not work: it is empty or has a dot in it.";
+        return;
+    }
+
+    state.rebuildIndex();
+    state.loaded = true;
+    // Building it is not an edit anyone should be able to undo their way out of.
+    undo::clear();
+    state.dirty = true;
+
+    if (!state.pack.categories.empty()) {
+        const editor::NodeRef root{editor::NodeKind::Category, 0};
+        state.selection.set(root);
+        state.requestReveal(root);
+    }
+
+    status_message = "New pack. Save As writes it to a zip.";
+    log(ELogLevel_INFO, status_message);
+}
+
 void closePack() {
     state.reset();
     trail_edit::close();
@@ -306,6 +341,9 @@ void drawMenuBar(ui::windows::Id owner) {
     if (!ImGui::BeginMenuBar()) return;
 
     if (ImGui::BeginMenu("File")) {
+        if (ImGui::MenuItem("New Pack...")) requestAction(PendingAction::NewPack, owner);
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("Starts an empty pack. It lives in memory until you Save As.");
+
         if (ImGui::MenuItem("Open Pack...", nullptr, false, !file_dialog::isPending())) {
             dialog_purpose = DialogPurpose::OpenFile;
             file_dialog::requestOpenFile(blishhudMarkersFolder(), {{"Marker pack", "zip,taco"}});
@@ -317,16 +355,26 @@ void drawMenuBar(ui::windows::Id owner) {
 
         ImGui::Separator();
 
-        if (ImGui::MenuItem("Reload", nullptr, false, state.loaded)) requestAction(PendingAction::Reload, owner);
+        // A pack that has never been saved has nothing to reload from.
+        if (ImGui::MenuItem("Reload", nullptr, false, state.loaded && !open_pack_path.empty())) {
+            requestAction(PendingAction::Reload, owner);
+        }
         if (ImGui::MenuItem("Close", nullptr, false, state.loaded)) requestAction(PendingAction::Close, owner);
 
         if (ImGui::MenuItem("Save", nullptr, false, state.loaded && state.dirty)) {
-            savePack();
+            if (open_pack_path.empty()) {
+                // Never saved: Save is Save As, or it would have nowhere to write.
+                dialog_purpose = DialogPurpose::SaveAs;
+                file_dialog::requestSaveFile(blishhudMarkersFolder(), "markers.zip", {{"Marker pack", "zip,taco"}});
+            } else {
+                savePack();
+            }
         }
         if (ImGui::IsItemHovered() && state.loaded) {
             ImGui::SetTooltip(
-                state.pack.from_directory ? "Rewrites the changed .xml files in place."
-                                          : "Rebuilds the archive. The previous one is kept as .bak.");
+                open_pack_path.empty()      ? "Asks where to put it: this pack has never been saved."
+                : state.pack.from_directory ? "Rewrites the changed .xml files in place."
+                                            : "Rebuilds the archive. The previous one is kept as .bak.");
         }
 
         if (ImGui::MenuItem("Save As...", nullptr, false, state.loaded && !file_dialog::isPending())) {
@@ -394,6 +442,9 @@ void applyPendingAction() {
     switch (pending_action) {
     case PendingAction::Close: closePack(); break;
     case PendingAction::Reload: openPack(open_pack_path); break;
+    // Needs answers before it can do anything, and a popup belongs to the window whose
+    // menu asked — the same one the discard prompt would have used.
+    case PendingAction::NewPack: open_new_pack_popup = true; break;
     case PendingAction::None: break;
     }
     pending_action = PendingAction::None;
@@ -438,6 +489,44 @@ void drawConfirmPopup(ui::windows::Id owner) {
     }
 }
 
+// The details a pack cannot be started without: what its one category is called, and what
+// file to put it in. Everything else is added afterwards like any other edit.
+void drawNewPackPopup(ui::windows::Id owner) {
+    if (owner != confirm_owner) return;
+
+    constexpr const char* kTitle = "New pack";
+
+    if (open_new_pack_popup) {
+        ImGui::OpenPopup(kTitle);
+        open_new_pack_popup = false;
+    }
+
+    if (!ImGui::BeginPopupModal(kTitle, nullptr, ImGuiWindowFlags_AlwaysAutoResize)) return;
+
+    ImGui::PushItemWidth(260.0f);
+    ImGui::InputText("Name", new_pack_name, sizeof(new_pack_name));
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("The root category's id. Everything in the pack sits under it. No dots.");
+
+    ImGui::InputText("Display name", new_pack_display, sizeof(new_pack_display));
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("What Blish HUD shows in the marker list.");
+
+    ImGui::InputText("File", new_pack_file, sizeof(new_pack_file));
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("The .xml inside the zip. More files can be added later by hand.");
+    ImGui::PopItemWidth();
+
+    ImGui::TextDisabled("Lives in memory until Save As writes the zip.");
+    ImGui::Separator();
+
+    if (ImGui::Button("Create", ImVec2(110, 0))) {
+        newPack(new_pack_file, new_pack_name, new_pack_display);
+        if (state.loaded) ImGui::CloseCurrentPopup();
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Cancel", ImVec2(110, 0))) ImGui::CloseCurrentPopup();
+
+    ImGui::EndPopup();
+}
+
 // ── Windows ───────────────────────────────────────────────────────────────────
 
 // Begins one editor window and its menu bar. Returns false when the window is hidden or
@@ -455,6 +544,7 @@ bool beginWindow(ui::windows::Id id, const ImVec2& first_size, bool with_menus) 
     if (with_menus) {
         drawMenuBar(id);
         drawConfirmPopup(id);
+        drawNewPackPopup(id);
     }
     return true;
 }
@@ -487,6 +577,15 @@ void drawDetailsWindow() {
     ImGui::End();
 }
 
+// imgui 1.80 predates BeginDisabled (see CLAUDE.md), so a disabled button is one drawn dim
+// whose press is ignored. It still hovers, which is what carries the reason why.
+bool button(const char* label, bool enabled) {
+    if (!enabled) ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.4f);
+    const bool pressed = ImGui::Button(label);
+    if (!enabled) ImGui::PopStyleVar();
+    return pressed && enabled;
+}
+
 // Everything the create buttons need to agree on before they do anything.
 bool canCreate(bool needs_character) {
     if (!state.loaded) {
@@ -503,12 +602,13 @@ bool canCreate(bool needs_character) {
 // Adds a marker where the character is standing. Placement follows the selection, so the
 // button needs no target of its own — see pathable_edit::addPoi.
 void drawAddPoi() {
-    if (!ImGui::Button("Add POI")) {
+    if (!button("Add POI", state.loaded)) {
         if (ImGui::IsItemHovered()) {
             ImGui::SetTooltip(
-                "Adds a marker at the character's position.\n"
-                "With a category selected it goes in at the end;\n"
-                "with a marker selected it follows it and copies its attributes.");
+                state.loaded ? "Adds a marker at the character's position.\n"
+                               "With a category selected it goes in at the end;\n"
+                               "with a marker selected it follows it and copies its attributes."
+                             : "Open or create a pack first.");
         }
         return;
     }
@@ -524,11 +624,12 @@ void drawAddPoi() {
 }
 
 void drawAddTrail() {
-    if (!ImGui::Button("Add Trail")) {
+    if (!button("Add Trail", state.loaded)) {
         if (ImGui::IsItemHovered()) {
             ImGui::SetTooltip(
-                "Adds an empty trail and a .trl for it to point at.\n"
-                "Add its points in the Trail Editor.");
+                state.loaded ? "Adds an empty trail and a .trl for it to point at.\n"
+                               "Add its points in the Trail Editor."
+                             : "Open or create a pack first.");
         }
         return;
     }
@@ -551,15 +652,16 @@ bool open_category_popup = false;
 char new_category_name[64] = "";
 
 void drawAddCategory() {
-    if (ImGui::Button("Add Category...")) {
+    if (button("Add Category...", state.loaded)) {
         if (canCreate(false)) {
             new_category_name[0] = '\0';
             open_category_popup = true;
         }
     } else if (ImGui::IsItemHovered()) {
         ImGui::SetTooltip(
-            "Adds a category under the selected one,\n"
-            "or at the top level with nothing selected.");
+            state.loaded ? "Adds a category under the selected one,\n"
+                           "or at the top level with nothing selected."
+                         : "Open or create a pack first.");
     }
 
     constexpr const char* kTitle = "New category";
@@ -666,6 +768,8 @@ void render() {
 
     resources::beginFrame();
     undo::beginFrame();
+    // Compares and writes only when something moved, so this is free on almost every frame.
+    settings::update(state.settings, last_folder, last_image_folder);
 
     // The trail editor's window is what makes a trail "open", and a closed window draws
     // nothing — including its followSelection — so the close has to happen out here. The
@@ -753,6 +857,9 @@ void load(AddonAPI* _api, NexusLinkData* _nexus_link, Mumble::Data* _mumble_link
     // Images added in the editor are not in the DataSource until a save, so the cache has
     // to be able to see the pack's pending adds. `state` outlives every load.
     resources::setPendingAssets(&state.pack);
+
+    settings::init(api);
+    settings::load(&state.settings, &last_folder, &last_image_folder);
 
     api->Renderer.Register(ERenderType_Render, render);
     api->Renderer.Register(ERenderType_OptionsRender, drawOptions);

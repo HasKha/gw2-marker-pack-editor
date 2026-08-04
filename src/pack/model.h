@@ -251,4 +251,12 @@ struct Pack {
     void restoreCategorySubtree(size_t index, std::vector<size_t>* out_restored);
 };
 
+// Builds an empty pack in memory: one XML file holding an `<OverlayData>` root and a single
+// root category, ready for categories and markers to be added to it.
+//
+// It has **no DataSource** — there is nothing on disk to read from — so it must be saved
+// with Save As before it can be reopened, and everything that reads through a source has to
+// cope with there not being one.
+Pack createPack(std::string_view file_name, std::string_view category_name, std::string_view display_name);
+
 } // namespace pack

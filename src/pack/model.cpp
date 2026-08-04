@@ -239,6 +239,35 @@ void repointDeclarations(Pack& pack, size_t category, pugi::xml_node node, size_
 
 } // namespace
 
+Pack createPack(std::string_view file_name, std::string_view category_name, std::string_view display_name) {
+    Pack pack;
+
+    XmlFile file;
+    file.path = normalizePath(file_name);
+    file.original_path = std::string(file_name);
+    // What a hand-authored pack looks like on this platform. The BOM is left off: nothing
+    // needs it, and it is the kind of thing that surprises a text editor later.
+    file.format.declaration = true;
+    file.format.crlf = true;
+    file.document = std::make_unique<pugi::xml_document>();
+
+    pugi::xml_node declaration = file.document->append_child(pugi::node_declaration);
+    declaration.append_attribute("version") = "1.0";
+    declaration.append_attribute("encoding") = "utf-8";
+    file.document->append_child("OverlayData");
+
+    pack.files.push_back(std::move(file));
+
+    const size_t root = pack.addCategory(kNoIndex, category_name, 0);
+    if (root != kNoIndex && !display_name.empty()) {
+        // Model-only: the writer appends anything the declaration does not already spell
+        // out, and this is the category's last (and only) declaration.
+        pack.categories[root].attributes.set("DisplayName", std::string(display_name));
+    }
+
+    return pack;
+}
+
 size_t Pack::addCategory(size_t parent, std::string_view name, size_t file) {
     const std::string key = attributeKey(name);
     // A dot would split the id into two levels that do not exist, and an empty segment

@@ -43,11 +43,14 @@ struct SaveResult {
 // save never loses what it did not understand. `source` must still be open for that.
 // Pack::added_assets are written in as well, and Pack::removed_assets are left out.
 //
+// `source` is null for a pack created in the editor, which has nothing to carry forward:
+// the archive is then made of the pack's own files and its added assets.
+//
 // commitZip then swaps it into place. It is separate because the usual target *is* the
 // pack we have open, and on Windows a live read handle blocks the rename: the caller has
 // to release the source in between. Building first also means a failure never leaves a
 // half-written pack where a working one used to be.
-SaveResult buildZip(const Pack& pack, const DataSource& source, const std::filesystem::path& target);
+SaveResult buildZip(const Pack& pack, const DataSource* source, const std::filesystem::path& target);
 
 // Moves `<target>.writing` over `target`, keeping any previous file as `<target>.bak`.
 bool commitZip(const std::filesystem::path& target, std::string* error);
