@@ -487,6 +487,19 @@ void drawDetailsWindow() {
     ImGui::End();
 }
 
+// Everything the create buttons need to agree on before they do anything.
+bool canCreate(bool needs_character) {
+    if (!state.loaded) {
+        status_message = "Open a pack first.";
+        return false;
+    }
+    if (needs_character && !frame_camera.valid) {
+        status_message = "No character position: MumbleLink has no data yet.";
+        return false;
+    }
+    return true;
+}
+
 // Adds a marker where the character is standing. Placement follows the selection, so the
 // button needs no target of its own — see pathable_edit::addPoi.
 void drawAddPoi() {
@@ -500,14 +513,7 @@ void drawAddPoi() {
         return;
     }
 
-    if (!state.loaded) {
-        status_message = "Open a pack first.";
-        return;
-    }
-    if (!frame_camera.valid) {
-        status_message = "No character position: MumbleLink has no data yet.";
-        return;
-    }
+    if (!canCreate(true)) return;
 
     const size_t added = pathable_edit::addPoi(state, frame_camera.player);
     if (added == pack::kNoIndex) {
@@ -517,10 +523,86 @@ void drawAddPoi() {
     }
 }
 
+void drawAddTrail() {
+    if (!ImGui::Button("Add Trail")) {
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip(
+                "Adds an empty trail and a .trl for it to point at.\n"
+                "Add its points in the Trail Editor.");
+        }
+        return;
+    }
+
+    if (!canCreate(true)) return;
+
+    const size_t added = pathable_edit::addTrail(state, static_cast<int32_t>(frame_camera.map_id));
+    if (added == pack::kNoIndex) {
+        status_message = "Select a category or a marker to say where the trail goes.";
+        return;
+    }
+
+    // Nothing to look at until it has points, so send the user where they are added.
+    ui::windows::visible(ui::windows::Id::TrailEditor) = true;
+    status_message = "Added an empty trail. Add points in the Trail Editor.";
+}
+
+// A category needs a name, so the button opens a prompt rather than acting on the spot.
+bool open_category_popup = false;
+char new_category_name[64] = "";
+
+void drawAddCategory() {
+    if (ImGui::Button("Add Category...")) {
+        if (canCreate(false)) {
+            new_category_name[0] = '\0';
+            open_category_popup = true;
+        }
+    } else if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip(
+            "Adds a category under the selected one,\n"
+            "or at the top level with nothing selected.");
+    }
+
+    constexpr const char* kTitle = "New category";
+    if (open_category_popup) {
+        ImGui::OpenPopup(kTitle);
+        open_category_popup = false;
+    }
+
+    if (!ImGui::BeginPopupModal(kTitle, nullptr, ImGuiWindowFlags_AlwaysAutoResize)) return;
+
+    const editor::NodeRef selected = state.selection.primary();
+    if (selected.kind == editor::NodeKind::Category && selected.index < state.pack.categories.size()) {
+        ImGui::TextDisabled("Under %s", state.pack.categories[selected.index].id.c_str());
+    } else {
+        ImGui::TextDisabled("At the top level");
+    }
+
+    ImGui::SetNextItemWidth(260.0f);
+    const bool submitted = ImGui::InputText("Name", new_category_name, sizeof(new_category_name), ImGuiInputTextFlags_EnterReturnsTrue);
+    ImGui::TextDisabled("Becomes the last part of the category's id. No dots.");
+    ImGui::Separator();
+
+    const bool create = ImGui::Button("Create", ImVec2(110, 0)) || submitted;
+    ImGui::SameLine();
+    if (ImGui::Button("Cancel", ImVec2(110, 0))) ImGui::CloseCurrentPopup();
+
+    if (create) {
+        const size_t added = pathable_edit::addCategory(state, new_category_name);
+        if (added == pack::kNoIndex) {
+            status_message = "Could not add that category: the name is empty, has a dot in it, or is already taken.";
+        } else {
+            status_message = "Added category " + state.pack.categories[added].id;
+            ImGui::CloseCurrentPopup();
+        }
+    }
+
+    ImGui::EndPopup();
+}
+
 // No menu bar: this one is a strip of controls, and a menu bar over it would be taller
 // than its contents.
 void drawToolbarWindow() {
-    if (!beginWindow(ui::windows::Id::Toolbar, ImVec2(430, 80), false)) return;
+    if (!beginWindow(ui::windows::Id::Toolbar, ImVec2(460, 120), false)) return;
 
     ImGui::TextUnformatted("Gizmo");
     ImGui::SameLine();
@@ -537,6 +619,10 @@ void drawToolbarWindow() {
 
     ImGui::Separator();
     drawAddPoi();
+    ImGui::SameLine();
+    drawAddTrail();
+    ImGui::SameLine();
+    drawAddCategory();
 
     ImGui::End();
 }

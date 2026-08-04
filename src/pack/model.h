@@ -222,6 +222,15 @@ struct Pack {
     // State::pathableAdded.
     size_t addPathable(PathableType type, size_t category, size_t after, size_t file, AttributeCollection attributes);
 
+    // Creates a category under `parent` (kNoIndex for a root one) and returns its index, or
+    // kNoIndex when the name is unusable or already taken at that level.
+    //
+    // The element is nested inside the parent's declaration — which is what makes it a
+    // child — so `file` only decides anything for a root category, and for a child it is
+    // taken from whichever declaration the element goes into. Appended to `categories`, so
+    // no existing index moves.
+    size_t addCategory(size_t parent, std::string_view name, size_t file);
+
     // Tombstones a pathable and lifts its element out of the document.
     void removePathable(size_t index);
 

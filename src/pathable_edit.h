@@ -21,6 +21,16 @@ namespace pathable_edit {
 // next to.
 size_t addPoi(editor::State& state, const glm::vec3& position);
 
+// Adds a trail under the same rules, pointing at a new empty `.trl` written into the pack
+// beside whatever trail data it already ships. `map_id` goes into the file's header. The
+// trail editor fills it in from there; a trail with no points draws nothing yet.
+size_t addTrail(editor::State& state, int32_t map_id);
+
+// Adds a category named `name` under the selected one — or under the selected marker's
+// category, or at the root when nothing is selected. Returns its index, or pack::kNoIndex
+// when the name is empty, contains a dot, or is already taken at that level.
+size_t addCategory(editor::State& state, const std::string& name);
+
 // What deleting `node` would take with it. A category takes its whole subtree: the
 // categories nested under it and every marker in any of them.
 struct Removal {

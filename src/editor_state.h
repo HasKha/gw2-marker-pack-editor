@@ -126,6 +126,10 @@ struct State {
     // index, selection entry and cache slot valid.
     void pathableAdded(size_t index, size_t after);
 
+    // The same for a new category. Its place in the tree comes from the model's
+    // parent/children, so all this has to do is grow the per-category vectors alongside it.
+    void categoryAdded(size_t index);
+
     void reset();
 
     // Marks the pack edited. Every mutation goes through here so the title bar, the save

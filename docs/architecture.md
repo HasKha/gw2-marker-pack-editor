@@ -246,6 +246,13 @@ all positional, so inserting into the middle of the pathable vector would shift 
 after it and invalidate all four at once. `Pack::addPathable` therefore **appends** to the
 vector, always, and no existing index ever moves.
 
+Categories are appended the same way, and nest by *element*: a new category's
+`<MarkerCategory>` goes inside one of its parent's declarations, which is what makes it a
+child — so the file it lands in is the parent's, not one of its own choosing. Only a root
+category picks a file, and it goes in before the `<POIs>` block where a reader expects
+categories to be. A new trail comes with an empty `.trl` written as a pending asset, since
+a `traildata` pointing at nothing reads as a broken trail rather than an empty one.
+
 Where the marker appears is decided in the two places that actually care:
 
 - **In the file**, by `pugi::xml_node::insert_child_after` on the sibling it should follow,

@@ -126,19 +126,22 @@ const char* elementName(PathableType type) {
     return "POI";
 }
 
+// The file's <OverlayData>. Null when it has none, which the reader would already have
+// warned about.
+pugi::xml_node overlayRoot(pugi::xml_document* document) {
+    if (!document) return {};
+
+    for (pugi::xml_node child : document->children()) {
+        if (child.type() != pugi::node_element) continue;
+        if (attributeKey(child.name()) == "overlaydata") return child;
+    }
+    return {};
+}
+
 // The <POIs> block a new element goes into, created at the end of <OverlayData> when the
 // file has none. Returns a null node when the document has no root to hang it off.
 pugi::xml_node poisBlock(pugi::xml_document* document) {
-    if (!document) return {};
-
-    pugi::xml_node root;
-    for (pugi::xml_node child : document->children()) {
-        if (child.type() != pugi::node_element) continue;
-        if (attributeKey(child.name()) == "overlaydata") {
-            root = child;
-            break;
-        }
-    }
+    pugi::xml_node root = overlayRoot(document);
     if (!root) return {};
 
     for (pugi::xml_node child : root.children()) {
@@ -235,6 +238,73 @@ void repointDeclarations(Pack& pack, size_t category, pugi::xml_node node, size_
 }
 
 } // namespace
+
+size_t Pack::addCategory(size_t parent, std::string_view name, size_t file) {
+    const std::string key = attributeKey(name);
+    // A dot would split the id into two levels that do not exist, and an empty segment
+    // would give the category no name at all.
+    if (key.empty() || key.find('.') != std::string::npos) return kNoIndex;
+
+    const std::string id = parent < categories.size() ? categories[parent].id + "." + key : key;
+    if (findCategory(id) != nullptr) return kNoIndex;
+
+    pugi::xml_node node;
+    size_t target_file = file;
+
+    if (parent < categories.size()) {
+        // Inside the parent's declaration: nesting is what makes it a child. Prefer the
+        // requested file, but any declaration will do rather than nothing.
+        pugi::xml_node under;
+        for (const SourceNode& declaration : categories[parent].declarations) {
+            if (!declaration.node) continue;
+            if (!under || declaration.file == file) {
+                under = declaration.node;
+                target_file = declaration.file;
+            }
+            if (declaration.file == file) break;
+        }
+        if (!under) return kNoIndex;
+        node = under.append_child("MarkerCategory");
+    } else {
+        if (target_file >= files.size()) return kNoIndex;
+        pugi::xml_node root = overlayRoot(files[target_file].document.get());
+        if (!root) return kNoIndex;
+
+        // Before the markers, where a reader expects the categories to be.
+        pugi::xml_node pois;
+        for (pugi::xml_node child : root.children()) {
+            if (child.type() == pugi::node_element && attributeKey(child.name()) == "pois") {
+                pois = child;
+                break;
+            }
+        }
+        node = pois ? root.insert_child_before("MarkerCategory", pois) : root.append_child("MarkerCategory");
+    }
+
+    if (!node) return kNoIndex;
+    node.append_attribute("name") = std::string(name).c_str();
+
+    const size_t resolved_parent = parent < categories.size() ? parent : kNoIndex;
+
+    Category category;
+    category.name = std::string(name);
+    category.key = key;
+    category.id = id;
+    category.parent = resolved_parent;
+    category.attributes.set("name", std::string(name));
+    category.declarations.push_back(SourceNode{target_file, node});
+
+    const size_t index = categories.size();
+    categories.push_back(std::move(category));
+
+    if (resolved_parent == kNoIndex) {
+        roots.push_back(index);
+    } else {
+        categories[resolved_parent].children.push_back(index);
+    }
+
+    return index;
+}
 
 void Pack::removePathable(size_t index) {
     if (index >= pathables.size() || pathables[index].grave.deleted) return;

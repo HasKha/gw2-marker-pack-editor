@@ -84,6 +84,17 @@ void State::pathableAdded(size_t index, size_t after) {
     touch();
 }
 
+void State::categoryAdded(size_t index) {
+    if (index >= pack.categories.size()) return;
+
+    // Both are indexed by category, so they have to keep step with the model's own vector.
+    pathables_by_category.resize(pack.categories.size());
+    category_hidden.resize(pack.categories.size(), 0);
+
+    rebuildVisibility();
+    touch();
+}
+
 // Visibility is a property of tree rows. A trail point is not one, so it answers "shown,
 // not hidden" rather than indexing a vector it has no place in.
 bool State::isHidden(NodeRef node) const {

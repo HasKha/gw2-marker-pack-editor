@@ -33,13 +33,13 @@ the edited markers show correctly in Blish HUD.**
 | World | billboards, trail ribbons, rotation, selection highlight, click-to-pick for markers and trail points; nothing drawn while the map is open |
 | Selection | ctrl+click in the tree and the world, shift+click ranges in the tree and the point list, world picks reveal the node in the tree |
 | 3D edit | ImGuizmo translate/rotate on the selection — markers and trail points alike — anchored on the first node selected; a group rotation orbits the rest about it |
-| Create | Add POI at the character's position, placed by the selection and copying its attributes |
+| Create | Add POI, Trail and Category from the toolbar, placed by the selection. A POI copies the selected marker's attributes; a trail comes with an empty `.trl` |
 | Delete | a marker, or a category and its whole subtree, from the details window. Tombstoned, never erased |
 | Undo / redo | Ctrl+Z / Ctrl+Y and an Edit menu, over every edit there is: attributes, add, delete, images, trails |
 | Write | serializes the owned document; comments, order, spelling, BOM, CRLF and the file split survive. 947/947 files stable on rewrite |
 
-The gap: creating a **trail** or a **category** — everything else about building a pack from
-existing parts is there.
+A pack can be edited end to end and grown new branches. What it cannot do is start from
+nothing: **there is no "new pack"**, so everything begins from a pack that already exists.
 
 Before touching the pack layer, run:
 
@@ -70,38 +70,46 @@ measured.
 
 Roughly in order.
 
-### 1. The rest of create
+### 1. Settings persisted
 
-- Add a **trail** and a **category**. A trail needs a `.trl` to point at — an empty one
-  written as a pending asset, which the trail editor can then fill.
-- Insert a point into a trail, and reorder points. Deleting them already works.
+To `MarkerPackEditor/settings.json` — the constant is already declared and unused, and
+nlohmann_json is already a dependency. Gizmo mode, the Settings menu toggles and per-window
+visibility all reset on every game start today, which is the last daily papercut.
+
+### 2. A pack from scratch
+
+Needs a `Pack` built without a `DataSource` — one empty XML file, an `<OverlayData>` root —
+and a first save that writes a zip from nothing. Everything after that already works:
+categories, markers, trails and images can all be added to it.
+
+### 3. Whatever is still thin
+
+- Reorder a trail's points. Adding and deleting them already work.
 - More shape tools beside the circle: a straight line between two points is the obvious
   next one. `gw2-markers/scripts/shared.py` remains the spec.
-- Create a new pack from scratch — needs a `Pack` built without a `DataSource`, and a
-  first save that writes a zip from nothing.
+- **Enum value lists** from the gw2pathing.com attribute pages, so `ValueKind::Enum` gets a
+  dropdown instead of a text box.
+- **Validation pass in the UI**, reusing what `mpe_probe`'s lint already checks. Worth more
+  now that new content can be authored in the editor rather than only edited.
+- **`animspeed`** — parsed and stored, but trail textures do not scroll.
+- **Move pack loading off the render thread** if a large pack starts to stutter. 56k
+  markers has not been slow enough to need it.
+- **README with screenshots, GitHub releases.**
 
-Watch out:
+Watch out, for anything that adds to the pack:
 
-- A new category needs a declaration appended, or the writer will not know where to put it.
 - `Pack` is move-only, and `Category` / `Pathable` are now move-only too, since a tombstone
   owns a document. That is deliberate; do not "fix" it by adding copy constructors.
 - Anything new that mutates the pack needs an `undo::Step` around it and the matching
   capture inside, or it will be the one edit Ctrl+Z cannot take back.
+- `State::pathables_by_category` and `category_hidden` are indexed by category, so a new
+  category has to grow them — `State::categoryAdded` is the one place that does.
 
-### Built, not yet exercised in game
+### Known rough edges
 
-Confirmed in game: adding and deleting markers and categories, and removing an image
-through the resources window (including the folder save that deletes it from disk). Still
-undriven:
-
-- **The trail editor**, end to end: the map id field, the point list, the handles in the
-  world, dragging a point with the gizmo, delete, reload, export, and add circle.
-- **Undo / redo.** Its pack-layer half is covered without the game: `mpe_probe` deletes a
-  marker and a category subtree, restores both, and requires every file to serialize
-  byte-identically to before the delete. What is unverified is the *feel* — whether a drag
-  really comes back in one Ctrl+Z, and whether the Nexus binds behave in game.
-
-Known rough edges:
+Everything built so far has now been driven in game: the tree and the property form, the
+world view, selection and the gizmo, save, add and delete, the resources window, the trail
+editor, and undo/redo. What is left is not doubt about whether it works, but these:
 
 - A group rotation stamps `rotate` onto markers that had none, which turns a billboard
   into a fixed-orientation quad. That is what orbiting means, but it is worth a look in
@@ -109,7 +117,7 @@ Known rough edges:
 - A trail is still moved a point at a time; there is no "move the whole trail" handle. The
   gizmo skips trail pathables themselves.
 - Window positions are whatever ImGui's `imgui.ini` remembers; visibility is not persisted
-  at all yet — see [settings](#smaller-work-unblocked).
+  at all yet — see [1](#1-settings-persisted).
 - `saveToDirectory`'s asset half — writing added images into a folder pack and deleting
   removed ones from disk — is the one write path `mpe_probe` does not exercise, because the
   test folder is a real git checkout. Both halves are confirmed by hand instead.
@@ -118,18 +126,8 @@ Known rough edges:
   turns out to be wanted.
 - **Add POI stores the raw character position.** A copied `heightoffset` then lifts the
   marker off that spot when it draws, which is either what you want or a surprise.
-
-### Smaller work, unblocked
-
-- **Enum value lists** from the gw2pathing.com attribute pages, so `ValueKind::Enum` gets
-  a dropdown instead of a text box.
-- **`animspeed`** — parsed and stored, but trail textures do not scroll.
-- **Settings persisted** to `MarkerPackEditor/settings.json`: gizmo mode, the Settings
-  menu toggles, and the new per-window visibility.
-- **Validation pass in the UI**, reusing what `mpe_probe`'s lint already checks.
-- **Move pack loading off the render thread** if a large pack starts to stutter. 56k
-  markers has not been slow enough to need it.
-- **README with screenshots, GitHub releases.**
+- **A new root category lands in the pack's first XML file.** It has no parent declaration
+  to nest inside, so something has to choose, and nothing better suggests itself.
 
 ## Open questions
 

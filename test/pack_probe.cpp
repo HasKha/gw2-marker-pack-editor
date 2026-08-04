@@ -204,6 +204,7 @@ int probeSaveRoundTrip(const pack::Pack& loaded, const pack::DataSource& source,
 int probeAssetChanges(pack::Pack& loaded, const pack::DataSource& source, const std::filesystem::path& out_dir);
 int probeAddPathable(pack::Pack& loaded, const pack::DataSource& source, const std::filesystem::path& out_dir);
 int probeRemove(pack::Pack& loaded, const pack::DataSource& source, const std::filesystem::path& out_dir);
+int probeAddCategory(pack::Pack& loaded, const pack::DataSource& source, const std::filesystem::path& out_dir);
 
 // The writer reformats a pack once, so byte equality with the original is not the test.
 // What must hold is that writing is a fixed point: serialize, parse the result, serialize
@@ -505,6 +506,7 @@ int probeModel(const pack::DataSource& archive) {
     // Last, because these leave the model changed.
     if (!save_test_dir.empty()) {
         failures += probeAddPathable(loaded, archive, save_test_dir);
+        failures += probeAddCategory(loaded, archive, save_test_dir);
         failures += probeRemove(loaded, archive, save_test_dir);
     }
 
@@ -910,6 +912,82 @@ int probeRemove(pack::Pack& loaded, const pack::DataSource& source, const std::f
         reloaded.categories.size(),
         identical,
         loaded.files.size());
+    return failures;
+}
+
+// A new category is only useful if things can be filed under it, so this adds one and puts
+// a marker in it — the way a pack actually grows a branch — and requires both to come back
+// with the marker resolving to the category.
+int probeAddCategory(pack::Pack& loaded, const pack::DataSource& source, const std::filesystem::path& out_dir) {
+    size_t parent = pack::kNoIndex;
+    for (size_t i = 0; i < loaded.categories.size(); ++i) {
+        if (!loaded.categories[i].grave.deleted && !loaded.categories[i].declarations.empty()) parent = i;
+    }
+    if (parent == pack::kNoIndex) {
+        std::printf("  add category: skipped, no category to nest under\n");
+        return 0;
+    }
+
+    const size_t file_index = loaded.categories[parent].declarations.back().file;
+    const size_t added = loaded.addCategory(parent, "mpeprobe", file_index);
+    if (added == pack::kNoIndex) {
+        std::printf("  ADD CATEGORY FAIL  addCategory returned nothing\n");
+        return 1;
+    }
+
+    const std::string id = loaded.categories[added].id;
+
+    pack::AttributeCollection attributes;
+    attributes.set("type", id);
+    attributes.set("xpos", "4.5");
+    attributes.set("ypos", "5.5");
+    attributes.set("zpos", "6.5");
+    if (loaded.addPathable(pack::PathableType::Poi, added, pack::kNoIndex, file_index, std::move(attributes)) == pack::kNoIndex) {
+        std::printf("  ADD CATEGORY FAIL  could not add a marker to the new category\n");
+        return 1;
+    }
+
+    std::error_code ec;
+    std::filesystem::create_directories(out_dir, ec);
+    const std::filesystem::path target = out_dir / (source.root().stem().string() + "-category.zip");
+    std::filesystem::remove(target, ec);
+
+    const pack::SaveResult saved = pack::buildZip(loaded, source, target);
+    std::string error;
+    if (!saved.ok) {
+        std::printf("  ADD CATEGORY FAIL  %s\n", saved.error.c_str());
+        return 1;
+    }
+    if (!pack::commitZip(target, &error)) {
+        std::printf("  ADD CATEGORY FAIL  %s\n", error.c_str());
+        return 1;
+    }
+
+    std::unique_ptr<pack::DataSource> reopened = pack::open(target, &error);
+    pack::Pack reloaded;
+    if (!reopened || !pack::loadPack(*reopened, &reloaded, &error)) {
+        std::printf("  ADD CATEGORY REOPEN FAIL  %s\n", error.c_str());
+        return 1;
+    }
+
+    int failures = 0;
+
+    const pack::Category* found = reloaded.findCategory(id);
+    if (!found) {
+        std::printf("  ADD CATEGORY: %s did not come back\n", id.c_str());
+        return failures + 1;
+    }
+
+    size_t filed_under_it = 0;
+    for (const pack::Pathable& pathable : reloaded.pathables) {
+        if (pathable.category_id == id) ++filed_under_it;
+    }
+    if (filed_under_it != 1) {
+        std::printf("  ADD CATEGORY: %zu markers under %s, expected 1\n", filed_under_it, id.c_str());
+        ++failures;
+    }
+
+    std::printf("  add category: %s, %zu marker under it\n", id.c_str(), filed_under_it);
     return failures;
 }
 

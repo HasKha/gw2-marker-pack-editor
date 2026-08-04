@@ -3,6 +3,9 @@
 #include <vector>
 
 #include "pack/attributes.h"
+#include "pack/source.h"
+#include "pack/trl.h"
+#include "resources.h"
 #include "undo.h"
 
 namespace pathable_edit {
@@ -37,6 +40,32 @@ size_t fileForCategory(const editor::State& state, size_t category) {
 
     const std::vector<pack::SourceNode>& declarations = state.pack.categories[category].declarations;
     return declarations.empty() ? pack::kNoIndex : declarations.back().file;
+}
+
+// A path for a new .trl, in the folder the pack already keeps its trail data in, under a
+// name nothing is using yet.
+std::string newTrailPath(const editor::State& state, const std::string& stem) {
+    std::string folder = "Data";
+
+    // Wherever the existing trails live. Dropping a new one somewhere else would work but
+    // would leave the pack looking like two packs.
+    const pack::DataSource* source = resources::source();
+    if (source) {
+        for (const std::string& entry : source->entriesWithExtension(".trl")) {
+            const size_t slash = entry.find_last_of('/');
+            folder = slash == std::string::npos ? std::string() : entry.substr(0, slash);
+            break;
+        }
+    }
+
+    const std::string base = folder.empty() ? stem : folder + "/" + stem;
+    for (int suffix = 0; suffix < 1000; ++suffix) {
+        std::string candidate = suffix == 0 ? base + ".trl" : base + std::to_string(suffix) + ".trl";
+        const std::string key = pack::normalizePath(candidate);
+        const bool taken = (source && source->contains(key)) || state.pack.findAddedAsset(key) != nullptr;
+        if (!taken) return candidate;
+    }
+    return base + ".trl";
 }
 
 // Every live category at or under `root`, root first.
@@ -164,6 +193,91 @@ size_t addPoi(editor::State& state, const glm::vec3& position) {
     state.pathableAdded(index, after);
 
     const editor::NodeRef added{editor::NodeKind::Pathable, index};
+    undo::created(state, added);
+    state.selection.set(added);
+    state.requestReveal(added);
+    return index;
+}
+
+size_t addTrail(editor::State& state, int32_t map_id) {
+    if (!state.loaded) return pack::kNoIndex;
+
+    undo::Step step(state, "Add trail");
+
+    const editor::NodeRef node = state.selection.primary();
+
+    size_t category = pack::kNoIndex;
+    size_t after = pack::kNoIndex;
+    size_t file = pack::kNoIndex;
+
+    if (node.kind == editor::NodeKind::Category && node.index < state.pack.categories.size()) {
+        category = node.index;
+        const std::vector<size_t>& siblings = state.pathables_by_category[category];
+        if (!siblings.empty()) after = siblings.back();
+        file = fileForCategory(state, category);
+    } else if (node.kind == editor::NodeKind::Pathable && node.index < state.pack.pathables.size()) {
+        category = state.pack.pathables[node.index].category;
+        after = node.index;
+        file = state.pack.pathables[node.index].source.file;
+    } else {
+        return pack::kNoIndex;
+    }
+
+    if (category >= state.pack.categories.size()) return pack::kNoIndex;
+
+    const std::string path = newTrailPath(state, state.pack.categories[category].key);
+
+    // The file first: a trail whose traildata points at nothing would draw nothing and read
+    // as broken. An empty .trl is a header and no points, which is legal and editable.
+    pack::trl::Trail empty;
+    empty.map_id = map_id;
+    undo::asset(state, path);
+    state.pack.addAsset(path, pack::trl::write(empty));
+    resources::forget(path);
+
+    pack::AttributeCollection attributes;
+    set(&attributes, "type", state.pack.categories[category].id);
+    set(&attributes, "traildata", path);
+    set(&attributes, "guid", pack::generateGuid());
+
+    const size_t index = state.pack.addPathable(pack::PathableType::Trail, category, after, file, std::move(attributes));
+    if (index == pack::kNoIndex) return pack::kNoIndex;
+
+    state.pathableAdded(index, after);
+
+    const editor::NodeRef added{editor::NodeKind::Pathable, index};
+    undo::created(state, added);
+    state.selection.set(added);
+    state.requestReveal(added);
+    return index;
+}
+
+size_t addCategory(editor::State& state, const std::string& name) {
+    if (!state.loaded) return pack::kNoIndex;
+
+    undo::Step step(state, "Add category");
+
+    const editor::NodeRef node = state.selection.primary();
+
+    // Under whatever is selected: a category takes a child, a marker hands over the
+    // category it is filed under, and nothing selected makes a new root.
+    size_t parent = pack::kNoIndex;
+    if (node.kind == editor::NodeKind::Category && node.index < state.pack.categories.size()) {
+        parent = node.index;
+    } else if (node.kind == editor::NodeKind::Pathable && node.index < state.pack.pathables.size()) {
+        parent = state.pack.pathables[node.index].category;
+    }
+
+    // A root category has no parent declaration to nest in, so it needs a file of its own;
+    // the first is as good a guess as any and the author can move it.
+    const size_t file = parent < state.pack.categories.size() ? fileForCategory(state, parent) : 0;
+
+    const size_t index = state.pack.addCategory(parent, name, file);
+    if (index == pack::kNoIndex) return pack::kNoIndex;
+
+    state.categoryAdded(index);
+
+    const editor::NodeRef added{editor::NodeKind::Category, index};
     undo::created(state, added);
     state.selection.set(added);
     state.requestReveal(added);
