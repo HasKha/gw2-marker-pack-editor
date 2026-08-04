@@ -162,6 +162,11 @@ them. All three go through the one model.
   panel says so and defers; visibility ignores them, since they are not tree rows.
 - **Only the open trail gets handles** in the world. Every trail's points at once would be
   an unreadable field of dots, and a point that cannot be seen cannot be clicked.
+- **"Open" tracks the selection and the window, both ways.** Selecting a trail opens it;
+  selecting anything else closes it; closing the trail editor closes it too. That last one
+  has to be driven from `marker_editor`, because a closed window draws nothing and so
+  cannot notice it has been closed. Dropping the working copy costs nothing — every edit is
+  already committed to the pack — and reopening reads the same bytes back.
 
 `Trail > Reload from file` drops the pending bytes and rereads the source **directly**
 rather than through `resources`, whose reads are budgeted a few per frame: a menu action

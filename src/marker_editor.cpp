@@ -581,6 +581,11 @@ void render() {
     resources::beginFrame();
     undo::beginFrame();
 
+    // The trail editor's window is what makes a trail "open", and a closed window draws
+    // nothing — including its followSelection — so the close has to happen out here. The
+    // working copy is committed on every edit, so nothing is lost by dropping it.
+    if (!ui::windows::visible(ui::windows::Id::TrailEditor)) trail_edit::close();
+
     // The world is drawn whether or not any editor window is open — the point is to see
     // the pack in the game.
     const world::Camera camera = world::fromMumble(mumble_link, nexus_link);

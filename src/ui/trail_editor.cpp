@@ -74,13 +74,25 @@ void selectPoint(editor::State& state, size_t index) {
     }
 }
 
-// Opens whatever trail the selection points at. Called every frame: reading the .trl is
-// budgeted, so the first attempt after picking a trail can legitimately come back empty.
+// Keeps the open trail in step with the selection, both ways: a trail selected is a trail
+// opened, and selecting anything else closes it. Without the second half the handles in the
+// world would outlive the reason they were drawn.
+//
+// Called every frame: reading the .trl is budgeted, so the first attempt after picking a
+// trail can legitimately come back empty and want another go.
 void followSelection(editor::State& state) {
     const editor::NodeRef primary = state.selection.primary();
-    if (primary.kind != editor::NodeKind::Pathable || primary.index >= state.pack.pathables.size()) return;
-    if (state.pack.pathables[primary.index].type != pack::PathableType::Trail) return;
-    trail_edit::open(state, primary.index);
+
+    // A point of the trail already open. Editing its points is editing it.
+    if (primary.kind == editor::NodeKind::TrailPoint && primary.index == trail_edit::pathable()) return;
+
+    if (primary.kind == editor::NodeKind::Pathable && primary.index < state.pack.pathables.size() &&
+        state.pack.pathables[primary.index].type == pack::PathableType::Trail) {
+        trail_edit::open(state, primary.index);
+        return;
+    }
+
+    trail_edit::close();
 }
 
 void drawHeader(editor::State& state, const world::Camera& camera) {
