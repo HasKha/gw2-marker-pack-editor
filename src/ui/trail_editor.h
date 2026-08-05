@@ -14,8 +14,9 @@ namespace ui::trail_editor {
 enum class Request { None, Export };
 
 // Draws the trail open in the editor into the current window: its map id, its points, and
-// drag fields for the selected one.
-Request draw(editor::State& state, const world::Camera& camera);
+// drag fields for the selected one. Nothing in the body needs a dialog, so unlike drawMenu
+// it has nothing to ask for.
+void draw(editor::State& state, const world::Camera& camera);
 
 // The Trail menu. Drawn only in this window's own menu bar — it acts on the trail editor's
 // state, so it has no business in the tree or the details window. Greyed out when no trail

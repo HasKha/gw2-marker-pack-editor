@@ -109,10 +109,19 @@ bool editValue(const char* id, pack::ValueKind kind, const std::string& current,
         break;
     }
     default: {
-        char buffer[512];
-        std::snprintf(buffer, sizeof(buffer), "%s", current.c_str());
-        if (ImGui::InputText("##v", buffer, sizeof(buffer))) {
-            *out = buffer;
+        // Sized to the value rather than fixed. Packs in the wild ship tip-descriptions
+        // well over a kilobyte, and a fixed buffer would silently truncate one the moment
+        // the field was touched — the same class of loss as dropping an attribute.
+        //
+        // Static so the common case does not reallocate per row per frame; the headroom is
+        // what there is to type into before the next frame resizes it again.
+        constexpr size_t kHeadroom = 256;
+        static std::vector<char> buffer;
+        buffer.assign(current.begin(), current.end());
+        buffer.resize(current.size() + kHeadroom, '\0');
+
+        if (ImGui::InputText("##v", buffer.data(), buffer.size())) {
+            *out = buffer.data();
             changed = true;
         }
         break;
@@ -126,7 +135,7 @@ bool editValue(const char* id, pack::ValueKind kind, const std::string& current,
 bool open_delete_popup = false;
 
 // A category takes its whole subtree with it, which is more than a single click should do
-// without saying so. There is no undo yet; not saving is the only way back.
+// without saying so. Ctrl+Z takes it back — the delete is one undo step, subtree included.
 void drawDeletePopup(editor::State& state, editor::NodeRef node) {
     constexpr const char* kTitle = "Delete category?";
 

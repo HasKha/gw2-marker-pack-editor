@@ -51,8 +51,8 @@ struct MarkerDraw {
     ImU32 tint = IM_COL32_WHITE;
     std::string icon;
 
-    // Any of rotate / rotate-x / rotate-y / rotate-z turns the marker from a billboard
-    // into a fixed-orientation quad — including rotate="0,0,0", which is not a no-op.
+    // See MarkerTransform in the header: the presence of any rotate attribute is what
+    // turns the marker from a billboard into a fixed-orientation quad.
     bool has_rotation = false;
     glm::vec3 rotation{0.0f}; // radians
 };
@@ -70,9 +70,10 @@ struct TrailDraw {
     std::string data;
 };
 
+// Keyed on the revision alone. That is enough for a new pack too: State::reset bumps it
+// precisely so caches like this one cannot survive into the next pack.
 struct Cache {
     uint64_t revision = 0;
-    const void* pack = nullptr;
     std::vector<MarkerDraw> markers;
     std::vector<TrailDraw> trails;
 } cache;
@@ -143,6 +144,9 @@ void applyRotateList(std::string_view text, glm::vec3* out) {
 
 // Mirrors Pathing's Populate_Rotation: degrees in, radians out, and the presence of *any*
 // rotate attribute is what disables billboarding.
+//
+// Note it takes rotate="90" the way applyRotateList does — one component, the rest zero —
+// rather than demanding all three. Blish is the lenient one here, so we are too.
 bool resolveRotation(const pack::Pack& pack, const pack::Pathable& pathable, glm::vec3* out) {
     bool present = false;
     *out = glm::vec3(0.0f);
@@ -165,11 +169,37 @@ bool resolveRotation(const pack::Pack& pack, const pack::Pathable& pathable, glm
     return present;
 }
 
+} // namespace
+
+bool markerTransform(const pack::Pack& pack, const pack::Pathable& pathable, MarkerTransform* out) {
+    if (pathable.type != pack::PathableType::Poi) return false;
+
+    // A POI without a position is an invisible anchor; the loader drops those and so do we.
+    // See docs/format.md.
+    const std::string* x = pathable.attributes.value("xpos");
+    const std::string* y = pathable.attributes.value("ypos");
+    const std::string* z = pathable.attributes.value("zpos");
+    if (!x || !y || !z) return false;
+
+    glm::vec3 position(0.0f);
+    if (!pack::parseFloat(*x, &position.x)) return false;
+    if (!pack::parseFloat(*y, &position.y)) return false;
+    if (!pack::parseFloat(*z, &position.z)) return false;
+
+    out->height_offset = pack.effectiveFloat(pathable, "heightoffset");
+    // Where it is drawn, not its bare coordinate — which is what the gizmo has to sit on.
+    position.y += out->height_offset;
+    out->position = position;
+    out->has_rotation = resolveRotation(pack, pathable, &out->rotation);
+    return true;
+}
+
+namespace {
+
 void rebuild(editor::State& state) {
     cache.markers.clear();
     cache.trails.clear();
     cache.revision = state.revision;
-    cache.pack = &state.pack;
 
     for (size_t i = 0; i < state.pack.pathables.size(); ++i) {
         const pack::Pathable& pathable = state.pack.pathables[i];
@@ -179,21 +209,16 @@ void rebuild(editor::State& state) {
         const int map_id = state.pack.effectiveInt(pathable, "mapid");
 
         if (pathable.type == pack::PathableType::Poi) {
-            // A POI without a position is an invisible anchor; the loader drops those and
-            // so do we. See docs/format.md.
-            const std::string* x = pathable.attributes.value("xpos");
-            const std::string* y = pathable.attributes.value("ypos");
-            const std::string* z = pathable.attributes.value("zpos");
-            if (!x || !y || !z) continue;
+            MarkerTransform transform;
+            if (!markerTransform(state.pack, pathable, &transform)) continue;
 
             MarkerDraw marker;
-            if (!pack::parseFloat(*x, &marker.position.x)) continue;
-            if (!pack::parseFloat(*y, &marker.position.y)) continue;
-            if (!pack::parseFloat(*z, &marker.position.z)) continue;
+            marker.position = transform.position;
+            marker.has_rotation = transform.has_rotation;
+            marker.rotation = transform.rotation;
 
             marker.pathable = i;
             marker.map_id = map_id;
-            marker.position.y += state.pack.effectiveFloat(pathable, "heightoffset");
             marker.icon_size = state.pack.effectiveFloat(pathable, "iconsize");
             marker.alpha = state.pack.effectiveFloat(pathable, "alpha");
             marker.min_size = state.pack.effectiveFloat(pathable, "minsize");
@@ -202,7 +227,6 @@ void rebuild(editor::State& state) {
             marker.fade_far = state.pack.effectiveFloat(pathable, "fadefar");
             marker.tint = tintOf(state.pack, pathable);
             marker.icon = stringOf(state.pack, pathable, "iconfile");
-            marker.has_rotation = resolveRotation(state.pack, pathable, &marker.rotation);
 
             cache.markers.push_back(std::move(marker));
             continue;
@@ -567,7 +591,7 @@ void draw(editor::State& state, const Camera& camera) {
     // hovered, so a click on the map cannot select what was underneath it.
     if (!state.loaded || !camera.valid || camera.map_open) return;
 
-    if (cache.revision != state.revision || cache.pack != &state.pack) rebuild(state);
+    if (cache.revision != state.revision) rebuild(state);
 
     // Behind our own windows but over the game.
     ImDrawList* list = ImGui::GetBackgroundDrawList();

@@ -26,6 +26,7 @@ include(glm)
 include(pugixml)
 include(miniz)
 include(nfd)
+include(catch2)
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${PROJECT_SOURCE_DIR}/bin/")
 
@@ -75,17 +76,53 @@ target_link_libraries(MarkerPackEditor PRIVATE
     ole32    # CoTaskMemFree
 )
 
+# ── Test corpus ───────────────────────────────────────────────────────────────
+# Both test targets read real marker packs rather than fixtures: what a pack author
+# actually ships is the thing worth being correct about, and no synthetic file exercises
+# the reader the way 3,863 entries of hand-authored XML does. The corpus is not in the
+# repo — these are other people's packs — so its location is configured here and can be
+# overridden at run time with MPE_TEST_PACK_DIR / MPE_TEST_FOLDER_PACK.
+set(MPE_TEST_PACK_DIR "$ENV{USERPROFILE}/Documents/Guild Wars 2/addons/blishhud/markers"
+    CACHE PATH "Folder of .zip/.taco marker packs to test against")
+set(MPE_TEST_FOLDER_PACK "$ENV{USERPROFILE}/Documents/git/gw2-markers"
+    CACHE PATH "An unzipped pack, to check a folder source matches the zip built from it")
+
+add_library(mpe_corpus STATIC)
+target_sources(mpe_corpus PRIVATE "test/corpus.h" "test/corpus.cpp")
+target_include_directories(mpe_corpus PUBLIC "test/")
+target_compile_definitions(mpe_corpus PRIVATE
+    "MPE_TEST_PACK_DIR_DEFAULT=\"${MPE_TEST_PACK_DIR}\""
+    "MPE_TEST_FOLDER_PACK_DEFAULT=\"${MPE_TEST_FOLDER_PACK}\""
+)
+
 # ── mpe_probe ─────────────────────────────────────────────────────────────────
 # Console harness: loads a pack and reports what it found, what it could not parse,
-# and whether it survives a byte-exact round trip. Run it on real packs instead of
-# guessing.
+# and whether it survives a byte-exact round trip.
+#
+# It is the *diagnostic* half — it prints, it does not assert, and its output is how a
+# format question gets answered. mpe_test below is the half that fails a build.
 add_executable(mpe_probe)
 
-file(GLOB_RECURSE PROBE_SOURCES
-    "test/*.h"
-    "test/*.cpp"
-)
+set(PROBE_SOURCES "test/pack_probe.cpp")
 target_sources(mpe_probe PRIVATE ${PROBE_SOURCES})
 source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" PREFIX "" FILES ${PROBE_SOURCES})
 
-target_link_libraries(mpe_probe PRIVATE mpe_pack)
+target_link_libraries(mpe_probe PRIVATE mpe_pack mpe_corpus)
+
+# ── mpe_test ──────────────────────────────────────────────────────────────────
+# The assertions. Everything docs/plan.md and docs/architecture.md claim about the reader
+# and the writer lives here as a check, so a regression fails rather than showing up as a
+# different number in the probe's output.
+# enable_testing() rather than include(CTest): we want ctest, not the CDash submission
+# targets and options that module also brings along.
+enable_testing()
+add_executable(mpe_test)
+
+file(GLOB TEST_SOURCES "test/*_test.cpp")
+target_sources(mpe_test PRIVATE ${TEST_SOURCES})
+source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" PREFIX "" FILES ${TEST_SOURCES})
+
+target_link_libraries(mpe_test PRIVATE mpe_pack mpe_corpus Catch2::Catch2WithMain)
+
+include(Catch)
+catch_discover_tests(mpe_test)

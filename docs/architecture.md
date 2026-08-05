@@ -32,23 +32,44 @@ New for this project:
 | `nativefiledialog-extended` | native open/save dialogs |
 | `ImGuizmo` | 3D translate/rotate/scale gizmo |
 | `glm` | vec3/mat4 for the projection and the matrices ImGuizmo consumes |
+| `Catch2` | test framework. **Test-only** — nothing in `src/` links it |
 
 ## Build targets
 
-Three targets, because the pack layer is worth keeping testable outside the game:
+Five, because the pack layer is worth keeping testable outside the game:
 
 | Target | Kind | Contents |
 |---|---|---|
 | `mpe_pack` | static lib | `src/pack/**` — the format. Links only pugixml, miniz, glm. **Knows nothing about Nexus, imgui or the game.** |
 | `MarkerPackEditor` | shared lib | everything else in `src/` — the addon. Links `mpe_pack` plus imgui, ImGuizmo, Nexus, Mumble, gw2relib, NFD |
-| `mpe_probe` | console exe | `test/**` — harness that loads real packs and reports what it found. Links `mpe_pack` only |
+| `mpe_corpus` | static lib | `test/corpus.*` — where the real packs are. Shared by the two below so they cannot disagree about it |
+| `mpe_test` | console exe | `test/*_test.cpp` — the assertions, under Catch2. Links `mpe_pack` |
+| `mpe_probe` | console exe | `test/pack_probe.cpp` — the harness that prints. Links `mpe_pack` |
 
-`mpe_probe` is how format work gets verified: it runs against every pack in the Blish HUD
-markers folder without launching GW2. Run it after any change to `src/pack/`.
+**The two test targets do different jobs and both are worth having.** `mpe_test` answers
+*is it broken* and fails a build; `mpe_probe` answers *what does this pack look like* and
+prints — its lint, its byte-offset anchoring report and its round-trip diffs are how a
+format question gets settled in the first place. Turning the probe into assertions would
+throw that away, and turning the tests into printf would put us back to reading nine blocks
+of numbers and remembering what they were last time.
+
+Run the tests after any change to `src/pack/`:
 
 ```
-mpe_probe "<...>/markers/haskha_markers.zip" "<...>/markers/hero.blish.pack.zip"
+ctest --test-dir build -C Release --output-on-failure
 ```
+
+### What the tests are pointed at
+
+Real packs, not fixtures. The corpus is the nine packs in the Blish HUD markers folder plus
+the `gw2-markers` checkout as a folder source — 947 XML files, 3,863 entries in the largest
+archive, comments and BOMs and CRLFs and mixed-case paths that no synthetic file would
+think to contain. None of it is in the repo; `mpe_corpus` resolves the location and both
+`MPE_TEST_PACK_DIR` and `MPE_TEST_FOLDER_PACK` override it. See [plan.md](plan.md#testing).
+
+The trade is that the suite needs those packs present. A missing individual pack skips with
+a reason; a missing corpus fails outright, because a green run that tested nothing is the
+one outcome worse than a red one.
 
 ## Module layout
 
@@ -367,6 +388,9 @@ folder and the zip built from it resolve resources the same way — verified by 
 Two things stay different, and both are recorded on `Pack`:
 
 - `from_directory` decides how a save is written: files back in place, or a rebuilt archive.
+  **Save As always writes a zip and clears it**, along with `source_path` — the pack now
+  lives in an archive whatever it was read from, and leaving the flag set would send the
+  next plain Save down the folder path with a `.zip` as its target directory.
 - A folder is an **editing convenience, not a shippable pack**. Blish HUD does not reliably
   load unzipped packs, so the UI says so on the button tooltip.
 
@@ -462,10 +486,32 @@ later if occlusion becomes necessary.
 ImGuizmo takes the same view/projection matrices plus a model matrix per selected
 object, so it drops straight in once step 2 is correct.
 
+**The gizmo resolves a marker's placement through the renderer, not its own copy.**
+`renderer::markerTransform` is what both use: position with `heightOffset` applied, and
+rotation, resolved through the category chain. The handles are supposed to sit on the drawn
+icon, so a second implementation is a second chance to disagree with the picture — and the
+two did, once. One took `rotate="90"` the lenient way Blish does, filling the rest with
+zero; the other required all three components and read it as no rotation at all, so the
+gizmo drew unrotated handles on a rotated marker and a drag then wrote the wrong angle
+back.
+
 ## Threading
 
-Everything runs on the Nexus render callback (render thread). Two exceptions:
+Everything runs on the Nexus render callback (render thread). Three exceptions:
 
 - The native file dialog runs on a worker thread; `render()` polls `takeResult()`.
+- **`onWndProc` runs on the game's message thread.** A world click cannot reach ImGui (see
+  CLAUDE.md), so the marker under the cursor is read there and handed to the render thread
+  through atomics — `pending_select`, `pending_select_point`, and the renderer's
+  `hovered_pathable`. The handoff *out* is atomic; the reads *in* (`state.loaded`,
+  `state.settings.select_in_viewport`, `io.WantCaptureMouse`) are plain and are a data race
+  in the letter of the model. They are single words that change between frames rather than
+  during one, and the worst outcome is a click landing one frame late or being ignored, so
+  they are left alone deliberately rather than by oversight. Anything read there in future
+  needs the same look.
 - Pack loading (unzip + parse) should move to a worker once packs get big enough to
   stutter. Not yet needed.
+
+`file_dialog::shutdown` joins the worker with the mutex **released** — the worker takes that
+same mutex to store its result on the way out, so joining under it deadlocks, and unload
+with a dialog still open is exactly when that runs.

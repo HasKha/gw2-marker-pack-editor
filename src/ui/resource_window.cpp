@@ -59,9 +59,10 @@ struct Folder {
 // Rebuilt when the pack changes, not per frame. Counting references means walking every
 // attribute of every node, and the largest pack tested has 56k markers; the folder tree
 // falls out of the same pass, so the two are cached together.
+// Keyed on the revision, plus the source: a save-and-reopen swaps the DataSource without
+// touching the revision, and that is exactly when the pending adds become real entries.
 struct Index {
     uint64_t revision = 0;
-    const pack::Pack* pack = nullptr;
     const pack::DataSource* source = nullptr;
 
     std::vector<Asset> assets; // sorted by path
@@ -113,11 +114,10 @@ void buildIndex(const editor::State& state) {
 
     // A different pack entirely: whatever folder the user picked in the last one means
     // nothing here.
-    if (index.pack != &state.pack || index.source != source) target_chosen = false;
+    if (index.source != source) target_chosen = false;
 
     index = Index{};
     index.revision = state.revision;
-    index.pack = &state.pack;
     index.source = source;
     index.folders.push_back(Folder{});
 
@@ -177,9 +177,7 @@ void buildIndex(const editor::State& state) {
 }
 
 void ensureIndex(const editor::State& state) {
-    // The source pointer changes when a pack is saved and reopened, which does not bump the
-    // revision but does mean the pending adds are now real entries.
-    if (index.revision == state.revision && index.pack == &state.pack && index.source == resources::source()) return;
+    if (index.revision == state.revision && index.source == resources::source()) return;
     buildIndex(state);
 }
 

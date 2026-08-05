@@ -1,5 +1,4 @@
 #include "world/gizmo.h"
-#include <editor_state.h>
 
 #include <imgui.h>
 
@@ -13,8 +12,10 @@
 #include <glm/gtc/type_ptr.hpp>
 #include <glm/gtx/euler_angles.hpp>
 
+#include "editor_state.h"
 #include "trail_edit.h"
 #include "undo.h"
+#include "world/renderer.h"
 
 namespace world::gizmo {
 
@@ -64,48 +65,6 @@ struct Target {
     bool has_rotation = false;
 };
 
-// Same resolution the renderer does, so the gizmo sits exactly on the drawn icon.
-bool markerTransform(
-    const editor::State& state,
-    size_t pathable_index,
-    glm::vec3* out_position,
-    glm::vec3* out_rotation,
-    float* out_height_offset) {
-    const pack::Pathable& pathable = state.pack.pathables[pathable_index];
-    if (pathable.type != pack::PathableType::Poi) return false;
-
-    const std::string* x = pathable.attributes.value("xpos");
-    const std::string* y = pathable.attributes.value("ypos");
-    const std::string* z = pathable.attributes.value("zpos");
-    if (!x || !y || !z) return false;
-
-    glm::vec3 position(0.0f);
-    if (!pack::parseFloat(*x, &position.x)) return false;
-    if (!pack::parseFloat(*y, &position.y)) return false;
-    if (!pack::parseFloat(*z, &position.z)) return false;
-
-    *out_height_offset = state.pack.effectiveFloat(pathable, "heightoffset");
-    // The gizmo belongs where the marker is drawn, not at its bare coordinate.
-    position.y += *out_height_offset;
-    *out_position = position;
-
-    glm::vec3 rotation(0.0f);
-    if (const std::string* text = state.pack.effectiveValue(pathable, "rotate")) {
-        glm::vec3 degrees(0.0f);
-        if (pack::parseVec3(*text, &degrees)) rotation = degrees * kDegreesToRadians;
-    }
-    static constexpr const char* kAxisKeys[3] = {"rotate-x", "rotate-y", "rotate-z"};
-    for (int axis = 0; axis < 3; ++axis) {
-        const std::string* text = state.pack.effectiveValue(pathable, kAxisKeys[axis]);
-        if (!text) continue;
-        float degrees = 0.0f;
-        if (pack::parseFloat(*text, &degrees)) rotation[axis] = degrees * kDegreesToRadians;
-    }
-
-    *out_rotation = rotation;
-    return true;
-}
-
 // In selection order, so targets.front() is the first thing the user selected. Anything
 // without a transform — categories, a POI missing a coordinate, a trail point belonging to
 // a trail that is not the one open — is skipped rather than blocking the gizmo, so a mixed
@@ -118,7 +77,16 @@ std::vector<Target> collectTargets(const editor::State& state) {
 
         if (node.kind == editor::NodeKind::Pathable) {
             if (node.index >= state.pack.pathables.size() || state.pack.pathables[node.index].grave.deleted) continue;
-            if (!markerTransform(state, node.index, &target.position, &target.rotation, &target.height_offset)) continue;
+
+            // The renderer's own resolution, so the handles land on the drawn icon.
+            renderer::MarkerTransform transform;
+            if (!renderer::markerTransform(state.pack, state.pack.pathables[node.index], &transform)) continue;
+
+            target.position = transform.position;
+            target.rotation = transform.rotation;
+            target.height_offset = transform.height_offset;
+            // Not transform.has_rotation: that says whether a rotate attribute is *there*,
+            // where this says the node is a kind that can carry one. Every POI can.
             target.has_rotation = true;
         } else if (node.kind == editor::NodeKind::TrailPoint) {
             if (node.index != trail_edit::pathable() || node.sub >= trail_edit::pointCount()) continue;

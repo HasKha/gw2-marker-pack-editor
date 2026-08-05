@@ -261,10 +261,10 @@ Request drawMenu(editor::State& state, const world::Camera& camera) {
     return request;
 }
 
-Request draw(editor::State& state, const world::Camera& camera) {
+void draw(editor::State& state, const world::Camera& camera) {
     if (!state.loaded) {
         ImGui::TextDisabled("No pack open.");
-        return Request::None;
+        return;
     }
 
     followSelection(state);
@@ -272,7 +272,7 @@ Request draw(editor::State& state, const world::Camera& camera) {
     if (!trail_edit::isOpen()) {
         ImGui::TextDisabled("Select a trail to edit it.");
         ImGui::TextWrapped("A trail's points live in its .trl file, which is loaded on demand - give it a frame after selecting.");
-        return Request::None;
+        return;
     }
 
     ImGui::TextDisabled("%s", trail_edit::path().c_str());
@@ -292,8 +292,6 @@ Request draw(editor::State& state, const world::Camera& camera) {
 
     ImGui::Separator();
     drawSelectedPoint(state, camera);
-
-    return Request::None;
 }
 
 void exportTo(editor::State& state, const std::filesystem::path& file, std::string* status) {

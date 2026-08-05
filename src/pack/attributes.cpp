@@ -168,6 +168,16 @@ std::string attributeKey(std::string_view name) {
     return key;
 }
 
+bool isAttributeKey(std::string_view name) {
+    // Interior whitespace would survive attributeKey untouched, but rejecting it here only
+    // costs the slow path, and telling "interior" from "surrounding" is not worth it.
+    for (char c : name) {
+        const unsigned char value = static_cast<unsigned char>(c);
+        if (std::isupper(value) || std::isspace(value)) return false;
+    }
+    return true;
+}
+
 bool parseInt(std::string_view text, int* out) {
     text = trim(text);
     if (text.empty()) return false;

@@ -2,6 +2,7 @@
 
 #include <imgui.h>
 
+#include <array>
 #include <cstddef>
 
 namespace ui::windows {
@@ -27,16 +28,18 @@ constexpr Definition kWindows[kCount] = {
     {"Pack Resources##MPE_Resources", "Resources", "resources", false},
 };
 
-bool shown[kCount] = {
-    kWindows[0].visible_by_default,
-    kWindows[1].visible_by_default,
-    kWindows[2].visible_by_default,
-    kWindows[3].visible_by_default,
-    kWindows[4].visible_by_default,
-};
+// Seeded from the table rather than spelled out per index: adding a window has to stay one
+// row, and a hand-written initializer would quietly leave the sixth one hidden.
+constexpr std::array<bool, kCount> defaultVisibility() {
+    std::array<bool, kCount> out{};
+    for (size_t i = 0; i < kCount; ++i) out[i] = kWindows[i].visible_by_default;
+    return out;
+}
+
+std::array<bool, kCount> shown = defaultVisibility();
 
 // What was on screen when everything was hidden, so the layout survives a toggle.
-bool restore[kCount] = {};
+std::array<bool, kCount> restore{};
 
 size_t indexOf(Id id) {
     return static_cast<size_t>(id);

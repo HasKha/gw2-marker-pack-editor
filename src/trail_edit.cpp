@@ -233,18 +233,27 @@ void addArc(editor::State& state, const glm::vec3& centre, float radius, int seg
 bool reload(editor::State& state) {
     if (!isOpen()) return false;
 
-    undo::Step step(state, "Reload trail");
-    undo::asset(state, open_path);
-
-    // Drop our pending bytes first, or the reread would just hand them back.
-    state.pack.dropAddedAsset(open_path);
-    resources::forget(open_path);
-
+    // Read before dropping anything. The source is the only thing a reload can mean, and
+    // for a trail created in the editor there is nothing there — its pending bytes are the
+    // only copy of it. Dropping those first and *then* failing the read would leave the
+    // pack with no trail at all while the working copy still held the points.
+    //
     // Straight from the source rather than through the cache: cached reads are budgeted a
     // few per frame, and a menu action that silently does nothing when the budget happens
     // to be spent is worse than one that costs one extra read.
+    const pack::DataSource* source = resources::source();
+    std::vector<uint8_t> bytes;
+    std::string error;
+    if (!source || !source->read(open_path, &bytes, &error)) return false;
+
     pack::trl::Trail parsed;
-    if (!readFromPack(state, &parsed)) return false;
+    if (!pack::trl::read(bytes, &parsed, &error)) return false;
+
+    undo::Step step(state, "Reload trail");
+    undo::asset(state, open_path);
+
+    state.pack.dropAddedAsset(open_path);
+    resources::forget(open_path);
 
     trail = std::move(parsed);
     reindex();

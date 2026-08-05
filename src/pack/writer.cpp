@@ -167,8 +167,13 @@ SaveResult buildZip(const Pack& pack, const DataSource* source, const std::files
         if (it != rewritten.by_path.end()) pending_files.emplace(file.path, &it->second);
     }
 
+    // A pack built in the editor has no source to carry anything forward from. Naming an
+    // empty vector rather than writing the conditional inline keeps both arms lvalues —
+    // a temporary on one side would make the whole expression a copy of every entry name.
+    static const std::vector<std::string> kNoEntries;
+
     bool failed = false;
-    for (const std::string& entry : source ? source->entries() : std::vector<std::string>{}) {
+    for (const std::string& entry : source ? source->entries() : kNoEntries) {
         if (pack.isAssetRemoved(entry)) {
             ++result.assets_removed;
             continue;

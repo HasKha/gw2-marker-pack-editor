@@ -6,10 +6,30 @@
 
 namespace pack {
 
+namespace {
+
+// The one linear scan behind find / set / erase. Returns kNoIndex when the name is absent.
+//
+// `name` is normalized only when it has to be — see isAttributeKey. Attribute counts per
+// node are small enough that a linear scan beats anything with a hash in it.
+size_t indexOfName(const std::vector<Attribute>& attributes, std::string_view name) {
+    std::string owned;
+    if (!isAttributeKey(name)) {
+        owned = attributeKey(name);
+        name = owned;
+    }
+
+    for (size_t i = 0; i < attributes.size(); ++i) {
+        if (attributes[i].key == name) return i;
+    }
+    return kNoIndex;
+}
+
+} // namespace
+
 const Attribute* AttributeCollection::find(std::string_view key) const {
-    const std::string normalized = attributeKey(key);
-    auto it = std::find_if(attributes_.begin(), attributes_.end(), [&](const Attribute& attribute) { return attribute.key == normalized; });
-    return it == attributes_.end() ? nullptr : &*it;
+    const size_t at = indexOfName(attributes_, key);
+    return at == kNoIndex ? nullptr : &attributes_[at];
 }
 
 const std::string* AttributeCollection::value(std::string_view key) const {
@@ -18,21 +38,19 @@ const std::string* AttributeCollection::value(std::string_view key) const {
 }
 
 void AttributeCollection::set(std::string_view name, std::string value) {
-    const std::string key = attributeKey(name);
-    auto it = std::find_if(attributes_.begin(), attributes_.end(), [&](const Attribute& attribute) { return attribute.key == key; });
-    if (it != attributes_.end()) {
+    const size_t at = indexOfName(attributes_, name);
+    if (at != kNoIndex) {
         // Keep the spelling already in the file; the author chose it.
-        it->value = std::move(value);
+        attributes_[at].value = std::move(value);
         return;
     }
-    attributes_.push_back(Attribute{std::string(name), key, std::move(value)});
+    attributes_.push_back(Attribute{std::string(name), attributeKey(name), std::move(value)});
 }
 
 bool AttributeCollection::erase(std::string_view key) {
-    const std::string normalized = attributeKey(key);
-    auto it = std::find_if(attributes_.begin(), attributes_.end(), [&](const Attribute& attribute) { return attribute.key == normalized; });
-    if (it == attributes_.end()) return false;
-    attributes_.erase(it);
+    const size_t at = indexOfName(attributes_, key);
+    if (at == kNoIndex) return false;
+    attributes_.erase(attributes_.begin() + static_cast<ptrdiff_t>(at));
     return true;
 }
 

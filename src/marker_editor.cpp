@@ -254,6 +254,11 @@ void savePackTo(const std::filesystem::path& target, bool as_directory) {
         state.pack.clearAssetChanges();
         state.dirty = false;
         open_pack_path = target;
+        // The pack now lives in a zip, whatever it was read from. Without this a folder
+        // pack saved with Save As keeps from_directory set, and the next plain Save tries
+        // to write its .xml files *into* the archive's path as if it were a folder.
+        state.pack.from_directory = false;
+        state.pack.source_path = target;
         status_message = "Saved " + std::to_string(result.entries_written) + " entries (" + std::to_string(result.files_rewritten) +
                          " xml rewritten)" + assetSummary(result) + " to " + target.filename().string();
         log(ELogLevel_INFO, status_message);

@@ -126,7 +126,10 @@ hold in any change:
 - Don't silently drop unknown XML attributes or comments on save; packs are hand-authored
   and losing either is a bug. Whitespace is the one thing we *do* give up — a pack
   reformats once on its first save, deliberately. See `docs/architecture.md`.
-- Don't verify pack-layer work by launching the game. `mpe_probe` runs the whole read →
-  model → write → save round trip over every real pack in seconds; use it first.
+- Don't verify pack-layer work by launching the game, and don't verify it by hand either.
+  `ctest --test-dir build -C Release` runs the whole read → model → write → save round trip
+  over every real pack in under two seconds. Use it first, and **add to it**: a fix without
+  a case that fails before it is a fix that comes back. `mpe_probe` is still the right tool
+  for *looking* at a pack — it prints and lints where `mpe_test` asserts.
 - Don't assume an unzipped folder is loadable by Blish HUD — it isn't, reliably. Zipped
   is the shipping format.

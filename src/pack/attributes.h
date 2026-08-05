@@ -59,6 +59,15 @@ const AttributeDef* findAttribute(std::string_view name);
 // round-trip and both show separately in the property panel.
 std::string attributeKey(std::string_view name);
 
+// True when `name` is already what attributeKey would return, so a lookup can use it
+// as-is. Nearly every call site passes a literal that is already a key, and the string
+// attributeKey would allocate shows up in effectiveValue — which does one lookup per
+// ancestor, per marker, on packs with 56k of them.
+//
+// Conservative: anything it is unsure about answers false and takes the copying path,
+// which is always correct, just slower.
+bool isAttributeKey(std::string_view name);
+
 // ── Value parsing ─────────────────────────────────────────────────────────────
 // All are permissive in the same places the reference implementations are, and all
 // leave *out untouched and return false when the text does not parse.

@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <memory>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -19,7 +20,9 @@ namespace pack::zip {
 class Archive : public DataSource
 {
 public:
-    Archive() = default;
+    // Both defined in the .cpp, not defaulted here: unique_ptr<Impl> needs Impl complete
+    // wherever it might be destroyed, and that includes the constructor's unwind path.
+    Archive();
     ~Archive() override;
 
     Archive(const Archive&) = delete;
@@ -38,10 +41,11 @@ public:
 
 private:
     // mz_zip_archive is an incomplete type here on purpose: miniz.h pulls in a lot and
-    // every consumer of this header would otherwise pay for it.
+    // every consumer of this header would otherwise pay for it. The destructor is declared
+    // above and defined in the .cpp, which is what lets unique_ptr hold an incomplete type.
     struct Impl;
 
-    Impl* impl_ = nullptr;
+    std::unique_ptr<Impl> impl_;
     bool open_ = false;
     std::filesystem::path source_;
     std::vector<std::string> entries_;

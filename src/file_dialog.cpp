@@ -108,8 +108,18 @@ std::optional<std::filesystem::path> takeResult() {
 }
 
 void shutdown() {
+    // The worker takes `mutex` to store its result on the way out, so joining it while
+    // holding that lock deadlocks — and unload with a dialog still open is exactly when
+    // this runs. Take the thread out under the lock, then join with the lock released.
+    std::thread finishing;
+    {
+        std::lock_guard lock(mutex);
+        finishing = std::move(worker);
+    }
+
+    if (finishing.joinable()) finishing.join();
+
     std::lock_guard lock(mutex);
-    if (worker.joinable()) worker.join();
     result.reset();
 }
 

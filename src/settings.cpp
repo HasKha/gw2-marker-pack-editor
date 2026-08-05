@@ -35,6 +35,24 @@ ui::windows::Id windowId(size_t index) {
     return static_cast<ui::windows::Id>(index);
 }
 
+// nlohmann's value() throws when the key is there with the wrong type, and settings.json is
+// exactly the kind of file that gets hand-edited or half-written. A bad value should leave
+// the default standing, not take the addon down from inside the render callback.
+bool readBool(const nlohmann::json& object, const char* key, bool fallback) {
+    const auto it = object.find(key);
+    return it != object.end() && it->is_boolean() ? it->get<bool>() : fallback;
+}
+
+int readInt(const nlohmann::json& object, const char* key, int fallback) {
+    const auto it = object.find(key);
+    return it != object.end() && it->is_number_integer() ? it->get<int>() : fallback;
+}
+
+std::string readString(const nlohmann::json& object, const char* key) {
+    const auto it = object.find(key);
+    return it != object.end() && it->is_string() ? it->get<std::string>() : std::string();
+}
+
 Snapshot capture(const editor::Settings& editor, const std::filesystem::path& last_folder, const std::filesystem::path& last_image_folder) {
     Snapshot out;
     out.valid = true;
@@ -83,24 +101,24 @@ void load(editor::Settings* editor, std::filesystem::path* last_folder, std::fil
     const nlohmann::json parsed = nlohmann::json::parse(input, nullptr, false);
     if (parsed.is_discarded() || !parsed.is_object()) return;
 
-    editor->highlight_3d = parsed.value("highlight_3d", editor->highlight_3d);
-    editor->select_in_viewport = parsed.value("select_in_viewport", editor->select_in_viewport);
+    editor->highlight_3d = readBool(parsed, "highlight_3d", editor->highlight_3d);
+    editor->select_in_viewport = readBool(parsed, "select_in_viewport", editor->select_in_viewport);
 
-    const int gizmo = parsed.value("gizmo", static_cast<int>(editor->gizmo));
+    const int gizmo = readInt(parsed, "gizmo", static_cast<int>(editor->gizmo));
     if (gizmo >= 0 && gizmo <= static_cast<int>(editor::GizmoMode::TranslateRotate)) {
         editor->gizmo = static_cast<editor::GizmoMode>(gizmo);
     }
 
-    if (parsed.contains("windows") && parsed["windows"].is_object()) {
-        const nlohmann::json& windows = parsed["windows"];
+    const auto windows = parsed.find("windows");
+    if (windows != parsed.end() && windows->is_object()) {
         for (size_t i = 0; i < kWindowCount; ++i) {
             bool& shown = ui::windows::visible(windowId(i));
-            shown = windows.value(ui::windows::key(windowId(i)), shown);
+            shown = readBool(*windows, ui::windows::key(windowId(i)), shown);
         }
     }
 
-    *last_folder = parsed.value("last_folder", std::string());
-    *last_image_folder = parsed.value("last_image_folder", std::string());
+    *last_folder = readString(parsed, "last_folder");
+    *last_image_folder = readString(parsed, "last_image_folder");
 
     written = capture(*editor, *last_folder, *last_image_folder);
 }
