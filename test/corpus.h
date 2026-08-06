@@ -39,4 +39,23 @@ std::filesystem::path folderPack();
 // What to tell the user when dir() is empty. Names the variable to set.
 std::string missingMessage();
 
+// A directory under the system temp folder that removes itself, for the tests that write
+// real files. A failing assertion must not leave megabytes of rebuilt archives behind, and
+// nothing a test writes belongs anywhere near the corpus itself.
+class TempDir
+{
+public:
+    explicit TempDir(const std::string& name);
+    ~TempDir();
+
+    TempDir(const TempDir&) = delete;
+    TempDir& operator=(const TempDir&) = delete;
+
+    const std::filesystem::path& path() const { return path_; }
+    std::filesystem::path operator/(std::string_view leaf) const { return path_ / leaf; }
+
+private:
+    std::filesystem::path path_;
+};
+
 } // namespace corpus

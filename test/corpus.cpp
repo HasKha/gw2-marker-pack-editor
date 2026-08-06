@@ -93,4 +93,18 @@ std::string missingMessage() {
     return message + ".";
 }
 
+TempDir::TempDir(const std::string& name) {
+    std::error_code ec;
+    path_ = std::filesystem::temp_directory_path(ec) / ("mpe_test_" + name);
+    // Removed first: a previous run that was killed mid-test leaves its directory behind,
+    // and starting from whatever it managed to write is not a test of anything.
+    std::filesystem::remove_all(path_, ec);
+    std::filesystem::create_directories(path_, ec);
+}
+
+TempDir::~TempDir() {
+    std::error_code ec;
+    std::filesystem::remove_all(path_, ec);
+}
+
 } // namespace corpus

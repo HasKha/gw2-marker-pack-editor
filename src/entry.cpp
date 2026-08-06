@@ -28,13 +28,13 @@ extern "C" __declspec(dllexport) AddonDefinition* GetAddonDef() {
     AddonDef.Name = marker_editor::ADDON_NAME;
     AddonDef.Version.Major = VERSION_MAJOR;
     AddonDef.Version.Minor = VERSION_MINOR;
-    AddonDef.Version.Build = 0;
+    AddonDef.Version.Build = VERSION_BUILD;
     AddonDef.Version.Revision = 0;
     AddonDef.Author = "Haskha";
     AddonDef.Description = "Create and edit marker packs in-game.";
     AddonDef.Load = AddonLoad;
     AddonDef.Unload = AddonUnload;
-    AddonDef.Flags = EAddonFlags_IsVolatile;
+    AddonDef.Flags = EAddonFlags_None;
     AddonDef.Provider = EUpdateProvider_GitHub;
     AddonDef.UpdateLink = "https://github.com/HasKha/gw2-marker-pack-editor";
     return &AddonDef;

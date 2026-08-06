@@ -1,16 +1,19 @@
 cmake_minimum_required(VERSION 3.31)
 project(MarkerPackEditor)
 
-set(VERSION_MAJOR 0)
-set(VERSION_MINOR 1)
+# Keep in step with the release tag: Nexus compares the tag on GitHub against the version
+# compiled in here, and only offers an update when the tag is greater. Tags are
+# vMAJOR.MINOR.BUILD — its parser rejects a two-component version.
+set(VERSION_MAJOR 1)
+set(VERSION_MINOR 0)
+set(VERSION_BUILD 0)
 
 add_compile_definitions(
     "VERSION_MAJOR=${VERSION_MAJOR}"
     "VERSION_MINOR=${VERSION_MINOR}"
+    "VERSION_BUILD=${VERSION_BUILD}"
     "NOMINMAX"
 )
-# Deliberately NOT defining WIN32_LEAN_AND_MEAN: it drops winsock from <Windows.h>, and
-# gw2relib's VdfContext.h uses IN_ADDR.
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -20,7 +23,6 @@ include(imgui)
 include(imguizmo)
 include(mumble)
 include(nexus)
-include(gw2relib)
 include(json)
 include(glm)
 include(pugixml)
@@ -69,7 +71,6 @@ target_link_libraries(MarkerPackEditor PRIVATE
     imguizmo
     mumble
     nexus
-    gw2relib
     nlohmann_json::nlohmann_json
     nfd
     shell32  # SHGetKnownFolderPath

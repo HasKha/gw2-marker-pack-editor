@@ -21,7 +21,8 @@ for what is done and what is next see [plan.md](plan.md).
 ## Dependencies
 
 Carried over from the templates: `imgui` (RaidcoreGG fork), `mumble`, `nexus`,
-`gw2relib`, `nlohmann_json`.
+`nlohmann_json`. (`gw2relib` came with them too and was dropped before 1.0 — nothing here
+reads the game, so it was a compiled dependency nothing included.)
 
 New for this project:
 
@@ -41,7 +42,7 @@ Five, because the pack layer is worth keeping testable outside the game:
 | Target | Kind | Contents |
 |---|---|---|
 | `mpe_pack` | static lib | `src/pack/**` — the format. Links only pugixml, miniz, glm. **Knows nothing about Nexus, imgui or the game.** |
-| `MarkerPackEditor` | shared lib | everything else in `src/` — the addon. Links `mpe_pack` plus imgui, ImGuizmo, Nexus, Mumble, gw2relib, NFD |
+| `MarkerPackEditor` | shared lib | everything else in `src/` — the addon. Links `mpe_pack` plus imgui, ImGuizmo, Nexus, Mumble, NFD |
 | `mpe_corpus` | static lib | `test/corpus.*` — where the real packs are. Shared by the two below so they cannot disagree about it |
 | `mpe_test` | console exe | `test/*_test.cpp` — the assertions, under Catch2. Links `mpe_pack` |
 | `mpe_probe` | console exe | `test/pack_probe.cpp` — the harness that prints. Links `mpe_pack` |

@@ -18,32 +18,7 @@
 
 namespace {
 
-// A directory that removes itself, so a failing assertion cannot leave megabytes of
-// rebuilt archives behind.
-class TempDir
-{
-public:
-    explicit TempDir(const std::string& name) {
-        std::error_code ec;
-        path_ = std::filesystem::temp_directory_path(ec) / ("mpe_test_" + name);
-        std::filesystem::remove_all(path_, ec);
-        std::filesystem::create_directories(path_, ec);
-    }
-
-    ~TempDir() {
-        std::error_code ec;
-        std::filesystem::remove_all(path_, ec);
-    }
-
-    TempDir(const TempDir&) = delete;
-    TempDir& operator=(const TempDir&) = delete;
-
-    const std::filesystem::path& path() const { return path_; }
-    std::filesystem::path operator/(std::string_view leaf) const { return path_ / leaf; }
-
-private:
-    std::filesystem::path path_;
-};
+using corpus::TempDir;
 
 struct Loaded {
     std::unique_ptr<pack::DataSource> source;

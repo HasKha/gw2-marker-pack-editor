@@ -20,8 +20,8 @@ nothing in the addon may be specific to that pack.
 
 ## Current state
 
-The full loop works and is confirmed end to end: **open a pack, edit it, save it back, and
-the edited markers show correctly in Blish HUD.**
+Released as **1.0**. The full loop works and is confirmed end to end: **open a pack, edit
+it, save it back, and the edited markers show correctly in Blish HUD.**
 
 | Area | State |
 |---|---|
@@ -39,7 +39,7 @@ the edited markers show correctly in Blish HUD.**
 | Settings | the Settings toggles, gizmo mode, which windows are open and where the browsers start, kept in `settings.json` |
 | Create pack | `New Pack...` builds an empty pack in memory; Save As writes the first zip |
 | Write | serializes the owned document; comments, order, spelling, BOM, CRLF and the file split survive. 947/947 files stable on rewrite |
-| Tests | `mpe_test`, 22 cases over the real pack corpus, run by `ctest` |
+| Tests | `mpe_test`, 30 cases over the real pack corpus, run by `ctest` |
 
 A pack can be edited end to end, grown new branches, and started from nothing.
 
@@ -58,22 +58,23 @@ does this pack look like* rather than *is it broken*: it prints and lints, it do
 assert. Every format claim in `format.md` was measured with it.
 
 ```
-mpe_probe --save-test <scratch-dir> "<...>/markers/haskha_markers.zip" "<...>/git/gw2-markers"
+mpe_probe --save-test <scratch-dir> <pack.zip> <pack-folder>
 ```
 
 ### Test packs
 
-In `C:\Users\Giorgio\Documents\Guild Wars 2\addons\blishhud\markers`:
+Whatever is in the corpus folder gets swept, but two shapes are the ones worth having
+there, and the claims above were measured against them:
 
 | Pack | Shape | Why |
 |---|---|---|
-| `haskha_markers.zip` | 80 entries, 10 hand-authored xml at the root, `Data/`, comments throughout | the round-trip target — losing a comment here is a bug |
+| A hand-authored pack | ~80 entries, ten xml files at the root, `Data/`, comments throughout | the round-trip target — losing a comment here is a bug |
 | `hero.blish.pack.zip` | 1918 entries, 64 xml, 140 trl, 1375 png; `_markerCategories.xml` + `map<id>.xml` | large, popular, and already TmfLib `PackWriter` output — the scale and machine-generated case |
 
-Plus `C:\Users\Giorgio\Documents\git\gw2-markers` as a **folder**, which must produce the
-same model as the zip built from it. Others in that folder are not test targets, but
-`mpe_test` sweeps every pack it finds and `mpe_probe` accepts them, and running over all of
-them is how the format claims were measured.
+Plus one pack as an **unzipped folder**, which must produce the same model as the zip built
+from it. That zip is built by the test rather than taken from the corpus: a checkout and a
+shipped archive of "the same" pack drift the moment either is edited, and the test would
+then be reporting the drift instead of the reader.
 
 ### Testing
 
@@ -112,7 +113,10 @@ Roughly in order.
 - **Tests above the pack layer.** `mpe_test` links `mpe_pack` only, so undo, selection and
   the editor's own indexes are still covered by hand. `editor::State` has no dependency on
   imgui or Nexus and could be tested the same way; the windows cannot.
-- **README with screenshots, GitHub releases.**
+- **Screenshots in the README.** The rest of the release prep is done.
+- **CI.** A Windows job that configures and builds would catch a break from a clean clone,
+  which is the one thing a local build cannot. The suite skips itself without a corpus, so
+  it would run green and prove only that it links — worth having anyway.
 
 Watch out, for anything that adds to the pack:
 

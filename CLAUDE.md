@@ -112,13 +112,21 @@ hold in any change:
   `AddFontFromMemoryTTF`, i.e. raw TTF, while `HasKha/imgui-fonts` ships *compressed*
   data. Draw icons with `ImDrawList` primitives instead — see `eyeButton` in
   `ui/tree_window.cpp`.
-- **Do not define `WIN32_LEAN_AND_MEAN`.** It drops winsock from `<Windows.h>`, and
-  gw2relib's `Game/VdfContext.h` uses `IN_ADDR`. `NOMINMAX` is fine and is set globally.
 - **CMake 4 rejects `cmake_minimum_required` below 3.5.** miniz's repo CMakeLists trips
   this, which is why `cmake/miniz.cmake` fetches the release amalgamation and declares
   the target by hand instead. Expect the same for other old dependencies.
-- `clang-format` is not on PATH; it lives at
-  `C:\Program Files\Microsoft Visual Studio\18\Community\VC\Tools\Llvm\x64\bin\clang-format.exe`.
+- **Nexus's update check is picky about the release.** It reads the repo's GitHub releases,
+  keeps the newest `tag_name` that parses as a version *and* carries an asset whose name
+  ends in `.dll`, and offers it only when that is greater than the version compiled into
+  `AddonDefinition`. Its parser **throws on a two-component tag** (`v1.0`) and the throw is
+  swallowed, so such a release is skipped in silence. Tag `vMAJOR.MINOR.BUILD`, matching
+  `VERSION_*` in `CMakeLists.txt`, and attach the DLL itself.
+- **`EAddonFlags_IsVolatile` is for addons that hook the game.** We are not one. Nexus
+  refuses to load a volatile addon once the game build has advanced more than 350 past the
+  one it last recorded, and the user has to re-enable it by hand — a self-inflicted outage
+  after every large patch. See `Nexus/src/Host/Addons/Addon.cpp`, `IsVolatileDisabled`.
+- `clang-format` is not on PATH; it ships with Visual Studio at
+  `<VS install>\VC\Tools\Llvm\x64\bin\clang-format.exe`.
 
 ## Don't
 

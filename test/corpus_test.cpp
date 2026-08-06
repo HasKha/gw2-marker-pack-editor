@@ -182,27 +182,49 @@ TEST_CASE("every pack in the corpus holds its invariants", "[corpus]") {
 }
 
 TEST_CASE("a folder pack and the zip built from it give the same model", "[corpus]") {
-    // docs/plan.md names these two as the same content in both shapes. The point of the
-    // DirectorySource is editing a pack's source tree in place, which is only safe if it
-    // resolves to exactly what the shipped zip does.
-    const std::filesystem::path zip = corpus::pack("haskha_markers.zip");
-    if (zip.empty()) SKIP("haskha_markers.zip is not in the corpus");
-
+    // The point of the DirectorySource is editing a pack's source tree in place, which is
+    // only safe if it resolves to exactly what a zip of that same tree does.
+    //
+    // The zip is built here rather than picked out of the corpus. Comparing a checkout to a
+    // separately shipped archive of "the same" pack compares two copies that drift the
+    // moment either is edited, and a red test that means "you have not re-exported lately"
+    // is a test nobody can read. Zipping the folder we just loaded cannot drift.
     const std::filesystem::path folder = corpus::folderPack();
     if (folder.empty()) SKIP("no unzipped pack available; set MPE_TEST_FOLDER_PACK");
 
-    const Loaded from_zip = load(zip);
     const Loaded from_folder = load(folder);
-
     CHECK(from_folder.model.from_directory);
+
+    const corpus::TempDir temp("folder_vs_zip");
+    const std::filesystem::path target = temp / "from_folder.zip";
+
+    // The editor's own save path: everything the reader did not touch is copied across out
+    // of the folder source, which is exactly the part a DirectorySource has to get right.
+    const pack::SaveResult built = pack::buildZip(from_folder.model, from_folder.source.get(), target);
+    INFO("buildZip: " << built.error);
+    REQUIRE(built.ok);
+
+    std::string error;
+    INFO("commitZip: " << error);
+    REQUIRE(pack::commitZip(target, &error));
+
+    const Loaded from_zip = load(target);
     CHECK_FALSE(from_zip.model.from_directory);
 
     CHECK(from_folder.model.categories.size() == from_zip.model.categories.size());
     CHECK(from_folder.model.files.size() == from_zip.model.files.size());
+    CHECK(from_folder.model.pathables.size() == from_zip.model.pathables.size());
 
     // Category ids are what every reference into the pack resolves through, so they are
-    // the part that has to agree exactly.
+    // the part that has to agree exactly. Order counts too: a folder is walked and a zip is
+    // indexed, and if those two disagree the pack comes out shuffled.
     for (size_t i = 0; i < from_zip.model.categories.size() && i < from_folder.model.categories.size(); ++i) {
         CHECK(from_folder.model.categories[i].id == from_zip.model.categories[i].id);
+    }
+
+    for (size_t i = 0; i < from_zip.model.pathables.size() && i < from_folder.model.pathables.size(); ++i) {
+        INFO("pathable " << i);
+        CHECK(from_folder.model.pathables[i].type == from_zip.model.pathables[i].type);
+        CHECK(from_folder.model.pathables[i].category_id == from_zip.model.pathables[i].category_id);
     }
 }
