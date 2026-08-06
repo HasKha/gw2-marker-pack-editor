@@ -2,6 +2,7 @@
 
 #include <nlohmann/json.hpp>
 
+#include <algorithm>
 #include <cmath>
 #include <string>
 
@@ -67,10 +68,54 @@ bool Camera::project(const glm::vec3& world, glm::vec2* out_screen) const {
     return true;
 }
 
-float Camera::pixelSize(float world_size, float distance) const {
-    if (distance <= 0.0001f) return 0.0f;
-    // Standard perspective scale: half the viewport spans tan(fov/2) at unit distance.
-    return world_size / distance * (viewport.y * 0.5f) / std::tan(fov * 0.5f);
+bool Camera::billboardCorners(const glm::vec3& world_position, float world_size, glm::vec2 out_corners[4]) const {
+    const glm::vec3 from_camera = world_position - position;
+    const float distance = glm::length(from_camera);
+    if (distance < 0.0001f) return false;
+
+    const glm::vec3 direction = from_camera / distance;
+
+    // Matrix.CreateBillboard's basis, which Blish builds with the object-minus-camera
+    // direction, right = up x direction and up' = direction x right. Its up vector is
+    // (0,0,1) in Blish's Z-up space, i.e. ours below.
+    //
+    // The formula is copied verbatim, but the space is not: Blish's is right-handed and
+    // Mumble's is left-handed, so the `right` that comes out points the opposite way —
+    // screen right here, screen left there. That is not a bug to correct. It is what
+    // cancels the horizontal half of Blish's inverted UVs, and the renderer's UV table
+    // depends on it. See kBillboardUv in renderer.cpp.
+    glm::vec3 right = glm::cross(glm::vec3(0.0f, 1.0f, 0.0f), direction);
+    const float right_length = glm::length(right);
+    if (right_length < 0.0001f) {
+        // Straight above or below the camera, where up x direction degenerates. Blish
+        // normalizes a zero vector here and gets NaN; a marker underfoot is better drawn
+        // in an arbitrary orientation than not at all.
+        right = glm::vec3(1.0f, 0.0f, 0.0f);
+    } else {
+        right /= right_length;
+    }
+    const glm::vec3 up_axis = glm::cross(direction, right);
+
+    const float half = world_size * 0.5f;
+
+    for (int i = 0; i < 4; ++i) {
+        const glm::vec3 corner = world_position + right * (kQuadCorners[i].x * half) + up_axis * (kQuadCorners[i].y * half);
+        if (!project(corner, &out_corners[i])) return false;
+    }
+
+    return true;
+}
+
+float quadPixelHeight(const glm::vec2 corners[4]) {
+    float min_y = corners[0].y;
+    float max_y = corners[0].y;
+
+    for (int i = 1; i < 4; ++i) {
+        min_y = std::min(min_y, corners[i].y);
+        max_y = std::max(max_y, corners[i].y);
+    }
+
+    return max_y - min_y;
 }
 
 Camera fromMumble(const Mumble::Data* mumble, const NexusLinkData* nexus_link) {

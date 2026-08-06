@@ -119,10 +119,24 @@ enable_testing()
 add_executable(mpe_test)
 
 file(GLOB TEST_SOURCES "test/*_test.cpp")
+
+# world/camera.cpp is not part of mpe_pack — it reads MumbleLink — but everything below
+# fromMumble is plain glm, and the projection maths is exactly the kind of thing that is
+# miserable to check by launching the game. It costs three header-only interface targets
+# to compile it in here, so it gets tested.
+list(APPEND TEST_SOURCES "src/world/camera.cpp")
+
 target_sources(mpe_test PRIVATE ${TEST_SOURCES})
 source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" PREFIX "" FILES ${TEST_SOURCES})
 
-target_link_libraries(mpe_test PRIVATE mpe_pack mpe_corpus Catch2::Catch2WithMain)
+target_link_libraries(mpe_test PRIVATE
+    mpe_pack
+    mpe_corpus
+    mumble
+    nexus
+    nlohmann_json::nlohmann_json
+    Catch2::Catch2WithMain
+)
 
 include(Catch)
 catch_discover_tests(mpe_test)

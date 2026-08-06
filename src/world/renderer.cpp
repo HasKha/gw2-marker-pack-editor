@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cmath>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -288,10 +289,8 @@ bool rotatedMarkerCorners(const Camera& camera, const MarkerDraw& marker, ImVec2
     const float cy = std::cos(marker.rotation.y), sy = std::sin(marker.rotation.y);
     const float cz = std::cos(marker.rotation.z), sz = std::sin(marker.rotation.z);
 
-    static const glm::vec2 kCorners[4] = {{-1.0f, -1.0f}, {1.0f, -1.0f}, {1.0f, 1.0f}, {-1.0f, 1.0f}};
-
     for (int i = 0; i < 4; ++i) {
-        glm::vec3 p(kCorners[i].x * half, kCorners[i].y * half, 0.0f);
+        glm::vec3 p(kQuadCorners[i].x * half, kQuadCorners[i].y * half, 0.0f);
 
         // X, then Y, then Z, matching the reference's matrix order.
         p = glm::vec3(p.x, p.y * cx - p.z * sx, p.y * sx + p.z * cx);
@@ -307,6 +306,34 @@ bool rotatedMarkerCorners(const Camera& camera, const MarkerDraw& marker, ImVec2
     }
 
     return true;
+}
+
+// Blish derives each UV from the sign of the vertex it belongs to:
+//     new Vector2(vert.X < 0 ? 1 : 0, vert.Y < 0 ? 1 : 0)
+// so in its own space the -X,-Y corner carries uv (1,1) and the +X,+Y corner (0,0) —
+// both axes inverted relative to the obvious (0,0)->(1,1) mapping, which is exactly a
+// 180-degree in-plane rotation of the image. That is what a rotated marker gets.
+// (ImVec2 predates constexpr constructors in the imgui Nexus ships, hence const.)
+const ImVec2 kRotatedUv[4] = {{1, 1}, {0, 1}, {0, 0}, {1, 0}};
+
+// A billboard gets the plain mapping instead, and the difference is not a choice. Its
+// corners come from Matrix.CreateBillboard, whose `right` axis points to screen *left*
+// in Blish's right-handed space and to screen right in Mumble's left-handed one (see
+// Camera::billboardCorners). Building the same basis in our space therefore flips u back,
+// leaving only the vertical inversion — which the corner order absorbs.
+const ImVec2 kBillboardUv[4] = {{0, 1}, {1, 1}, {1, 0}, {0, 0}};
+
+// The picking test and the outlines, which are the same for a marker of either kind once
+// its corners are known.
+void markerQuadOverlay(ImDrawList* list, const ImVec2 corners[4], size_t pathable, bool selected) {
+    // Drawn back to front, so a later hit is nearer the camera and wins.
+    if (pointInQuad(ImGui::GetIO().MousePos, corners)) hovered_pathable = pathable;
+
+    if (selected) {
+        list->AddPolyline(corners, 4, IM_COL32(255, 210, 60, 255), true, 2.0f);
+    } else if (pathable == hover_highlight) {
+        list->AddPolyline(corners, 4, IM_COL32(255, 255, 255, 160), true, 1.5f);
+    }
 }
 
 void drawMarkers(editor::State& state, const Camera& camera, ImDrawList* list, std::vector<Sorted>& order) {
@@ -326,9 +353,6 @@ void drawMarkers(editor::State& state, const Camera& camera, ImDrawList* list, s
         const ImU32 colour = applyOpacity(marker.tint, opacity);
         ImTextureID texture = resources::texture(marker.icon);
 
-        // Drawn back to front, so a later hit is nearer the camera and wins.
-        const ImVec2 mouse = ImGui::GetIO().MousePos;
-
         if (marker.has_rotation) {
             // Fixed in the world, so it foreshortens with the viewing angle. minSize and
             // maxSize do not apply: those clamp a billboard's screen size, and clamping a
@@ -337,78 +361,78 @@ void drawMarkers(editor::State& state, const Camera& camera, ImDrawList* list, s
             if (!rotatedMarkerCorners(camera, marker, corners)) continue;
 
             if (texture) {
-                // Blish derives each UV from the sign of the vertex it belongs to:
-                //     new Vector2(vert.X < 0 ? 1 : 0, vert.Y < 0 ? 1 : 0)
-                // so the -X,-Y corner carries uv (1,1) and the +X,+Y corner (0,0). Both
-                // axes are inverted relative to the obvious (0,0)->(1,1) mapping, which is
-                // exactly a 180-degree in-plane rotation of the image.
                 list->AddImageQuad(
                     texture,
                     corners[0],
                     corners[1],
                     corners[2],
                     corners[3],
-                    ImVec2(1, 1),
-                    ImVec2(0, 1),
-                    ImVec2(0, 0),
-                    ImVec2(1, 0),
+                    kRotatedUv[0],
+                    kRotatedUv[1],
+                    kRotatedUv[2],
+                    kRotatedUv[3],
                     colour);
             } else {
                 list->AddConvexPolyFilled(corners, 4, colour);
             }
 
-            if (selected) {
-                list->AddPolyline(corners, 4, IM_COL32(255, 210, 60, 255), true, 2.0f);
-            } else if (marker.pathable == hover_highlight) {
-                list->AddPolyline(corners, 4, IM_COL32(255, 255, 255, 160), true, 1.5f);
-            }
-
-            if (pointInQuad(mouse, corners)) hovered_pathable = marker.pathable;
+            markerQuadOverlay(list, corners, marker.pathable, selected);
             continue;
         }
 
-        const float camera_distance = glm::length(marker.position - camera.position);
-        // Blish scales the unit quad by iconSize * 2, then clamps its on-screen height
-        // between minSize*4 and maxSize*4 of *its* pixel measure — which is twice the real
-        // pixel height. See kBlishPixelScale.
-        float pixels = camera.pixelSize(marker.icon_size * 2.0f, camera_distance);
-        pixels = std::clamp(pixels, marker.min_size * kBlishSizeLimit, marker.max_size * kBlishSizeLimit);
+        // Blish scales the unit quad by iconSize * 2, billboards it towards the camera,
+        // and projects the result — see Camera::billboardCorners for why neither the size
+        // nor the shape of that follows from the distance alone.
+        const float world_size = marker.icon_size * 2.0f;
+        glm::vec2 quad[4];
+        bool projected = camera.billboardCorners(marker.position, world_size, quad);
+
+        // It then clamps the projected height between minSize*4 and maxSize*4, which is
+        // twice the real pixel height either side (see kBlishSizeLimit). A marker whose
+        // quad straddles the camera plane has no projected height to clamp, and is close
+        // enough to fill the screen, so maxSize is what bounds it.
+        const float measured = projected ? quadPixelHeight(quad) : std::numeric_limits<float>::infinity();
+        const float pixels = std::clamp(measured, marker.min_size * kBlishSizeLimit, marker.max_size * kBlishSizeLimit);
         if (pixels < 1.0f) continue;
 
+        // Blish satisfies the clamp by rescaling the model matrix about the marker and
+        // drawing whatever that projects to — so the quad has to be projected again at
+        // the new size rather than stretched, or its shape would not be Blish's.
+        if (projected && measured > 0.0001f && std::abs(pixels - measured) > 0.001f) {
+            projected = camera.billboardCorners(marker.position, world_size * pixels / measured, quad);
+        }
+
         const float half = pixels * 0.5f;
-        const ImVec2 min(screen.x - half, screen.y - half);
-        const ImVec2 max(screen.x + half, screen.y + half);
+        ImVec2 corners[4];
+
+        if (projected) {
+            for (int i = 0; i < 4; ++i) corners[i] = ImVec2(quad[i].x, quad[i].y);
+        } else {
+            // Nothing meaningful to project. Fall back to a screen-space square, in
+            // kQuadCorners order so the UVs below still line up.
+            for (int i = 0; i < 4; ++i) {
+                corners[i] = ImVec2(screen.x + kQuadCorners[i].x * half, screen.y - kQuadCorners[i].y * half);
+            }
+        }
 
         if (texture) {
-            list->AddImage(texture, min, max, ImVec2(0, 0), ImVec2(1, 1), colour);
+            list->AddImageQuad(
+                texture,
+                corners[0],
+                corners[1],
+                corners[2],
+                corners[3],
+                kBillboardUv[0],
+                kBillboardUv[1],
+                kBillboardUv[2],
+                kBillboardUv[3],
+                colour);
         } else {
             // No icon, or it failed to load: a dot still shows the marker is there.
             list->AddCircleFilled(ImVec2(screen.x, screen.y), std::max(2.0f, half * 0.35f), applyOpacity(marker.tint, opacity * 0.7f));
         }
 
-        if (mouse.x >= min.x && mouse.x <= max.x && mouse.y >= min.y && mouse.y <= max.y) {
-            hovered_pathable = marker.pathable;
-        }
-
-        if (!selected && marker.pathable == hover_highlight) {
-            list->AddRect(
-                ImVec2(min.x - 2.0f, min.y - 2.0f),
-                ImVec2(max.x + 2.0f, max.y + 2.0f),
-                IM_COL32(255, 255, 255, 160),
-                0.0f,
-                0,
-                1.5f);
-        }
-
-        if (selected) {
-            list->AddRect(
-                ImVec2(min.x - 2.0f, min.y - 2.0f),
-                ImVec2(max.x + 2.0f, max.y + 2.0f),
-                IM_COL32(255, 210, 60, 255),
-                0.0f,
-                0,
-                2.0f);
-        }
+        markerQuadOverlay(list, corners, marker.pathable, selected);
     }
 }
 

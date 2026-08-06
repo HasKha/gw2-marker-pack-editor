@@ -19,6 +19,12 @@ inline float inchesToMetres(float inches) {
     return inches * kMetresPerInch;
 }
 
+// Corner order for every marker quad, as multipliers on the quad's own right and up axes.
+// Blish's marker UVs are a function of the sign of each vertex, so the order a quad's
+// corners come out in is what its UV table has to be written against — the two only line
+// up because everything drawing a marker uses this one array.
+constexpr glm::vec2 kQuadCorners[4] = {{-1.0f, -1.0f}, {1.0f, -1.0f}, {1.0f, 1.0f}, {-1.0f, 1.0f}};
+
 // The game camera for this frame, derived from MumbleLink.
 //
 // Mumble's coordinate system is left-handed with X right, Y up, Z forward, in metres —
@@ -50,9 +56,25 @@ struct Camera {
     // which case the screen position is meaningless.
     bool project(const glm::vec3& world, glm::vec2* out_screen) const;
 
-    // How many pixels tall a world-space size appears at the given distance.
-    float pixelSize(float world_size, float distance) const;
+    // Projects the camera-facing quad Blish draws for a marker `world_size` across,
+    // centred on `world_position`, into screen pixels in kQuadCorners order.
+    //
+    // The whole quad is projected rather than its size being computed from the distance,
+    // because neither its size nor its shape follows from one. A billboard is
+    // perpendicular to the *ray* to the camera, so how tall it projects depends on the
+    // view-space depth and how far off-axis it sits, not on the radial distance — over
+    // 1.6x apart by the middle of the screen edge at a 70-degree vertical FOV. And what
+    // lands on screen is a tilted quad, not an axis-aligned square. Blish projects the
+    // four corners and uses what comes out (StandardMarker.World.cs), so we do too.
+    //
+    // Returns false when a corner falls behind the camera. That only happens with the
+    // marker in the camera's face, where Blish's own screen bounds are meaningless too.
+    bool billboardCorners(const glm::vec3& world_position, float world_size, glm::vec2 out_corners[4]) const;
 };
+
+// The screen-space height of four projected corners. This — not the width, and not the
+// diagonal — is the quantity Blish's minSize/maxSize clamp is expressed in.
+float quadPixelHeight(const glm::vec2 corners[4]);
 
 // Builds the camera for this frame. Returns an invalid Camera when MumbleLink has no data
 // yet — at character select, during map load, or before the game has ticked.

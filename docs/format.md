@@ -148,8 +148,34 @@ Markers, per `Entity/StandardMarker.World.cs`:
   So the `-X,-Y` corner carries uv `(1,1)` and the `+X,+Y` corner `(0,0)`. Both axes are
   inverted from the obvious `(0,0)->(1,1)` mapping. Getting this wrong draws a rotated
   marker in the right place, on the right plane, with the right normal — and the image
-  turned 180 degrees. (Billboards are unaffected in practice: `CreateBillboard` orients
-  the quad so the flips cancel.)
+  turned 180 degrees.
+- **A billboard cancels half of that, and only half.** `Matrix.CreateBillboard` builds
+  `right = up x direction` in Blish's Z-up **right-handed** space, where that points to
+  screen *left*. Build the same expression in Mumble's Y-up **left-handed** space and it
+  points to screen right, because swapping two axes flips the sign of a cross product.
+  So the horizontal inversion cancels and the vertical one is absorbed by the corner
+  order: a billboard ends up with the plain top-left-to-bottom-right mapping, and a
+  rotated marker does not. Neither is a free choice — they are the same rule read in two
+  different spaces.
+- **A billboard's projected shape is a tilted quad, not an axis-aligned square.** It is
+  perpendicular to the ray to the camera, not to the image plane, so away from the centre
+  of the screen it rotates and shears. Blish rasterizes the four projected corners, which
+  is visible as soon as a marker is off to one side.
+- **The billboard's on-screen size is measured, not computed from the distance.** Blish
+  projects the four corners and takes the extent of the result. That is not the same
+  number as `iconSize * 2 / distance`, and the difference is large:
+
+  - A billboard is perpendicular to the *ray* to the camera, so its projected height goes
+    as one over the view-space **depth**, not the radial distance. Off-axis those differ
+    by `r/z`.
+  - Off-axis it also lands on the image plane magnified by `1/cos²`, the ordinary tangent
+    stretch of a perspective projection. For a marker offset vertically the two effects
+    compound to `r/z²` — bigger than the on-axis size, where dividing by radial distance
+    makes it smaller.
+
+  At a 70-degree vertical FOV, sizing by radial distance is 1.6x too small at the middle
+  of the screen edge and 1.7x at the corner. Anything reproducing Blish's picture has to
+  project the quad.
 - After projection, on-screen height is clamped between `minsize * 4` and `maxsize * 4`,
   and the model matrix is rescaled to satisfy it. **Those bounds are not in pixels.** The
   quantity being clamped is
