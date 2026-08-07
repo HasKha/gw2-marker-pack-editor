@@ -152,6 +152,11 @@ editor, and undo/redo. What is left is not doubt about whether it works, but the
   marker off that spot when it draws, which is either what you want or a surprise.
 - **A new root category lands in the pack's first XML file.** It has no parent declaration
   to nest inside, so something has to choose, and nothing better suggests itself.
+- **Perspective-correct texturing is capped at 16 subdivisions a side.** That covers every
+  marker anyone would author; a quad both enormous and right in the camera's face still
+  carries a little of the affine bend, and one with a corner behind the camera falls back
+  to a flat screen-space square and carries all of it. Raising the cap is a constant in
+  `world/camera.h`, paid for in vertices.
 
 ## Open questions
 

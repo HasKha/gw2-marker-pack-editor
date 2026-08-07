@@ -33,7 +33,6 @@ namespace marker_editor {
 namespace {
 
 AddonAPI* api = nullptr;
-NexusLinkData* nexus_link = nullptr;
 Mumble::Data* mumble_link = nullptr;
 
 // Absolute path of the pack currently open, empty when none is.
@@ -783,7 +782,10 @@ void render() {
 
     // The world is drawn whether or not any editor window is open — the point is to see
     // the pack in the game.
-    const world::Camera camera = world::fromMumble(mumble_link, nexus_link);
+    // ImGui's display size, not NexusLinkData's — see fromMumble. Everything below draws
+    // into an ImGui draw list, so that is the space the projection has to land in.
+    const ImVec2 display = ImGui::GetIO().DisplaySize;
+    const world::Camera camera = world::fromMumble(mumble_link, glm::vec2(display.x, display.y));
     frame_camera = camera;
     world::renderer::draw(state, camera);
 
@@ -853,9 +855,8 @@ void onEditKeybind(const char* aIdentifier, bool aIsRelease) {
 
 } // namespace
 
-void load(AddonAPI* _api, NexusLinkData* _nexus_link, Mumble::Data* _mumble_link) {
+void load(AddonAPI* _api, Mumble::Data* _mumble_link) {
     api = _api;
-    nexus_link = _nexus_link;
     mumble_link = _mumble_link;
 
     resources::init(api);

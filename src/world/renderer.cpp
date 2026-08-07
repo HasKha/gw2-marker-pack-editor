@@ -93,6 +93,103 @@ size_t hover_highlight = pack::kNoIndex;
 std::atomic<size_t> hovered_trail_point{pack::kNoIndex};
 size_t hover_point_highlight = pack::kNoIndex;
 
+// ImGui has no w to divide by. AddImageQuad rasterizes two triangles and interpolates the
+// UVs affinely across them, which is only correct when all four corners sit at the same
+// depth — and they never do. A billboard is perpendicular to the ray to its own centre, so
+// the further off-axis it sits the more its corners differ in view-space depth, and a
+// marker carrying `rotate` is tilted by construction. What comes out is a texture bent
+// along the quad's diagonal rather than foreshortened: on a large marker, a saddle.
+//
+// The fix is to subdivide in *world* space and project every vertex. All four corners of
+// every quad drawn here are coplanar, so a bilinear blend of them stays on the real
+// surface, and each cell ends up small enough that affine is invisible. Blish gets this
+// from the GPU for free; a 2D draw list has to pay for it. How far to split is
+// affineQuadSubdivisions, which lives with the projection because that is what it is about.
+constexpr float kQuadPixelTolerance = 0.5f;
+
+// Projects a quad's four world-space corners, keeping the clip depths the grid below needs.
+// False when any corner is behind the camera, where the whole quad is meaningless anyway.
+bool projectQuad(const Camera& camera, const glm::vec3 world[4], glm::vec2 out_screen[4], float out_depth[4]) {
+    for (int i = 0; i < 4; ++i) {
+        if (!camera.project(world[i], &out_screen[i], &out_depth[i])) return false;
+    }
+    return true;
+}
+
+void toScreen(const glm::vec2 quad[4], ImVec2 out[4]) {
+    for (int i = 0; i < 4; ++i) out[i] = ImVec2(quad[i].x, quad[i].y);
+}
+
+// Draws one textured quad, subdividing as far as the perspective across it needs.
+//
+// `world` and `depth` are the corners before projection and the depths they projected
+// with; both are null for a quad that was never projected — a screen-space fallback has no
+// perspective to put back.
+void drawTexturedQuad(
+    const Camera& camera,
+    ImDrawList* list,
+    ImTextureID texture,
+    const glm::vec2 screen[4],
+    const glm::vec3* world,
+    const float* depth,
+    const ImVec2 uv[4],
+    ImU32 colour) {
+    if ((colour & IM_COL32_A_MASK) == 0) return; // what AddImageQuad checks for us below
+
+    const int steps = world ? affineQuadSubdivisions(screen, depth, kQuadPixelTolerance) : 1;
+    if (steps <= 1) {
+        ImVec2 corners[4];
+        toScreen(screen, corners);
+        list->AddImageQuad(texture, corners[0], corners[1], corners[2], corners[3], uv[0], uv[1], uv[2], uv[3], colour);
+        return;
+    }
+
+    // u runs from corner 0 to corner 1 and v from corner 0 to corner 3, so one bilinear
+    // blend places both the vertex and its texture coordinate.
+    constexpr int kMaxStride = kMaxQuadSubdivisions + 1;
+    ImVec2 points[kMaxStride * kMaxStride];
+    ImVec2 coords[kMaxStride * kMaxStride];
+    const int stride = steps + 1;
+
+    for (int row = 0; row <= steps; ++row) {
+        const float v = static_cast<float>(row) / static_cast<float>(steps);
+        for (int column = 0; column <= steps; ++column) {
+            const float u = static_cast<float>(column) / static_cast<float>(steps);
+            const float weight[4] = {(1.0f - u) * (1.0f - v), u * (1.0f - v), u * v, (1.0f - u) * v};
+
+            glm::vec3 position(0.0f);
+            ImVec2 coord(0.0f, 0.0f);
+            for (int i = 0; i < 4; ++i) {
+                position += world[i] * weight[i];
+                coord.x += uv[i].x * weight[i];
+                coord.y += uv[i].y * weight[i];
+            }
+
+            // Depth is affine over the quad and every corner is in front of the camera, so
+            // no interior point can be behind it and the projection cannot fail here.
+            glm::vec2 projected(0.0f);
+            camera.project(position, &projected);
+            points[row * stride + column] = ImVec2(projected.x, projected.y);
+            coords[row * stride + column] = coord;
+        }
+    }
+
+    // One draw command for the whole grid. AddImageQuad per cell would push and pop the
+    // texture id each time, and that is a command each.
+    list->PushTextureID(texture);
+    list->PrimReserve(6 * steps * steps, 4 * steps * steps);
+    for (int row = 0; row < steps; ++row) {
+        for (int column = 0; column < steps; ++column) {
+            const int a = row * stride + column;
+            const int b = a + 1;
+            const int c = b + stride;
+            const int d = a + stride;
+            list->PrimQuadUV(points[a], points[b], points[c], points[d], coords[a], coords[b], coords[c], coords[d], colour);
+        }
+    }
+    list->PopTextureID();
+}
+
 bool pointInQuad(const ImVec2& p, const ImVec2 quad[4]) {
     // Sign of the cross product against each edge; consistent sign means inside. Works
     // for any convex quad, which a projected marker always is.
@@ -283,7 +380,7 @@ struct Sorted {
 // reading .trl — so the offset is built in Blish's space and swapped back at the end.
 // (Swapping two axes also flips handedness, which is exactly the LH-to-RH difference
 // between Mumble's space and Blish's.)
-bool rotatedMarkerCorners(const Camera& camera, const MarkerDraw& marker, ImVec2 out[4]) {
+void rotatedMarkerQuad(const MarkerDraw& marker, glm::vec3 out[4]) {
     const float half = marker.icon_size; // the quad is the unit square scaled by size*2
     const float cx = std::cos(marker.rotation.x), sx = std::sin(marker.rotation.x);
     const float cy = std::cos(marker.rotation.y), sy = std::sin(marker.rotation.y);
@@ -298,14 +395,8 @@ bool rotatedMarkerCorners(const Camera& camera, const MarkerDraw& marker, ImVec2
         p = glm::vec3(p.x * cz - p.y * sz, p.x * sz + p.y * cz, p.z);
 
         // Blish Z-up -> file/Mumble Y-up.
-        const glm::vec3 world = marker.position + glm::vec3(p.x, p.z, p.y);
-
-        glm::vec2 screen;
-        if (!camera.project(world, &screen)) return false;
-        out[i] = ImVec2(screen.x, screen.y);
+        out[i] = marker.position + glm::vec3(p.x, p.z, p.y);
     }
-
-    return true;
 }
 
 // Blish derives each UV from the sign of the vertex it belongs to:
@@ -357,21 +448,17 @@ void drawMarkers(editor::State& state, const Camera& camera, ImDrawList* list, s
             // Fixed in the world, so it foreshortens with the viewing angle. minSize and
             // maxSize do not apply: those clamp a billboard's screen size, and clamping a
             // world-locked quad would detach it from the surface it is placed on.
+            glm::vec3 world_quad[4];
+            glm::vec2 quad[4];
+            float depth[4];
+            rotatedMarkerQuad(marker, world_quad);
+            if (!projectQuad(camera, world_quad, quad, depth)) continue;
+
             ImVec2 corners[4];
-            if (!rotatedMarkerCorners(camera, marker, corners)) continue;
+            toScreen(quad, corners);
 
             if (texture) {
-                list->AddImageQuad(
-                    texture,
-                    corners[0],
-                    corners[1],
-                    corners[2],
-                    corners[3],
-                    kRotatedUv[0],
-                    kRotatedUv[1],
-                    kRotatedUv[2],
-                    kRotatedUv[3],
-                    colour);
+                drawTexturedQuad(camera, list, texture, quad, world_quad, depth, kRotatedUv, colour);
             } else {
                 list->AddConvexPolyFilled(corners, 4, colour);
             }
@@ -384,8 +471,10 @@ void drawMarkers(editor::State& state, const Camera& camera, ImDrawList* list, s
         // and projects the result — see Camera::billboardCorners for why neither the size
         // nor the shape of that follows from the distance alone.
         const float world_size = marker.icon_size * 2.0f;
+        glm::vec3 world_quad[4];
         glm::vec2 quad[4];
-        bool projected = camera.billboardCorners(marker.position, world_size, quad);
+        float depth[4];
+        bool projected = camera.billboardQuad(marker.position, world_size, world_quad) && projectQuad(camera, world_quad, quad, depth);
 
         // It then clamps the projected height between minSize*4 and maxSize*4, which is
         // twice the real pixel height either side (see kBlishSizeLimit). A marker whose
@@ -399,33 +488,32 @@ void drawMarkers(editor::State& state, const Camera& camera, ImDrawList* list, s
         // drawing whatever that projects to — so the quad has to be projected again at
         // the new size rather than stretched, or its shape would not be Blish's.
         if (projected && measured > 0.0001f && std::abs(pixels - measured) > 0.001f) {
-            projected = camera.billboardCorners(marker.position, world_size * pixels / measured, quad);
+            projected = camera.billboardQuad(marker.position, world_size * pixels / measured, world_quad) &&
+                        projectQuad(camera, world_quad, quad, depth);
         }
 
         const float half = pixels * 0.5f;
-        ImVec2 corners[4];
 
-        if (projected) {
-            for (int i = 0; i < 4; ++i) corners[i] = ImVec2(quad[i].x, quad[i].y);
-        } else {
+        if (!projected) {
             // Nothing meaningful to project. Fall back to a screen-space square, in
             // kQuadCorners order so the UVs below still line up.
             for (int i = 0; i < 4; ++i) {
-                corners[i] = ImVec2(screen.x + kQuadCorners[i].x * half, screen.y - kQuadCorners[i].y * half);
+                quad[i] = glm::vec2(screen.x + kQuadCorners[i].x * half, screen.y - kQuadCorners[i].y * half);
             }
         }
 
+        ImVec2 corners[4];
+        toScreen(quad, corners);
+
         if (texture) {
-            list->AddImageQuad(
+            drawTexturedQuad(
+                camera,
+                list,
                 texture,
-                corners[0],
-                corners[1],
-                corners[2],
-                corners[3],
-                kBillboardUv[0],
-                kBillboardUv[1],
-                kBillboardUv[2],
-                kBillboardUv[3],
+                quad,
+                projected ? world_quad : nullptr,
+                projected ? depth : nullptr,
+                kBillboardUv,
                 colour);
         } else {
             // No icon, or it failed to load: a dot still shows the marker is there.
@@ -472,20 +560,10 @@ void drawTrailSection(
         }
         offset = offset / offset_length * half_width;
 
-        glm::vec2 p0, p1, p2, p3;
-        if (!camera.project(a - offset, &p0)) {
-            travelled += length;
-            continue;
-        }
-        if (!camera.project(a + offset, &p1)) {
-            travelled += length;
-            continue;
-        }
-        if (!camera.project(b + offset, &p2)) {
-            travelled += length;
-            continue;
-        }
-        if (!camera.project(b - offset, &p3)) {
+        const glm::vec3 world_quad[4] = {a - offset, a + offset, b + offset, b - offset};
+        glm::vec2 quad[4];
+        float depth[4];
+        if (!projectQuad(camera, world_quad, quad, depth)) {
             travelled += length;
             continue;
         }
@@ -503,21 +581,17 @@ void drawTrailSection(
         const float v0 = travelled / repeat;
         const float v1 = (travelled + length) / repeat;
 
+        ImVec2 corners[4];
+        toScreen(quad, corners);
+
         if (texture) {
-            list->AddImageQuad(
-                texture,
-                ImVec2(p0.x, p0.y),
-                ImVec2(p1.x, p1.y),
-                ImVec2(p2.x, p2.y),
-                ImVec2(p3.x, p3.y),
-                ImVec2(1.0f, v0),
-                ImVec2(0.0f, v0),
-                ImVec2(0.0f, v1),
-                ImVec2(1.0f, v1),
-                colour);
+            // A segment running away from the camera has its two ends at very different
+            // depths, which is the case the subdivision above exists for: without it the
+            // texture slides along the ribbon instead of compressing into the distance.
+            const ImVec2 uv[4] = {ImVec2(1.0f, v0), ImVec2(0.0f, v0), ImVec2(0.0f, v1), ImVec2(1.0f, v1)};
+            drawTexturedQuad(camera, list, texture, quad, world_quad, depth, uv, colour);
         } else {
-            const ImVec2 quad[4] = {ImVec2(p0.x, p0.y), ImVec2(p1.x, p1.y), ImVec2(p2.x, p2.y), ImVec2(p3.x, p3.y)};
-            list->AddConvexPolyFilled(quad, 4, colour);
+            list->AddConvexPolyFilled(corners, 4, colour);
         }
 
         travelled += length;

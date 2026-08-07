@@ -460,7 +460,8 @@ Nexus hands us `AddonAPI::SwapChain` and, via `Textures.GetOrCreateFromMemory`, 
 custom DX11 pipeline is needed:
 
 1. Each frame, read `Mumble::Data::CameraPosition` / `CameraFront` and the FOV out of
-   the identity JSON.
+   the identity JSON. The **viewport is ImGui's `io.DisplaySize`**, not
+   `NexusLinkData::Width/Height` — see below.
 2. Build view and projection with glm. Positions are metres; `fadeNear`/`fadeFar` are
    inches, so divide distances by 0.0254 before comparing. Verify against a known marker
    position early.
@@ -472,6 +473,28 @@ custom DX11 pipeline is needed:
    sorted back-to-front. Billboard unless `rotate*` is set.
 5. Trails: project each `.trl` point, emit a triangle strip of quads along the polyline,
    breaking into separate ribbons at each `(0,0,0)` segment terminator.
+
+**The viewport is whatever ImGui says it is.** `NexusLinkData` carries a `Width`/`Height`
+and it is the obvious thing to reach for, but those come from the DXGI swap chain and Nexus
+writes them from its `ResizeBuffers` hook alone — a swap chain recreated at another
+resolution (`Present_Internal` notices the new pointer and updates only the window handle)
+leaves them behind. The draw list is rasterized against `io.DisplaySize`, so projecting with
+one shape and drawing into another stretches the whole world along one axis: markers come
+out squashed and the gizmo's rings come out as ellipses. TaimiHUD takes the same view and
+uses `io.DisplaySize` too. Nothing here reads `DL_NEXUS_LINK` any more.
+
+**Textured quads are subdivided, because a draw list cannot divide by w.** `AddImageQuad`
+is two triangles with affine UVs, which is only right when all four corners projected at the
+same depth. They do not: a billboard faces the ray to its own centre, so the further
+off-axis it sits the more its corners differ in depth, and a `rotate`d marker or a trail
+segment running away from the camera is raked by construction. Affinely, the texture bends
+along the quad's diagonal instead of foreshortening — on a large marker that reads as a
+saddle, and on a trail as the pattern sliding rather than compressing into the distance. So
+every textured quad is split in **world** space and each vertex projected on its own; the
+corners are coplanar, so a bilinear blend of them stays on the real surface.
+`world::affineQuadSubdivisions` sizes the grid from the error it is removing and returns 1 —
+one `AddImageQuad`, exactly as before — whenever there is nothing to correct, which is the
+common case. Blish gets all of this from the GPU for free.
 
 Nothing is drawn into the world while the **full map is open** (`Context.IsMapOpen` from
 MumbleLink, carried on `Camera`). The camera keeps updating behind the map, so without the

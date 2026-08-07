@@ -96,6 +96,14 @@ hold in any change:
   it — the one thing the gizmo needs from imgui 1.82+, and numerically identical to the
   `bool closed` argument 1.80 expects. ImGuizmo itself carries `IMGUI_VERSION_NUM` guards
   for old imgui, so the gizmo is genuinely supported there.
+- **An ImGui draw list has no w.** `AddImageQuad` is two triangles with affine UVs, so a
+  projected quad whose corners sit at different depths gets its texture bent along the
+  diagonal instead of foreshortened. Anything textured and projected has to be subdivided in
+  world space — see `drawTexturedQuad` in `world/renderer.cpp` and `docs/architecture.md`.
+- **`NexusLinkData::Width/Height` is not the viewport.** It is the DXGI swap chain's size,
+  written only from Nexus's `ResizeBuffers` hook, and it goes stale when the game builds a
+  new swap chain. The draw list is rasterized against `ImGui::GetIO().DisplaySize`; project
+  against anything else and the world comes out stretched along one axis.
 - **A click on the world never reaches ImGui.** `Nexus/src/UI/UiInput.cpp` only sets
   `io.MouseDown` when `io.WantCaptureMouse` is *already* true, so `ImGui::IsMouseClicked`
   can never fire for a click outside an addon window. Anything that reacts to a world

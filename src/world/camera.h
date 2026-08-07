@@ -1,7 +1,6 @@
 #pragma once
 
 #include <Mumble.h>
-#include <Nexus.h>
 #include <glm/mat4x4.hpp>
 #include <glm/vec2.hpp>
 #include <glm/vec3.hpp>
@@ -54,7 +53,18 @@ struct Camera {
 
     // Projects to screen pixels. Returns false when the point is behind the camera, in
     // which case the screen position is meaningless.
-    bool project(const glm::vec3& world, glm::vec2* out_screen) const;
+    //
+    // `out_w` optionally receives the clip-space w, i.e. the view-space depth the position
+    // was divided by. It is written even when the point is behind the camera. Anything
+    // interpolating across a projected quad needs it, because the screen positions alone
+    // no longer say how the surface between them is foreshortened.
+    bool project(const glm::vec3& world, glm::vec2* out_screen, float* out_w = nullptr) const;
+
+    // The four world-space corners of the camera-facing quad Blish draws for a marker
+    // `world_size` across, centred on `world_position`, in kQuadCorners order. This is
+    // billboardCorners before the projection, for callers that have to subdivide the quad
+    // in world space rather than on screen.
+    bool billboardQuad(const glm::vec3& world_position, float world_size, glm::vec3 out_corners[4]) const;
 
     // Projects the camera-facing quad Blish draws for a marker `world_size` across,
     // centred on `world_position`, into screen pixels in kQuadCorners order.
@@ -76,8 +86,42 @@ struct Camera {
 // diagonal — is the quantity Blish's minSize/maxSize clamp is expressed in.
 float quadPixelHeight(const glm::vec2 corners[4]);
 
+// The most ways a quad is ever split. The renderer sizes a stack grid on this, so it is a
+// bound rather than a preference.
+constexpr int kMaxQuadSubdivisions = 16;
+
+// How many ways to split a projected quad along each axis before interpolating across it
+// *affinely* is worth less than `tolerance_pixels` of error.
+//
+// A 2D draw list has no w to divide by, so anything it interpolates across a quad — the
+// texture coordinates, above all — is spread evenly over the screen positions rather than
+// over the surface. That is only right when the four corners came back from the projection
+// at the same depth, and a quad tilted away from the camera does not.
+//
+// Across an edge whose ends projected with clip depths w0 and w1, the affine midpoint lands
+// at parameter 1/2 where the correct one is w0/(w0+w1) — so the content is misplaced by a
+// fraction of the edge's screen length. Splitting the edge n ways divides both that
+// fraction and the length it is measured over by n, so the error falls as 1/n².
+//
+// The depth spread is measured against the *near* end rather than the mean, deliberately.
+// The error is not spread evenly over the quad: it concentrates at the near corner, where
+// the cells come out widest on screen and shallowest in depth. Dividing by the mean sizes
+// the grid for the average cell and leaves that corner several times over tolerance.
+//
+// Returns 1 — draw the quad whole — when there is nothing to correct: a quad square on to
+// the camera, or one with a corner behind it, where the projection means nothing anyway.
+// Never more than kMaxQuadSubdivisions.
+int affineQuadSubdivisions(const glm::vec2 screen[4], const float depth[4], float tolerance_pixels);
+
 // Builds the camera for this frame. Returns an invalid Camera when MumbleLink has no data
 // yet — at character select, during map load, or before the game has ticked.
-Camera fromMumble(const Mumble::Data* mumble, const NexusLinkData* nexus_link);
+//
+// `viewport` is the size in pixels of the surface everything will be *drawn* into, which
+// is ImGui's display size and nothing else. NexusLinkData carries a Width/Height too, but
+// those come from the DXGI swap chain and Nexus only refreshes them from its ResizeBuffers
+// hook — a swap chain recreated at another resolution leaves them stale. Projecting with
+// one shape and rasterizing into another stretches the whole world along one axis: markers
+// come out squashed and the gizmo's circles come out as ellipses.
+Camera fromMumble(const Mumble::Data* mumble, const glm::vec2& viewport);
 
 } // namespace world

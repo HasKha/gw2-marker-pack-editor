@@ -49,6 +49,18 @@ float billboardHeight(const world::Camera& camera, const glm::vec3& position, fl
     return world::quadPixelHeight(corners);
 }
 
+// How far a texture feature is misplaced by spreading an edge's content evenly over its two
+// projected ends: where the middle of the edge really lands, against where the halfway
+// point between the ends is. This is exactly the error a 2D draw list makes, since it has
+// no w to divide by.
+float affineEdgeError(const world::Camera& camera, const glm::vec3& a, const glm::vec3& b) {
+    glm::vec2 screen_a(0.0f), screen_b(0.0f), screen_middle(0.0f);
+    REQUIRE(camera.project(a, &screen_a));
+    REQUIRE(camera.project(b, &screen_b));
+    REQUIRE(camera.project((a + b) * 0.5f, &screen_middle));
+    return glm::length((screen_a + screen_b) * 0.5f - screen_middle);
+}
+
 } // namespace
 
 TEST_CASE("a billboard on the optical axis is size over distance", "[camera]") {
@@ -170,6 +182,89 @@ TEST_CASE("a billboard off the axis is tilted, not axis-aligned", "[camera][orie
     CHECK(corners[0].y > corners[3].y);
 }
 
+TEST_CASE("billboardQuad is billboardCorners before the projection", "[camera]") {
+    const world::Camera camera = axisCamera();
+
+    glm::vec3 world[4];
+    glm::vec2 corners[4];
+    REQUIRE(camera.billboardQuad(glm::vec3(40.0f, 30.0f, 60.0f), 4.0f, world));
+    REQUIRE(camera.billboardCorners(glm::vec3(40.0f, 30.0f, 60.0f), 4.0f, corners));
+
+    for (int i = 0; i < 4; ++i) {
+        glm::vec2 projected(0.0f);
+        REQUIRE(camera.project(world[i], &projected));
+        CHECK(projected.x == Approx(corners[i].x));
+        CHECK(projected.y == Approx(corners[i].y));
+    }
+}
+
+TEST_CASE("a quad square on to the camera needs no subdividing", "[camera]") {
+    const world::Camera camera = axisCamera();
+
+    // Dead ahead the billboard is parallel to the camera plane, so all four corners come
+    // back at the same depth and interpolating affinely across them is already exact.
+    glm::vec3 world[4];
+    glm::vec2 screen[4];
+    float depth[4];
+    REQUIRE(camera.billboardQuad(glm::vec3(0.0f, 0.0f, 50.0f), 20.0f, world));
+    for (int i = 0; i < 4; ++i) REQUIRE(camera.project(world[i], &screen[i], &depth[i]));
+
+    CHECK(depth[0] == Approx(depth[2]));
+    CHECK(world::affineQuadSubdivisions(screen, depth, 0.5f) == 1);
+}
+
+TEST_CASE("a large off-axis billboard is subdivided until affine is invisible", "[camera][regression]") {
+    const world::Camera camera = axisCamera();
+
+    // Big and well off the optical axis, which is where the corners land at very different
+    // depths. Drawn as two affine triangles the icon bends along the diagonal instead of
+    // foreshortening — the saddle this subdivision exists to remove.
+    const glm::vec3 position(30.0f, 0.0f, 60.0f);
+    glm::vec3 world[4];
+    glm::vec2 screen[4];
+    float depth[4];
+    REQUIRE(camera.billboardQuad(position, 24.0f, world));
+    for (int i = 0; i < 4; ++i) REQUIRE(camera.project(world[i], &screen[i], &depth[i]));
+
+    const float near_depth = std::min({depth[0], depth[1], depth[2], depth[3]});
+    const float far_depth = std::max({depth[0], depth[1], depth[2], depth[3]});
+    CAPTURE(near_depth, far_depth);
+    CHECK(far_depth > near_depth * 1.15f);
+
+    // Drawn whole, the middle of an edge is tens of pixels from where the texture puts it.
+    const float whole = affineEdgeError(camera, world[0], world[1]);
+    CHECK(whole > 10.0f);
+
+    const int steps = world::affineQuadSubdivisions(screen, depth, 0.5f);
+    CAPTURE(steps, whole);
+    REQUIRE(steps > 1);
+    REQUIRE(steps < world::kMaxQuadSubdivisions); // or the cap, not the formula, is on trial
+
+    // Split that far, no cell is off by more than the pixel or so that was asked for. The
+    // near end is the worst of them, which is why the depth spread is measured there.
+    float worst = 0.0f;
+    for (int i = 0; i < steps; ++i) {
+        const float t0 = static_cast<float>(i) / static_cast<float>(steps);
+        const float t1 = static_cast<float>(i + 1) / static_cast<float>(steps);
+        const glm::vec3 a = world[0] + (world[1] - world[0]) * t0;
+        const glm::vec3 b = world[0] + (world[1] - world[0]) * t1;
+        worst = std::max(worst, affineEdgeError(camera, a, b));
+    }
+    CHECK(worst < 1.0f);
+    CHECK(worst < whole / 20.0f);
+}
+
+TEST_CASE("subdividing is skipped for a quad with a corner behind the camera", "[camera]") {
+    const world::Camera camera = axisCamera();
+
+    // The renderer draws these as a screen-space square, so there is no world quad to grid
+    // and the depths are meaningless. Asking for a grid anyway would be asking to build one
+    // out of positions that are not on screen.
+    const glm::vec2 screen[4] = {{0.0f, 0.0f}, {800.0f, 0.0f}, {800.0f, 800.0f}, {0.0f, 800.0f}};
+    const float behind[4] = {-5.0f, 10.0f, 10.0f, -5.0f};
+    CHECK(world::affineQuadSubdivisions(screen, behind, 0.5f) == 1);
+}
+
 TEST_CASE("project puts the view axis in the middle of the viewport", "[camera]") {
     const world::Camera camera = axisCamera();
 
@@ -180,4 +275,20 @@ TEST_CASE("project puts the view axis in the middle of the viewport", "[camera]"
 
     // Behind the camera has no meaningful screen position.
     CHECK_FALSE(camera.project(glm::vec3(0.0f, 0.0f, -10.0f), &screen));
+}
+
+TEST_CASE("project reports the depth it divided by", "[camera]") {
+    const world::Camera camera = axisCamera();
+
+    // Looking down +Z with a left-handed projection, clip w is the view-space depth
+    // outright. Everything interpolating across a projected quad needs it, because the
+    // screen positions alone no longer say how the surface between them is foreshortened.
+    glm::vec2 screen(0.0f);
+    float depth = 0.0f;
+    REQUIRE(camera.project(glm::vec3(4.0f, -3.0f, 25.0f), &screen, &depth));
+    CHECK(depth == Approx(25.0f));
+
+    // Written even when the point is behind the camera, where it comes out negative.
+    CHECK_FALSE(camera.project(glm::vec3(0.0f, 0.0f, -10.0f), &screen, &depth));
+    CHECK(depth == Approx(-10.0f));
 }

@@ -14,7 +14,7 @@ constexpr const char* KEYBIND_TOGGLE_ID = "KB_MarkerPackEditor_Toggle";
 constexpr const char* KEYBIND_UNDO_ID = "KB_MarkerPackEditor_Undo";
 constexpr const char* KEYBIND_REDO_ID = "KB_MarkerPackEditor_Redo";
 
-void load(AddonAPI* api, NexusLinkData* nexus_link, Mumble::Data* mumble_link);
+void load(AddonAPI* api, Mumble::Data* mumble_link);
 void unload();
 
 } // namespace marker_editor

@@ -56,8 +56,9 @@ float parseFieldOfView(const wchar_t* identity, float fallback) {
 
 } // namespace
 
-bool Camera::project(const glm::vec3& world, glm::vec2* out_screen) const {
+bool Camera::project(const glm::vec3& world, glm::vec2* out_screen, float* out_w) const {
     const glm::vec4 clip = view_projection * glm::vec4(world, 1.0f);
+    if (out_w) *out_w = clip.w;
     if (clip.w <= 0.0001f) return false;
 
     const glm::vec3 ndc = glm::vec3(clip) / clip.w;
@@ -68,7 +69,7 @@ bool Camera::project(const glm::vec3& world, glm::vec2* out_screen) const {
     return true;
 }
 
-bool Camera::billboardCorners(const glm::vec3& world_position, float world_size, glm::vec2 out_corners[4]) const {
+bool Camera::billboardQuad(const glm::vec3& world_position, float world_size, glm::vec3 out_corners[4]) const {
     const glm::vec3 from_camera = world_position - position;
     const float distance = glm::length(from_camera);
     if (distance < 0.0001f) return false;
@@ -99,8 +100,18 @@ bool Camera::billboardCorners(const glm::vec3& world_position, float world_size,
     const float half = world_size * 0.5f;
 
     for (int i = 0; i < 4; ++i) {
-        const glm::vec3 corner = world_position + right * (kQuadCorners[i].x * half) + up_axis * (kQuadCorners[i].y * half);
-        if (!project(corner, &out_corners[i])) return false;
+        out_corners[i] = world_position + right * (kQuadCorners[i].x * half) + up_axis * (kQuadCorners[i].y * half);
+    }
+
+    return true;
+}
+
+bool Camera::billboardCorners(const glm::vec3& world_position, float world_size, glm::vec2 out_corners[4]) const {
+    glm::vec3 world_corners[4];
+    if (!billboardQuad(world_position, world_size, world_corners)) return false;
+
+    for (int i = 0; i < 4; ++i) {
+        if (!project(world_corners[i], &out_corners[i])) return false;
     }
 
     return true;
@@ -118,12 +129,36 @@ float quadPixelHeight(const glm::vec2 corners[4]) {
     return max_y - min_y;
 }
 
-Camera fromMumble(const Mumble::Data* mumble, const NexusLinkData* nexus_link) {
+int affineQuadSubdivisions(const glm::vec2 screen[4], const float depth[4], float tolerance_pixels) {
+    float near_depth = depth[0];
+    float far_depth = depth[0];
+    for (int i = 1; i < 4; ++i) {
+        near_depth = std::min(near_depth, depth[i]);
+        far_depth = std::max(far_depth, depth[i]);
+    }
+    if (near_depth <= 0.0f || tolerance_pixels <= 0.0f) return 1;
+
+    const float skew = (far_depth - near_depth) / near_depth;
+    if (skew < 0.001f) return 1;
+
+    float extent = 0.0f;
+    for (int i = 0; i < 4; ++i) {
+        for (int j = i + 1; j < 4; ++j) {
+            extent = std::max(extent, std::abs(screen[i].x - screen[j].x));
+            extent = std::max(extent, std::abs(screen[i].y - screen[j].y));
+        }
+    }
+
+    const int steps = static_cast<int>(std::ceil(std::sqrt(extent * skew / (2.0f * tolerance_pixels))));
+    return std::clamp(steps, 1, kMaxQuadSubdivisions);
+}
+
+Camera fromMumble(const Mumble::Data* mumble, const glm::vec2& viewport) {
     Camera camera;
 
-    if (!mumble || !nexus_link) return camera;
+    if (!mumble) return camera;
     if (mumble->UITick == 0) return camera; // game has not written anything yet
-    if (nexus_link->Width == 0 || nexus_link->Height == 0) return camera;
+    if (viewport.x < 1.0f || viewport.y < 1.0f) return camera;
 
     camera.position = toGlm(mumble->CameraPosition);
     camera.front = toGlm(mumble->CameraFront);
@@ -140,7 +175,7 @@ Camera fromMumble(const Mumble::Data* mumble, const NexusLinkData* nexus_link) {
     // camera does not roll.
     camera.up = glm::length(camera.up) > 0.0001f ? glm::normalize(camera.up) : glm::vec3(0.0f, 1.0f, 0.0f);
 
-    camera.viewport = glm::vec2(static_cast<float>(nexus_link->Width), static_cast<float>(nexus_link->Height));
+    camera.viewport = viewport;
     camera.aspect = camera.viewport.x / camera.viewport.y;
     camera.fov = parseFieldOfView(mumble->Identity, camera.fov);
 

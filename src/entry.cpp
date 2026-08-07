@@ -44,10 +44,12 @@ void AddonLoad(AddonAPI* aApi) {
     ImGui::SetCurrentContext((ImGuiContext*)aApi->ImguiContext);
     ImGui::SetAllocatorFunctions((void* (*)(size_t, void*))aApi->ImguiMalloc, (void (*)(void*, void*))aApi->ImguiFree);
 
-    NexusLinkData* nexus_link = (NexusLinkData*)aApi->DataLink.Get("DL_NEXUS_LINK");
+    // No DL_NEXUS_LINK: its Width/Height are the swap chain's and can go stale, and the
+    // world is drawn into an ImGui draw list, whose size ImGui itself reports. See
+    // world::fromMumble.
     Mumble::Data* mumble_link = (Mumble::Data*)aApi->DataLink.Get("DL_MUMBLE_LINK");
 
-    marker_editor::load(aApi, nexus_link, mumble_link);
+    marker_editor::load(aApi, mumble_link);
 }
 
 void AddonUnload() {
