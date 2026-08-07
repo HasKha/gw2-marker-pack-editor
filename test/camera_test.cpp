@@ -31,7 +31,7 @@ world::Camera axisCamera() {
     camera.aspect = kWidth / kHeight;
     camera.fov = kFov;
     camera.view = glm::lookAtLH(camera.position, camera.position + camera.front, camera.up);
-    camera.projection = glm::perspectiveLH(camera.fov, camera.aspect, 0.1f, 10000.0f);
+    camera.projection = glm::perspectiveLH(camera.fov, camera.aspect, camera.near_plane, 10000.0f);
     camera.view_projection = camera.projection * camera.view;
     camera.valid = true;
     return camera;
@@ -210,7 +210,7 @@ TEST_CASE("a quad square on to the camera needs no subdividing", "[camera]") {
     for (int i = 0; i < 4; ++i) REQUIRE(camera.project(world[i], &screen[i], &depth[i]));
 
     CHECK(depth[0] == Approx(depth[2]));
-    CHECK(world::affineQuadSubdivisions(screen, depth, 0.5f) == 1);
+    CHECK(world::affineQuadSubdivisions(screen, depth, 4, 0.5f) == 1);
 }
 
 TEST_CASE("a large off-axis billboard is subdivided until affine is invisible", "[camera][regression]") {
@@ -235,7 +235,7 @@ TEST_CASE("a large off-axis billboard is subdivided until affine is invisible", 
     const float whole = affineEdgeError(camera, world[0], world[1]);
     CHECK(whole > 10.0f);
 
-    const int steps = world::affineQuadSubdivisions(screen, depth, 0.5f);
+    const int steps = world::affineQuadSubdivisions(screen, depth, 4, 0.5f);
     CAPTURE(steps, whole);
     REQUIRE(steps > 1);
     REQUIRE(steps < world::kMaxQuadSubdivisions); // or the cap, not the formula, is on trial
@@ -262,7 +262,99 @@ TEST_CASE("subdividing is skipped for a quad with a corner behind the camera", "
     // out of positions that are not on screen.
     const glm::vec2 screen[4] = {{0.0f, 0.0f}, {800.0f, 0.0f}, {800.0f, 800.0f}, {0.0f, 800.0f}};
     const float behind[4] = {-5.0f, 10.0f, 10.0f, -5.0f};
-    CHECK(world::affineQuadSubdivisions(screen, behind, 0.5f) == 1);
+    CHECK(world::affineQuadSubdivisions(screen, behind, 4, 0.5f) == 1);
+}
+
+TEST_CASE("clipping a quad's parameter space against the near plane", "[camera]") {
+    glm::vec2 clipped[5];
+    const glm::vec2 low(0.0f);
+    const glm::vec2 high(1.0f);
+
+    SECTION("all of it in front is the whole quad, corners in order") {
+        const float depth[4] = {1.0f, 2.0f, 3.0f, 2.0f};
+        REQUIRE(world::clipQuadRegion(depth, low, high, clipped) == 4);
+        for (int i = 0; i < 4; ++i) {
+            CHECK(clipped[i].x == Approx(i == 1 || i == 2 ? 1.0f : 0.0f));
+            CHECK(clipped[i].y == Approx(i == 2 || i == 3 ? 1.0f : 0.0f));
+        }
+    }
+
+    SECTION("all of it behind is nothing at all") {
+        const float depth[4] = {-1.0f, -2.0f, -3.0f, -2.0f};
+        CHECK(world::clipQuadRegion(depth, low, high, clipped) == 0);
+    }
+
+    SECTION("one corner behind cuts it into a pentagon") {
+        const float depth[4] = {-1.0f, 10.0f, 20.0f, 10.0f};
+        REQUIRE(world::clipQuadRegion(depth, low, high, clipped) == 5);
+        for (int i = 0; i < 5; ++i) CHECK(world::bilinearValue(depth, clipped[i]) >= -0.0001f);
+    }
+
+    SECTION("three corners behind leaves a triangle") {
+        const float depth[4] = {10.0f, -10.0f, -20.0f, -10.0f};
+        REQUIRE(world::clipQuadRegion(depth, low, high, clipped) == 3);
+        for (int i = 0; i < 3; ++i) CHECK(world::bilinearValue(depth, clipped[i]) >= -0.0001f);
+    }
+
+    SECTION("a subdivision cell is clipped against the same corner depths") {
+        // The renderer grids the whole quad and re-clips each cell, so the region asked
+        // about is a sub-rectangle rather than the unit square.
+        const float depth[4] = {-4.0f, -4.0f, 4.0f, 4.0f}; // the cut runs across at v = 0.5
+        CHECK(world::clipQuadRegion(depth, glm::vec2(0.0f, 0.0f), glm::vec2(0.5f, 0.25f), clipped) == 0);
+        CHECK(world::clipQuadRegion(depth, glm::vec2(0.0f, 0.75f), glm::vec2(0.5f, 1.0f), clipped) == 4);
+
+        REQUIRE(world::clipQuadRegion(depth, glm::vec2(0.0f, 0.25f), glm::vec2(0.5f, 0.75f), clipped) == 4);
+        for (int i = 0; i < 4; ++i) CHECK(clipped[i].y >= 0.5f - 0.0001f);
+    }
+}
+
+TEST_CASE("a quad the camera stands inside keeps the part still in front", "[camera][regression]") {
+    const world::Camera camera = axisCamera();
+
+    // The floor you are standing on: a big flat quad whose centre is behind the camera and
+    // which reaches well past it. Testing the marker's centre — which is what used to
+    // decide this — drops the whole thing, and a large marker then vanishes the moment you
+    // walk past its middle even though most of it is still on screen.
+    const glm::vec3 world[4] = {{-20.0f, -1.0f, -10.0f}, {20.0f, -1.0f, -10.0f}, {20.0f, -1.0f, 30.0f}, {-20.0f, -1.0f, 30.0f}};
+
+    float depth[4];
+    camera.quadNearDepths(world, depth);
+    CHECK(depth[0] < 0.0f);
+    CHECK(depth[1] < 0.0f);
+    CHECK(depth[2] > 0.0f);
+
+    glm::vec2 clipped[5];
+    const int count = world::clipQuadRegion(depth, glm::vec2(0.0f), glm::vec2(1.0f), clipped);
+    REQUIRE(count == 4);
+
+    for (int i = 0; i < count; ++i) {
+        // Everything that survived is in front of the near plane and therefore projects.
+        CHECK(world::bilinearValue(depth, clipped[i]) >= -0.0001f);
+        glm::vec2 screen(0.0f);
+        CHECK(camera.project(world::bilinearPoint(world, clipped[i]), &screen));
+    }
+
+    // And it is a slice of the quad, not the whole of it: the far edge is untouched and the
+    // near one has been pulled forward to the plane.
+    CHECK(clipped[1].y == Approx(1.0f));
+    CHECK(clipped[2].y == Approx(1.0f));
+    CHECK(clipped[0].y > 0.0f);
+    CHECK(clipped[3].y > 0.0f);
+}
+
+TEST_CASE("a large billboard centred behind the camera is still partly visible", "[camera][regression]") {
+    const world::Camera camera = axisCamera();
+
+    // A billboard faces the ray to its own centre, so one centred behind the camera *and*
+    // off to the side swings a corner back into view. Scaled up enough, that is most of it.
+    glm::vec3 world[4];
+    REQUIRE(camera.billboardQuad(glm::vec3(10.0f, 0.0f, -2.0f), 40.0f, world));
+
+    float depth[4];
+    camera.quadNearDepths(world, depth);
+
+    glm::vec2 clipped[5];
+    CHECK(world::clipQuadRegion(depth, glm::vec2(0.0f), glm::vec2(1.0f), clipped) >= 3);
 }
 
 TEST_CASE("project puts the view axis in the middle of the viewport", "[camera]") {

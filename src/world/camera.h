@@ -24,6 +24,43 @@ inline float inchesToMetres(float inches) {
 // up because everything drawing a marker uses this one array.
 constexpr glm::vec2 kQuadCorners[4] = {{-1.0f, -1.0f}, {1.0f, -1.0f}, {1.0f, 1.0f}, {-1.0f, 1.0f}};
 
+// The weights of a quad's four corners at a point in the quad's own (u,v) parameter space:
+// u runs from corner 0 to corner 1 and v from corner 0 to corner 3, both over 0..1, so the
+// corners themselves sit at (0,0), (1,0), (1,1), (0,1) — kQuadCorners order.
+//
+// Every quantity a quad carries is this one blend of its corner values: the world position,
+// the view depth, the texture coordinate. That is what makes (u,v) enough on its own to
+// clip a quad and to subdivide it, whatever else is riding along.
+inline void bilinearWeights(glm::vec2 at, float out_weight[4]) {
+    out_weight[0] = (1.0f - at.x) * (1.0f - at.y);
+    out_weight[1] = at.x * (1.0f - at.y);
+    out_weight[2] = at.x * at.y;
+    out_weight[3] = (1.0f - at.x) * at.y;
+}
+
+inline glm::vec3 bilinearPoint(const glm::vec3 corner[4], glm::vec2 at) {
+    float weight[4];
+    bilinearWeights(at, weight);
+    return corner[0] * weight[0] + corner[1] * weight[1] + corner[2] * weight[2] + corner[3] * weight[3];
+}
+
+inline float bilinearValue(const float corner[4], glm::vec2 at) {
+    float weight[4];
+    bilinearWeights(at, weight);
+    return corner[0] * weight[0] + corner[1] * weight[1] + corner[2] * weight[2] + corner[3] * weight[3];
+}
+
+// Clips the axis-aligned region `low`..`high` of a quad's (u,v) space to the part in front
+// of the near plane, given the quad's four corner depths relative to that plane. Writes the
+// corners of what survives, in order, and returns how many: 0 when none of it is in front,
+// 4 when all of it is, and 3 or 5 when the plane cuts across. One plane can only ever add
+// one corner.
+//
+// Working in (u,v) is what keeps this exact. Depth is a bilinear blend of the corner
+// depths, which is *linear* along an axis-aligned edge — and the only edges ever cut here
+// are axis-aligned, since the input is a rectangle and the plane is applied once.
+int clipQuadRegion(const float corner_depth[4], glm::vec2 low, glm::vec2 high, glm::vec2 out_corners[5]);
+
 // The game camera for this frame, derived from MumbleLink.
 //
 // Mumble's coordinate system is left-handed with X right, Y up, Z forward, in metres —
@@ -39,6 +76,7 @@ struct Camera {
 
     float fov = 1.222f; // vertical, radians
     float aspect = 16.0f / 9.0f;
+    float near_plane = 0.1f; // metres; what the projection below was built with
     glm::vec2 viewport{0.0f};
 
     glm::mat4 view{1.0f};
@@ -80,11 +118,16 @@ struct Camera {
     // Returns false when a corner falls behind the camera. That only happens with the
     // marker in the camera's face, where Blish's own screen bounds are meaningless too.
     bool billboardCorners(const glm::vec3& world_position, float world_size, glm::vec2 out_corners[4]) const;
+
+    // How far each of a quad's corners is in front of the near plane — negative behind it.
+    // This is the clip w that project() divides by, less near_plane, and it is what
+    // clipQuadRegion wants.
+    void quadNearDepths(const glm::vec3 world[4], float out_depth[4]) const;
 };
 
-// The screen-space height of four projected corners. This — not the width, and not the
+// The screen-space height of a projected quad or polygon. This — not the width, and not the
 // diagonal — is the quantity Blish's minSize/maxSize clamp is expressed in.
-float quadPixelHeight(const glm::vec2 corners[4]);
+float quadPixelHeight(const glm::vec2* points, int count = 4);
 
 // The most ways a quad is ever split. The renderer sizes a stack grid on this, so it is a
 // bound rather than a preference.
@@ -108,10 +151,12 @@ constexpr int kMaxQuadSubdivisions = 16;
 // the cells come out widest on screen and shallowest in depth. Dividing by the mean sizes
 // the grid for the average cell and leaves that corner several times over tolerance.
 //
-// Returns 1 — draw the quad whole — when there is nothing to correct: a quad square on to
+// Returns 1 — draw the shape whole — when there is nothing to correct: a quad square on to
 // the camera, or one with a corner behind it, where the projection means nothing anyway.
 // Never more than kMaxQuadSubdivisions.
-int affineQuadSubdivisions(const glm::vec2 screen[4], const float depth[4], float tolerance_pixels);
+//
+// `count` is 4 for a whole quad and up to 5 for one the near plane has cut.
+int affineQuadSubdivisions(const glm::vec2* screen, const float* depth, int count, float tolerance_pixels);
 
 // Builds the camera for this frame. Returns an invalid Camera when MumbleLink has no data
 // yet — at character select, during map load, or before the game has ticked.

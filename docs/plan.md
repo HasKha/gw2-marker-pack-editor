@@ -154,9 +154,12 @@ editor, and undo/redo. What is left is not doubt about whether it works, but the
   to nest inside, so something has to choose, and nothing better suggests itself.
 - **Perspective-correct texturing is capped at 16 subdivisions a side.** That covers every
   marker anyone would author; a quad both enormous and right in the camera's face still
-  carries a little of the affine bend, and one with a corner behind the camera falls back
-  to a flat screen-space square and carries all of it. Raising the cap is a constant in
-  `world/camera.h`, paid for in vertices.
+  carries a little of the affine bend near the corner closest to you. Raising the cap is a
+  constant in `world/camera.h`, paid for in vertices.
+- **Quads are clipped against the near plane only, not the sides of the frustum.** A marker
+  you are standing inside can project a corner tens of thousands of pixels off screen, and
+  those cells are subdivided and emitted like any other before ImGui's scissor throws them
+  away. Correct, just wasteful; side planes would be four more of the same clip.
 
 ## Open questions
 

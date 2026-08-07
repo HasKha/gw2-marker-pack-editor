@@ -483,6 +483,16 @@ one shape and drawing into another stretches the whole world along one axis: mar
 out squashed and the gizmo's rings come out as ellipses. TaimiHUD takes the same view and
 uses `io.DisplaySize` too. Nothing here reads `DL_NEXUS_LINK` any more.
 
+**Nothing is culled on a marker's centre.** A marker large enough to be worth scaling up is
+one you can stand inside, and its centre goes behind the camera long before the marker
+leaves the screen. Deciding on the centre — or dropping a quad because one corner is behind
+— makes a large marker vanish as you walk into it, which for an editor is the worst possible
+moment to lose it. So every quad is **clipped against the near plane** instead, in its own
+`(u,v)` parameter space, and what survives (a polygon of three to five corners) is what gets
+drawn, outlined and clicked. The only centre test left is a cheap reject for markers a full
+quad-width behind the camera, which no orientation can bring back into view. Blish never
+faces the question: the GPU clips for it.
+
 **Textured quads are subdivided, because a draw list cannot divide by w.** `AddImageQuad`
 is two triangles with affine UVs, which is only right when all four corners projected at the
 same depth. They do not: a billboard faces the ray to its own centre, so the further
@@ -495,6 +505,17 @@ corners are coplanar, so a bilinear blend of them stays on the real surface.
 `world::affineQuadSubdivisions` sizes the grid from the error it is removing and returns 1 —
 one `AddImageQuad`, exactly as before — whenever there is nothing to correct, which is the
 common case. Blish gets all of this from the GPU for free.
+
+The grid covers the whole quad rather than its visible part, so that its cells tile. Cells
+wholly behind the near plane are dropped and the few it cuts are clipped again at cell
+scale, coming out as fans of up to five corners. That is why the grid is emitted through
+`PrimReserve`/`PrimQuadUV`/`PrimWriteVtx` rather than a loop of `AddImageQuad`: one draw
+command for the lot, with the worst-case reservation handed back at the end.
+
+The size clamp is the one thing a clipped quad does *not* get. `minSize`/`maxSize` are
+expressed in projected pixel height, and a quad straddling the near plane has none to
+measure, so it is drawn at its true size — Blish's own screen bounds are meaningless there
+too, and inventing a height would resize a marker for the crime of being walked into.
 
 Nothing is drawn into the world while the **full map is open** (`Context.IsMapOpen` from
 MumbleLink, carried on `Camera`). The camera keeps updating behind the map, so without the

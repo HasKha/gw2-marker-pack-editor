@@ -96,10 +96,15 @@ hold in any change:
   it — the one thing the gizmo needs from imgui 1.82+, and numerically identical to the
   `bool closed` argument 1.80 expects. ImGuizmo itself carries `IMGUI_VERSION_NUM` guards
   for old imgui, so the gizmo is genuinely supported there.
-- **An ImGui draw list has no w.** `AddImageQuad` is two triangles with affine UVs, so a
-  projected quad whose corners sit at different depths gets its texture bent along the
-  diagonal instead of foreshortened. Anything textured and projected has to be subdivided in
-  world space — see `drawTexturedQuad` in `world/renderer.cpp` and `docs/architecture.md`.
+- **An ImGui draw list has no w, and no clipper.** `AddImageQuad` is two triangles with
+  affine UVs, so a projected quad whose corners sit at different depths gets its texture
+  bent along the diagonal instead of foreshortened; and nothing stops you handing it a
+  corner from behind the camera. Anything textured and projected has to be subdivided in
+  world space *and* clipped against the near plane — see `drawTexturedQuad` in
+  `world/renderer.cpp` and `docs/architecture.md`.
+- **Never cull on a marker's centre.** A large marker is one you can stand inside, so its
+  centre goes behind the camera while most of it is still on screen. Clip the quad; do not
+  drop it.
 - **`NexusLinkData::Width/Height` is not the viewport.** It is the DXGI swap chain's size,
   written only from Nexus's `ResizeBuffers` hook, and it goes stale when the game builds a
   new swap chain. The draw list is rasterized against `ImGui::GetIO().DisplaySize`; project

@@ -117,33 +117,43 @@ bool Camera::billboardCorners(const glm::vec3& world_position, float world_size,
     return true;
 }
 
-float quadPixelHeight(const glm::vec2 corners[4]) {
-    float min_y = corners[0].y;
-    float max_y = corners[0].y;
+void Camera::quadNearDepths(const glm::vec3 world[4], float out_depth[4]) const {
+    // `front` is unit length and is the view matrix's +Z, so this is exactly the clip w
+    // that project() divides by.
+    for (int i = 0; i < 4; ++i) out_depth[i] = glm::dot(world[i] - position, front) - near_plane;
+}
 
-    for (int i = 1; i < 4; ++i) {
-        min_y = std::min(min_y, corners[i].y);
-        max_y = std::max(max_y, corners[i].y);
+float quadPixelHeight(const glm::vec2* points, int count) {
+    if (count <= 0) return 0.0f;
+
+    float min_y = points[0].y;
+    float max_y = points[0].y;
+
+    for (int i = 1; i < count; ++i) {
+        min_y = std::min(min_y, points[i].y);
+        max_y = std::max(max_y, points[i].y);
     }
 
     return max_y - min_y;
 }
 
-int affineQuadSubdivisions(const glm::vec2 screen[4], const float depth[4], float tolerance_pixels) {
+int affineQuadSubdivisions(const glm::vec2* screen, const float* depth, int count, float tolerance_pixels) {
+    if (count < 3 || tolerance_pixels <= 0.0f) return 1;
+
     float near_depth = depth[0];
     float far_depth = depth[0];
-    for (int i = 1; i < 4; ++i) {
+    for (int i = 1; i < count; ++i) {
         near_depth = std::min(near_depth, depth[i]);
         far_depth = std::max(far_depth, depth[i]);
     }
-    if (near_depth <= 0.0f || tolerance_pixels <= 0.0f) return 1;
+    if (near_depth <= 0.0f) return 1;
 
     const float skew = (far_depth - near_depth) / near_depth;
     if (skew < 0.001f) return 1;
 
     float extent = 0.0f;
-    for (int i = 0; i < 4; ++i) {
-        for (int j = i + 1; j < 4; ++j) {
+    for (int i = 0; i < count; ++i) {
+        for (int j = i + 1; j < count; ++j) {
             extent = std::max(extent, std::abs(screen[i].x - screen[j].x));
             extent = std::max(extent, std::abs(screen[i].y - screen[j].y));
         }
@@ -151,6 +161,30 @@ int affineQuadSubdivisions(const glm::vec2 screen[4], const float depth[4], floa
 
     const int steps = static_cast<int>(std::ceil(std::sqrt(extent * skew / (2.0f * tolerance_pixels))));
     return std::clamp(steps, 1, kMaxQuadSubdivisions);
+}
+
+int clipQuadRegion(const float corner_depth[4], glm::vec2 low, glm::vec2 high, glm::vec2 out_corners[5]) {
+    const glm::vec2 region[4] = {low, glm::vec2(high.x, low.y), high, glm::vec2(low.x, high.y)};
+
+    float depth[4];
+    for (int i = 0; i < 4; ++i) depth[i] = bilinearValue(corner_depth, region[i]);
+
+    // Sutherland-Hodgman, one plane: keep every corner in front of it, and add the crossing
+    // wherever an edge changes side.
+    int count = 0;
+    for (int i = 0; i < 4; ++i) {
+        const int next = (i + 1) % 4;
+        const bool inside = depth[i] >= 0.0f;
+        const bool next_inside = depth[next] >= 0.0f;
+
+        if (inside) out_corners[count++] = region[i];
+        if (inside != next_inside) {
+            const float t = depth[i] / (depth[i] - depth[next]);
+            out_corners[count++] = region[i] + (region[next] - region[i]) * t;
+        }
+    }
+
+    return count;
 }
 
 Camera fromMumble(const Mumble::Data* mumble, const glm::vec2& viewport) {
@@ -181,7 +215,7 @@ Camera fromMumble(const Mumble::Data* mumble, const glm::vec2& viewport) {
 
     // Left-handed to match Mumble's coordinate system.
     camera.view = glm::lookAtLH(camera.position, camera.position + camera.front, camera.up);
-    camera.projection = glm::perspectiveLH(camera.fov, camera.aspect, 0.1f, 10000.0f);
+    camera.projection = glm::perspectiveLH(camera.fov, camera.aspect, camera.near_plane, 10000.0f);
     camera.view_projection = camera.projection * camera.view;
 
     camera.valid = true;
