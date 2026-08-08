@@ -95,6 +95,19 @@ std::vector<size_t> pathablesIn(const editor::State& state, const std::vector<si
 
 } // namespace
 
+bool setMapId(const editor::State& state, pack::AttributeCollection* attributes, size_t category, int32_t map_id) {
+    const std::string wanted = std::to_string(map_id);
+
+    const std::string* resolved = attributes->value("mapid");
+    if (!resolved && category < state.pack.categories.size()) {
+        resolved = state.pack.effectiveValue(state.pack.categories[category], "mapid");
+    }
+    if (resolved && *resolved == wanted) return false;
+
+    set(attributes, "mapid", wanted);
+    return true;
+}
+
 Removal wouldRemove(const editor::State& state, editor::NodeRef node) {
     Removal removal;
 
@@ -149,7 +162,7 @@ Removal remove(editor::State& state, editor::NodeRef node) {
     return removal;
 }
 
-size_t addPoi(editor::State& state, const glm::vec3& position) {
+size_t addPoi(editor::State& state, const glm::vec3& position, int32_t map_id) {
     if (!state.loaded) return pack::kNoIndex;
 
     undo::Step step(state, "Add POI");
@@ -183,6 +196,9 @@ size_t addPoi(editor::State& state, const glm::vec3& position) {
     set(&attributes, "xpos", pack::formatFloat(position.x));
     set(&attributes, "ypos", pack::formatFloat(position.y));
     set(&attributes, "zpos", pack::formatFloat(position.z));
+    // The map the character is on, which is not necessarily the one a copied marker names —
+    // the source marker may be on the map the author was last working on.
+    setMapId(state, &attributes, category, map_id);
     // Its own identity, never the copied one: a GUID is what per-marker state is keyed on,
     // so two markers sharing one would toggle each other away.
     set(&attributes, "guid", pack::generateGuid());
@@ -238,6 +254,11 @@ size_t addTrail(editor::State& state, int32_t map_id) {
     pack::AttributeCollection attributes;
     set(&attributes, "type", state.pack.categories[category].id);
     set(&attributes, "traildata", path);
+    // Nothing reads this on a trail — the .trl header is what decides its map, for Blish and
+    // for us — but a `<Trail>` with no MapID is a `<Trail>` you cannot tell the map of
+    // without opening its .trl, which is what every pack in the corpus avoids by writing it.
+    // Kept in step with the header by trail_edit::setMapId, so it cannot go stale and lie.
+    setMapId(state, &attributes, category, map_id);
     set(&attributes, "guid", pack::generateGuid());
 
     const size_t index = state.pack.addPathable(pack::PathableType::Trail, category, after, file, std::move(attributes));

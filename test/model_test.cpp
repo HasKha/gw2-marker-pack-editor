@@ -275,6 +275,19 @@ TEST_CASE("a marker inherits through the category chain", "[model]") {
     // Nothing anywhere falls back to the table's documented default.
     CHECK(model.effectiveFloat(pathable, "heightoffset") == 1.5f);
     CHECK(model.explicitValue(pathable, "iconsize") == nullptr);
+
+    // The chain is the same hop repeated, so a category resolves through its parents too.
+    // What pathable_edit::setMapId asks before deciding a new marker needs its own MapID.
+    const std::string* inherited = model.effectiveValue(model.categories[child], "iconsize");
+    REQUIRE(inherited != nullptr);
+    CHECK(*inherited == "2");
+
+    const std::string* own = model.effectiveValue(model.categories[child], "iconfile");
+    REQUIRE(own != nullptr);
+    CHECK(*own == "child.png");
+
+    // A root category has nothing above it, and nothing to inherit.
+    CHECK(model.effectiveValue(model.categories[0], "mapid") == nullptr);
 }
 
 TEST_CASE("deleting leaves a tombstone and restoring puts it back", "[model]") {

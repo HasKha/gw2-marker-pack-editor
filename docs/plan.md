@@ -33,7 +33,7 @@ it, save it back, and the edited markers show correctly in Blish HUD.**
 | World | billboards, trail ribbons, rotation, selection highlight, click-to-pick for markers and trail points; nothing drawn while the map is open |
 | Selection | ctrl+click in the tree and the world, shift+click ranges in the tree and the point list, world picks reveal the node in the tree |
 | 3D edit | ImGuizmo translate/rotate on the selection — markers and trail points alike — anchored on the first node selected; a group rotation orbits the rest about it |
-| Create | Add POI, Trail and Category from the toolbar, placed by the selection. A POI copies the selected marker's attributes; a trail comes with an empty `.trl` |
+| Create | Add POI, Trail and Category from the toolbar, placed by the selection. A POI copies the selected marker's attributes; a trail comes with an empty `.trl`. Both get the current `MapID`, unless an ancestor category already supplies it |
 | Delete | a marker, or a category and its whole subtree, from the details window. Tombstoned, never erased |
 | Undo / redo | Ctrl+Z / Ctrl+Y and an Edit menu, over every edit there is: attributes, add, delete, images, trails |
 | Settings | the Settings toggles, gizmo mode, which windows are open and where the browsers start, kept in `settings.json` |

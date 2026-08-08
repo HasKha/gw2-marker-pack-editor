@@ -619,7 +619,7 @@ void drawAddPoi() {
 
     if (!canCreate(true)) return;
 
-    const size_t added = pathable_edit::addPoi(state, frame_camera.player);
+    const size_t added = pathable_edit::addPoi(state, frame_camera.player, static_cast<int32_t>(frame_camera.map_id));
     if (added == pack::kNoIndex) {
         status_message = "Select a category or a marker to say where the POI goes.";
     } else {

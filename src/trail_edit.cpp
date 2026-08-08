@@ -4,6 +4,7 @@
 #include <cmath>
 #include <fstream>
 
+#include "pathable_edit.h"
 #include "resources.h"
 #include "undo.h"
 
@@ -133,6 +134,14 @@ void setMapId(editor::State& state, int32_t map_id) {
     undo::Step step(state, "Set trail map id");
     trail.map_id = map_id;
     commit(state);
+
+    // The header above is authoritative and is what both Blish and our renderer go by. The
+    // `MapID` attribute is not read, but a pack that ships the two disagreeing is a pack
+    // saying two different things, so it follows along rather than being left to rot.
+    if (open_pathable >= state.pack.pathables.size()) return;
+    pack::Pathable& pathable = state.pack.pathables[open_pathable];
+    undo::attributes(state, editor::NodeRef{editor::NodeKind::Pathable, open_pathable});
+    if (pathable_edit::setMapId(state, &pathable.attributes, pathable.category, map_id)) state.touch();
 }
 
 void setPoint(editor::State& state, size_t index, const glm::vec3& position) {

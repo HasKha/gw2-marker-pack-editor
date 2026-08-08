@@ -57,9 +57,23 @@ struct MarkerDraw {
     glm::vec3 rotation{0.0f}; // radians
 };
 
+// No real map has this id, so it is safe as "not resolved yet" — see TrailDraw::map_id.
+constexpr int kMapUnknown = -1;
+
 struct TrailDraw {
     size_t pathable = pack::kNoIndex;
-    int map_id = 0;
+
+    // **From the `.trl` header, not from the XML.** `UnpackTrailPoi` reads the header and
+    // then does `AddOrUpdateAttribute("mapid", ...)`, overwriting whatever the XML said, so
+    // the header is what decides which map Blish draws a trail on and the attribute is dead
+    // weight. Culling on the attribute would put a trail whose two disagree on a different
+    // map than Blish puts it — see docs/format.md.
+    //
+    // Which means it cannot be resolved in rebuild(): reading a `.trl` goes through the
+    // per-frame load budget and comes back empty until the file's turn arrives. So it starts
+    // unknown and is filled in by the draw loop on the first frame the file is there.
+    int map_id = kMapUnknown;
+
     float alpha = 1.0f;
     float scale = 1.0f;
     bool is_wall = false;
@@ -388,9 +402,9 @@ void rebuild(editor::State& state) {
         if (pathable.grave.deleted) continue;
         if (pathable.type == pack::PathableType::Route) continue; // deprecated, never drawn
 
-        const int map_id = state.pack.effectiveInt(pathable, "mapid");
-
         if (pathable.type == pack::PathableType::Poi) {
+            const int map_id = state.pack.effectiveInt(pathable, "mapid");
+
             MarkerTransform transform;
             if (!markerTransform(state.pack, pathable, &transform)) continue;
 
@@ -414,9 +428,10 @@ void rebuild(editor::State& state) {
             continue;
         }
 
+        // map_id deliberately left unknown: it comes from the .trl, which the draw loop
+        // resolves once the file is past the load budget.
         TrailDraw trail;
         trail.pathable = i;
-        trail.map_id = map_id;
         trail.alpha = state.pack.effectiveFloat(pathable, "alpha");
         trail.scale = state.pack.effectiveFloat(pathable, "trailscale");
         trail.is_wall = state.pack.effectiveBool(pathable, "iswall");
@@ -797,8 +812,21 @@ void draw(editor::State& state, const Camera& camera) {
     }
 
     for (size_t i = 0; i < cache.trails.size(); ++i) {
-        if (cache.trails[i].map_id != map_id) continue;
-        if (!state.isVisible(editor::NodeRef{editor::NodeKind::Pathable, cache.trails[i].pathable})) continue;
+        TrailDraw& trail = cache.trails[i];
+
+        // Its map lives in the .trl header, so the file has to have been read. Cached in the
+        // TrailDraw once it has: an already-parsed trail is a hash lookup that costs no
+        // budget, so a rebuild re-resolving every trail is free, and only a genuinely unread
+        // one has to wait its turn. Until then it is on no map, which is the same thing
+        // drawTrails does with a trail whose geometry has not arrived.
+        if (trail.map_id == kMapUnknown) {
+            const pack::trl::Trail* data = resources::trail(trail.data);
+            if (!data) continue;
+            trail.map_id = data->map_id;
+        }
+
+        if (trail.map_id != map_id) continue;
+        if (!state.isVisible(editor::NodeRef{editor::NodeKind::Pathable, trail.pathable})) continue;
         // Trails span a large area, so a single distance is only a sorting hint.
         order.push_back(Sorted{0.0f, i, true});
     }

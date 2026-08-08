@@ -40,8 +40,20 @@ Elements (compared case-insensitively): `overlaydata`, `markercategory`, `pois`,
 `AddOrUpdateAttribute("mapid", ...)` — **overwriting** whatever the XML said. So for a
 trail the `.trl` header is authoritative and the XML `mapid` attribute is ignored.
 
-Two consequences for the renderer and the linter: a `mapid` on a `<trail>` is decorative,
-and a disagreement between the two is not an error, just a dead attribute.
+Two consequences for the renderer and the linter: a `mapid` on a `<trail>` is decorative, and
+a disagreement between the two is not an error, just a dead attribute.
+
+**Our renderer has to read the header too**, or a trail whose two disagree would draw on a
+different map here than it does in Blish. It cannot be resolved with the rest of a trail's
+attributes, though: reading a `.trl` goes through the per-frame load budget, so
+`TrailDraw::map_id` starts unknown and the draw loop fills it in on the first frame the file
+is there — until then the trail is on no map, exactly as it already was while its geometry
+was still loading. See `world/renderer.cpp`.
+
+The attribute is still worth writing, and the editor writes it on a trail it creates: it is
+how a reader tells which map a `<Trail>` is for without opening its `.trl`, which is why every
+pack in the corpus has one. `trail_edit::setMapId` writes both, so the editor cannot leave the
+two disagreeing.
 
 Also from that function: a trail whose `traildata` file is **missing from the archive, or
 fails to parse, is dropped entirely** — `UnpackTrailPoi` returns null. Same for a `<trail>`
