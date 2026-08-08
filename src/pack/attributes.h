@@ -39,14 +39,39 @@ enum AppliesTo : uint8_t {
 struct AttributeDef {
     std::string_view key; // canonical lowercase lookup key
     std::string_view display; // spelling used when *we* write a new attribute
+
     ValueKind kind = ValueKind::String;
+
+    // Which node kinds *consume* the attribute — the ones where Pathing reads it off the
+    // node's own aggregated collection. Not the same question as where it may be written:
+    // see settableOn.
     uint8_t applies_to = kAppliesAll;
-    bool inherits = false; // set on a category, inherited by its markers
+
+    // Resolved through the category chain, so setting it on a category is how an author
+    // gives every pathable beneath it a value. Also what makes the attribute settable on a
+    // category in the first place — see settableOn.
+    bool inherits = false;
+
     std::string_view default_value; // as it would appear in XML; empty means none
     std::string_view doc;
 };
 
 const std::vector<AttributeDef>& attributeTable();
+
+// The node kinds an attribute may legitimately be *written* on, which is wider than
+// `applies_to`: a `markercategory` carries no `iconsize` of its own, but every marker
+// beneath it reads one through the category chain, so setting it there is the normal way to
+// give a whole category an icon size.
+//
+// TmfLib is what makes this true. `PathableCategoryBuilder` strips only the five structural
+// attributes off a category node and hands *everything else* to `SetAttributes`, and both
+// `StandardMarker` and `StandardTrail` populate from `GetAggregatedAttributes()`, which
+// walks `AttributeParent` up the category chain. So the category's contribution to a
+// pathable is limited by nothing but inheritance itself.
+//
+// This is the predicate the "add attribute" picker filters on. `applies_to` is the wrong
+// one and asking it directly is the bug it replaces.
+uint8_t settableOn(const AttributeDef& def);
 
 // Case-insensitive lookup. Returns nullptr for attributes we do not know about; those
 // are still kept verbatim on the node so they survive a round trip.

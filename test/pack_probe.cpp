@@ -286,6 +286,26 @@ void lintPack(const pack::Pack& loaded, const pack::DataSource& archive) {
         report("unknown attribute", name + " (x" + std::to_string(count) + ")");
     }
 
+    // Real attributes sitting where nothing reads them — an iconSize on a trail, a
+    // trailScale on a marker. Harmless, but dead, and the property panel flags the same
+    // thing, so this is where to see how often authors actually do it.
+    std::map<std::string, int> misplaced;
+    auto scanMisplaced = [&](const pack::AttributeCollection& attributes, uint8_t mask, const char* where) {
+        for (const pack::Attribute& attribute : attributes.all()) {
+            const pack::AttributeDef* def = pack::findAttribute(attribute.key);
+            if (!def || (pack::settableOn(*def) & mask) != 0) continue;
+            ++misplaced[attribute.name + " on " + where];
+        }
+    };
+    for (const pack::Category& category : loaded.categories) scanMisplaced(category.attributes, pack::kAppliesCategory, "a category");
+    for (const pack::Pathable& pathable : loaded.pathables) {
+        const bool trail = pathable.type == pack::PathableType::Trail;
+        scanMisplaced(pathable.attributes, trail ? pack::kAppliesTrail : pack::kAppliesPoi, trail ? "a trail" : "a marker");
+    }
+    for (const auto& [name, count] : misplaced) {
+        report("attribute does nothing", name + " (x" + std::to_string(count) + ")");
+    }
+
     // Duplicate GUIDs. A GUID is meant to identify a marker across pack versions, so two
     // markers sharing one breaks per-marker state.
     std::map<std::string, int> guids;

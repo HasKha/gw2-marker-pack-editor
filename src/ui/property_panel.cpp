@@ -16,14 +16,37 @@ namespace ui::property_panel {
 
 namespace {
 
-// Which node kinds an attribute may be set on, so the "add attribute" list only offers
-// things that make sense for what is selected.
+// What kind of node this is, as a mask to test the attribute table against. Whether a given
+// attribute belongs here is pack::settableOn's question, not this one's — a category is
+// where an author sets iconSize for a whole subtree, so the two are far from the same.
 uint8_t appliesMaskFor(const editor::State& state, editor::NodeRef node) {
     if (node.kind == editor::NodeKind::Category) return pack::kAppliesCategory;
     if (node.kind != editor::NodeKind::Pathable || node.index >= state.pack.pathables.size()) return 0;
     const pack::Pathable& pathable = state.pack.pathables[node.index];
     return pathable.type == pack::PathableType::Trail ? pack::kAppliesTrail : pack::kAppliesPoi;
 }
+
+// For the warning on an attribute that is real but does nothing where it sits.
+const char* kindName(const editor::State& state, editor::NodeRef node) {
+    if (node.kind == editor::NodeKind::Category) return "a category";
+    if (node.kind != editor::NodeKind::Pathable || node.index >= state.pack.pathables.size()) return "this node";
+    return state.pack.pathables[node.index].type == pack::PathableType::Trail ? "a trail" : "a marker";
+}
+
+// The category the chain continues from: a pathable's owning category, or a category's
+// parent. kNoIndex when there is nothing above this node to inherit from.
+size_t inheritsFrom(const editor::State& state, editor::NodeRef node) {
+    if (node.kind == editor::NodeKind::Pathable && node.index < state.pack.pathables.size()) {
+        return state.pack.pathables[node.index].category;
+    }
+    if (node.kind == editor::NodeKind::Category && node.index < state.pack.categories.size()) {
+        return state.pack.categories[node.index].parent;
+    }
+    return pack::kNoIndex;
+}
+
+// Not constexpr: imgui 1.80's ImVec4 constructor is a plain one.
+const ImVec4 kWarningColor(1.00f, 0.70f, 0.30f, 1.00f);
 
 // A trail point is a coordinate in a .trl, not an XML node: attributesOf gives nullptr for
 // it, and the trail editor is where it is edited.
@@ -217,6 +240,7 @@ void drawExplicit(editor::State& state, editor::NodeRef node) {
     }
 
     std::string remove_key;
+    const uint8_t mask = appliesMaskFor(state, node);
 
     if (ImGui::BeginTable("##explicit", 3, ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_RowBg)) {
         ImGui::TableSetupColumn("name", ImGuiTableColumnFlags_WidthFixed, 150.0f);
@@ -232,7 +256,11 @@ void drawExplicit(editor::State& state, editor::NodeRef node) {
             ImGui::TableNextRow();
             ImGui::TableNextColumn();
             ImGui::AlignTextToFramePadding();
-            if (def) {
+            // Two things get flagged, and neither is ever dropped. An attribute the table
+            // does not know at all — usually a typo. And one it knows that does nothing
+            // where it sits, like an iconSize on a trail: real, spelled right, dead.
+            const bool misplaced = def && (pack::settableOn(*def) & mask) == 0;
+            if (def && !misplaced) {
                 ImGui::TextUnformatted(attribute.name.c_str());
                 if (ImGui::IsItemHovered() && !def->doc.empty()) {
                     ImGui::BeginTooltip();
@@ -240,12 +268,16 @@ void drawExplicit(editor::State& state, editor::NodeRef node) {
                     ImGui::EndTooltip();
                 }
             } else {
-                // Unknown to the table: still editable, still round-trips, but flagged
-                // because it is usually a typo.
-                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.00f, 0.70f, 0.30f, 1.00f));
+                ImGui::PushStyleColor(ImGuiCol_Text, kWarningColor);
                 ImGui::TextUnformatted(attribute.name.c_str());
                 ImGui::PopStyleColor();
-                if (ImGui::IsItemHovered()) ImGui::SetTooltip("Not a known attribute. Kept as-is, but check the spelling.");
+                if (ImGui::IsItemHovered()) {
+                    if (misplaced) {
+                        ImGui::SetTooltip("Does nothing on %s. Kept as-is.", kindName(state, node));
+                    } else {
+                        ImGui::SetTooltip("Not a known attribute. Kept as-is, but check the spelling.");
+                    }
+                }
             }
 
             ImGui::TableNextColumn();
@@ -283,11 +315,22 @@ void drawExplicit(editor::State& state, editor::NodeRef node) {
 
 // Values reaching this node from an ancestor category. Shown greyed with the source, and
 // a button to copy the value down so it can be overridden here.
+//
+// Categories get this as well as pathables. TmfLib's chain is the same hop repeated —
+// `IAggregatesAttributes.AttributeParent` goes pathable -> category and category -> parent
+// category — so a nested category inherits from its parents exactly as a marker does, and
+// overriding a value one level down is how an author narrows it to a subtree.
+//
+// Draws its own heading, because which heading it is depends on this walk: "Inherited" over
+// the table, or "Nothing inherited." on its own. Never both — the placeholder already says
+// what section it is standing in for.
 void drawInherited(editor::State& state, editor::NodeRef node) {
-    if (node.kind != editor::NodeKind::Pathable) return;
+    const pack::AttributeCollection* own = attributesOf(state, node);
+    if (!own) return;
 
-    const pack::Pathable& pathable = state.pack.pathables[node.index];
-    if (pathable.category == pack::kNoIndex) return;
+    // kNoIndex for a root category, or a marker whose type resolves to nothing. The walk
+    // below then finds nothing, which is the answer: no ancestors, nothing inherited.
+    const size_t from = inheritsFrom(state, node);
 
     struct Row {
         std::string key;
@@ -297,12 +340,17 @@ void drawInherited(editor::State& state, editor::NodeRef node) {
     };
     std::vector<Row> rows;
 
+    // Only what this node could carry itself. A marker inheriting a category's `texture`
+    // would be listing an attribute it has no use for and cannot usefully override.
+    const uint8_t mask = appliesMaskFor(state, node);
+
     for (const pack::AttributeDef& def : pack::attributeTable()) {
         if (!def.inherits) continue;
-        if (pathable.attributes.find(def.key)) continue; // set here, not inherited
+        if ((pack::settableOn(def) & mask) == 0) continue;
+        if (own->find(def.key)) continue; // set here, not inherited
 
         // Walk up to find which category actually supplies it.
-        for (size_t at = pathable.category; at != pack::kNoIndex;) {
+        for (size_t at = from; at != pack::kNoIndex;) {
             const pack::Category& category = state.pack.categories[at];
             if (const pack::Attribute* found = category.attributes.find(def.key)) {
                 rows.push_back(Row{std::string(def.key), found->name, found->value, category.displayName()});
@@ -312,10 +360,14 @@ void drawInherited(editor::State& state, editor::NodeRef node) {
         }
     }
 
+    ImGui::Separator();
+
     if (rows.empty()) {
         ImGui::TextDisabled("Nothing inherited.");
         return;
     }
+
+    ImGui::TextDisabled("Inherited");
 
     if (ImGui::BeginTable("##inherited", 3, ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_RowBg)) {
         ImGui::TableSetupColumn("name", ImGuiTableColumnFlags_WidthFixed, 150.0f);
@@ -336,10 +388,12 @@ void drawInherited(editor::State& state, editor::NodeRef node) {
             ImGui::TableNextColumn();
             ImGui::PushID(row.key.c_str());
             if (ImGui::SmallButton("override")) {
-                undo::Step step(state, "Override " + row.name);
-                undo::attributes(state, node);
-                state.pack.pathables[node.index].attributes.set(row.name, row.value);
-                state.touch();
+                if (pack::AttributeCollection* target = attributesOf(state, node)) {
+                    undo::Step step(state, "Override " + row.name);
+                    undo::attributes(state, node);
+                    target->set(row.name, row.value);
+                    state.touch();
+                }
             }
             ImGui::PopID();
         }
@@ -348,9 +402,19 @@ void drawInherited(editor::State& state, editor::NodeRef node) {
     }
 }
 
-// Everything from the table that applies here and is not set yet.
+// Everything from the table that can be set here and is not set yet.
 void drawAddAttribute(editor::State& state, const std::vector<editor::NodeRef>& targets) {
     if (targets.empty()) return;
+
+    // settableOn, not applies_to: a category consumes almost none of these itself but is the
+    // place an author sets them for everything beneath it.
+    //
+    // The union across the selection decides what gets *listed*; per node it is asked again
+    // before anything is written, so a mixed marker-and-trail selection offers each one's
+    // attributes without stamping an iconSize onto the trail.
+    auto settableOn = [&state](const pack::AttributeDef& def, editor::NodeRef node) {
+        return (pack::settableOn(def) & appliesMaskFor(state, node)) != 0;
+    };
 
     uint8_t mask = 0;
     for (editor::NodeRef node : targets) mask |= appliesMaskFor(state, node);
@@ -365,14 +429,17 @@ void drawAddAttribute(editor::State& state, const std::vector<editor::NodeRef>& 
     for (const char* c = search; *c; ++c) needle.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(*c))));
 
     for (const pack::AttributeDef& def : pack::attributeTable()) {
-        if ((def.applies_to & mask) == 0) continue;
+        if ((pack::settableOn(def) & mask) == 0) continue;
         if (!needle.empty() && std::string(def.key).find(needle) == std::string::npos) continue;
 
-        // Hide it once every selected node already has it.
+        // Hide it once every node that could take it already has it. Nodes it does not
+        // belong on do not count, or an attribute only the trail in the selection can carry
+        // would stay listed after the trail already had it.
         bool all_have = true;
         for (editor::NodeRef node : targets) {
             const pack::AttributeCollection* attributes = attributesOf(state, node);
-            if (attributes && !attributes->find(def.key)) {
+            if (!attributes || !settableOn(def, node)) continue;
+            if (!attributes->find(def.key)) {
                 all_have = false;
                 break;
             }
@@ -384,6 +451,7 @@ void drawAddAttribute(editor::State& state, const std::vector<editor::NodeRef>& 
             for (editor::NodeRef node : targets) {
                 pack::AttributeCollection* attributes = attributesOf(state, node);
                 if (!attributes || attributes->find(def.key)) continue;
+                if (!settableOn(def, node)) continue;
                 undo::attributes(state, node);
                 attributes->set(def.display, std::string(def.default_value));
             }
@@ -518,11 +586,7 @@ void draw(editor::State& state) {
     ImGui::Separator();
     drawAddAttribute(state, state.selection.items());
 
-    if (node.kind == editor::NodeKind::Pathable) {
-        ImGui::Separator();
-        ImGui::TextDisabled("Inherited");
-        drawInherited(state, node);
-    }
+    drawInherited(state, node);
 }
 
 } // namespace ui::property_panel

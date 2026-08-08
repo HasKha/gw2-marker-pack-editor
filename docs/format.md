@@ -72,6 +72,78 @@ TmfLib treats this as a first-class distinction, and so should we:
 The property panel needs both: show the effective value, but make clear whether it is
 explicit here or inherited, and let the user override or clear it.
 
+### A category carries almost every attribute, and that is the point
+
+Easy to get backwards, and we did: **a `markercategory` is where an author sets `iconSize`,
+`iconFile`, `fadeNear` or `behavior` for a whole subtree.** It is not restricted to its own
+five structural attributes.
+
+Three facts in the source make it so:
+
+1. `PathableCategoryBuilder.FromNanoXmlNode` strips exactly four attributes off the node —
+   `name`, `isseparator`, `defaulttoggle`, `ishidden` — and hands **everything else** to
+   `SetAttributes`. (`displayname` is in the strip list but commented out, so it stays in the
+   collection as well as being read.)
+2. `PathingCategory` implements `IAggregatesAttributes` with `AttributeParent => Parent`, so
+   the chain is the same hop repeated: pathable → category → parent category → … → root. A
+   nested category inherits from its parents exactly as a marker does.
+3. Both `StandardMarker` and `StandardTrail` call `Populate(pointOfInterest
+   .GetAggregatedAttributes(), …)`. Every attribute either of them reads, it reads through
+   the chain.
+
+So "which attributes may sit on a `markercategory`" has nothing to do with what a category
+*does* with them. Two different questions, and the attribute table answers them separately:
+`applies_to` for what consumes an attribute, `settableOn` for where it may be written —
+`applies_to`, plus categories whenever the attribute inherits.
+
+Only three groups are genuinely not category-settable: the position and identity of a single
+pathable (`xpos`/`ypos`/`zpos`, `guid`, `type`), which inherit in Pathing but only
+pathologically; the category's own structural attributes, which mean nothing on a pathable;
+and `trailData`, for the reason below.
+
+#### trailData is the exception
+
+`Trail.Preprocess` resolves `traildata` through the chain like everything else — but
+`PathablePrototypeBuilder.UnpackTrailPoi` tests `trailAttributes.Contains(TRAILDATA)` against
+the **explicit** collection and returns null before `Preprocess` ever runs. A `trailData`
+supplied only by a category therefore drops the trail entirely. Treat it as explicit-only.
+
+### Which attributes each element actually uses
+
+Traced to the Pathing file that reads each one. The `Standard{Marker,Trail}[attr].cs`
+filenames name their own attributes; the behaviors under `Behavior/` are per-entity, and
+`StandardMarker_Behaviors` registers far more of them than `StandardTrail_Behaviors` does.
+
+| | Attributes |
+|---|---|
+| **Category only** | `name`, `DisplayName`, `IsSeparator`, `IsHidden`, `DefaultToggle` |
+| **Marker only** | `xpos`/`ypos`/`zpos`, `iconFile`, `iconSize`, `heightOffset`, `minSize`, `maxSize`, `mapDisplaySize`, `scaleOnMapWithZoom`, `occlude`, `rotate`(+`-x`/`-y`/`-z`), `title`, `title-color`, `text`, `tip-name`, `triggerRange`, `autoTrigger`, `resetLength`, `behavior`, `invertBehavior`, `resetGuid`, `toggle`, `toggleCategory`, `show`, `hide`, `info`, `infoRange`, `bounce`(+`-height`/`-delay`/`-duration`) |
+| **Trail only** | `trailData`, `texture`, `animSpeed`, `trailScale`, `isWall` |
+| **Both pathables** | `type`, `MapID`, `GUID`, `alpha`, `color`/`tint`, `cull`, `canFade`, `fadeNear`, `fadeFar`, `inGameVisibility`, `mapVisibility`, `miniMapVisibility`, and every filter: `festival`, `mapType`, `mount`, `profession`, `race`, `specialization`, `raid`, `schedule`(+`-duration`), `script-*` |
+| **Category *and* marker** | `achievementId`, `achievementBit`, `tip-description`, `copy`, `copy-message` |
+
+That last row is the surprising one, and it is real: `Utility/CategoryAttributeUtil.cs` and
+`UI/Controls/CategoryContextMenuStripItem.cs` read those five off the **category itself** —
+the achievement pair greys out and hides a category's menu entry once the achievement is
+done, `tip-description` is the entry's tooltip when there is no achievement to show instead,
+and clicking a separator category copies its `copy` value with `copy-message` as the
+confirmation.
+
+#### Two attributes that look like they work on trails and do not
+
+`StandardTrail_TacOMisc.cs` and `StandardTrail_OnFocus.cs` define `Populate_TacOMisc`
+(`resetlength`) and `Populate_Triggers` (`triggerrange`) — and `StandardTrail.Populate` calls
+neither. The code is written and dead, so on a trail both attributes do nothing. Measured
+against the corpus, no pack sets either on a trail; what packs *do* set on trails is
+`mapDisplaySize` (169 times across three packs), also marker-only, also dead.
+
+#### fadecenter
+
+`StandardMarker[canfade].cs` accepts `fadecenter` as a legacy alias for `canfade` ("Old
+attribute name from original Markers & Paths module"). It is not in our attribute table, so a
+pack using it shows as an unknown attribute. No pack in the corpus does, which is why it has
+not been worth a table row plus a "deprecated" flag to keep it out of the picker.
+
 ### Real packs do parse with a conformant parser — measured
 
 TmfLib ships a vendored `NanoXml` rather than using a standard parser, which suggested

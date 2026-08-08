@@ -97,6 +97,57 @@ TEST_CASE("every attribute table row is well formed", "[attributes]") {
     }
 }
 
+TEST_CASE("a category can be given anything its descendants inherit", "[attributes]") {
+    // The bug this guards: the "add attribute" picker filtered on applies_to, so a category
+    // was offered only its own five structural attributes and there was no way to set an
+    // iconSize for a whole subtree — the single most common thing a pack author does.
+    for (const pack::AttributeDef& def : pack::attributeTable()) {
+        INFO("attribute " << def.key);
+        if (def.inherits) CHECK((pack::settableOn(def) & pack::kAppliesCategory) != 0);
+        // Only the category bit is ever added; a marker's list must not widen.
+        CHECK((pack::settableOn(def) & pack::kAppliesPathable) == (def.applies_to & pack::kAppliesPathable));
+    }
+
+    auto settable = [](std::string_view key, uint8_t mask) {
+        const pack::AttributeDef* def = pack::findAttribute(key);
+        REQUIRE(def != nullptr);
+        return (pack::settableOn(*def) & mask) != 0;
+    };
+
+    // Inherited appearance, the reported case. Set on a category, read by every marker or
+    // trail beneath it.
+    CHECK(settable("iconsize", pack::kAppliesCategory));
+    CHECK(settable("iconfile", pack::kAppliesCategory));
+    CHECK(settable("heightoffset", pack::kAppliesCategory));
+    CHECK(settable("texture", pack::kAppliesCategory));
+    CHECK(settable("fadenear", pack::kAppliesCategory));
+    CHECK(settable("behavior", pack::kAppliesCategory));
+
+    // But a category is still not a marker, and inheritance does not run the other way.
+    CHECK_FALSE(settable("xpos", pack::kAppliesCategory));
+    CHECK_FALSE(settable("guid", pack::kAppliesCategory));
+    CHECK_FALSE(settable("type", pack::kAppliesCategory));
+    CHECK_FALSE(settable("name", pack::kAppliesPoi));
+    CHECK_FALSE(settable("isseparator", pack::kAppliesPoi));
+    CHECK_FALSE(settable("defaulttoggle", pack::kAppliesTrail));
+
+    // trailData resolves through the chain in TmfLib, but UnpackTrailPoi drops the trail
+    // before that runs unless the attribute is on the node itself.
+    CHECK(settable("traildata", pack::kAppliesTrail));
+    CHECK_FALSE(settable("traildata", pack::kAppliesCategory));
+
+    // Marker-only, per Pathing: StandardTrail registers the filters and nothing else.
+    for (std::string_view key : {"iconsize", "iconfile", "heightoffset", "occlude", "behavior", "toggle", "title", "tip-name", "bounce"}) {
+        INFO("attribute " << key);
+        CHECK_FALSE(settable(key, pack::kAppliesTrail));
+    }
+    // And trail-only.
+    for (std::string_view key : {"texture", "iswall", "animspeed", "trailscale", "traildata"}) {
+        INFO("attribute " << key);
+        CHECK_FALSE(settable(key, pack::kAppliesPoi));
+    }
+}
+
 TEST_CASE("declared defaults parse as their own kind", "[attributes]") {
     for (const pack::AttributeDef& def : pack::attributeTable()) {
         if (def.default_value.empty()) continue;

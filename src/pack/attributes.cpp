@@ -25,6 +25,13 @@ constexpr ValueKind kEnum = ValueKind::Enum;
 // Defaults are from Pathing/State/UserResources/Population/*.cs, which cite GW2TacO's
 // gw2tactical.h. Where markers and trails disagree (fadenear/fadefar) the marker value
 // is listed and the difference is called out in the doc string — see docs/format.md.
+//
+// `applies_to` is which node kinds *consume* the attribute, traced to the Pathing file that
+// reads it: the `Standard{Marker,Trail}[attr].cs` filenames name their attributes, the
+// behaviors under `Behavior/` say which entity registers them, and the handful a category
+// reads for its own menu entry are in `Utility/CategoryAttributeUtil.cs` and
+// `UI/Controls/CategoryContextMenuStripItem.cs`. Where an attribute may be *written* is a
+// wider question and belongs to settableOn, not here — see docs/format.md.
 const std::vector<AttributeDef>& table() {
     static const std::vector<AttributeDef> t = {
         // ── Structural ────────────────────────────────────────────────────────
@@ -36,7 +43,10 @@ const std::vector<AttributeDef>& table() {
         {"xpos", "xpos", kFloat, kAppliesPoi, false, "", "Position X, in metres."},
         {"ypos", "ypos", kFloat, kAppliesPoi, false, "", "Position Y (up), in metres."},
         {"zpos", "zpos", kFloat, kAppliesPoi, false, "", "Position Z, in metres."},
-        {"traildata", "trailData", kPath, kAppliesTrail, true, "", "Path to the .trl file holding this trail's points."},
+        // Not inheritable in practice: `Trail.Preprocess` resolves it through the chain, but
+        // `UnpackTrailPoi` gates on the *explicit* attribute and drops the trail before that
+        // runs. So a trailData supplied only by a category never loads at all.
+        {"traildata", "trailData", kPath, kAppliesTrail, false, "", "Path to the .trl file holding this trail's points."},
 
         // ── Category behaviour ────────────────────────────────────────────────
         {"isseparator", "IsSeparator", kBool, kAppliesCategory, false, "0", "Render as a non-selectable heading in the menu."},
@@ -75,51 +85,65 @@ const std::vector<AttributeDef>& table() {
         {"scaleonmapwithzoom", "scaleOnMapWithZoom", kBool, kAppliesPoi, true, "1", "Scale the map icon with zoom level."},
 
         // ── Interaction and behaviour ─────────────────────────────────────────
-        {"behavior", "behavior", kInt, kAppliesPathable, true, "0", "TacO behavior id controlling when the marker hides."},
-        {"invertbehavior", "invertBehavior", kBool, kAppliesPathable, true, "0", "Invert the behavior's show/hide sense."},
+        // Marker-only, all of them. Every one is either a `StandardMarker[...]` populate or a
+        // behavior that only `StandardMarker_Behaviors` registers — `StandardTrail_Behaviors`
+        // registers the filters and nothing else. `resetlength` and `triggerrange` do have a
+        // `StandardTrail` populate written for them, but nothing calls it: `StandardTrail`'s
+        // `Populate` lists neither `Populate_TacOMisc` nor `Populate_Triggers`, so on a trail
+        // both are dead attributes.
+        {"behavior", "behavior", kInt, kAppliesPoi, true, "0", "TacO behavior id controlling when the marker hides."},
+        {"invertbehavior", "invertBehavior", kBool, kAppliesPoi, true, "0", "Invert the behavior's show/hide sense."},
         {"triggerrange", "triggerRange", kFloat, kAppliesPoi, true, "2", "Range (inches) at which the marker triggers."},
         {"autotrigger", "autoTrigger", kBool, kAppliesPoi, true, "0", "Trigger on approach rather than on interact."},
-        {"resetlength", "resetLength", kFloat, kAppliesPathable, true, "0", "Seconds before a triggered marker returns."},
-        {"resetguid", "resetGuid", kGuid, kAppliesPathable, true, "", "Marker whose trigger also resets this one."},
-        {"togglecategory", "toggleCategory", kStr, kAppliesPathable, true, "", "Category toggled when this marker triggers."},
-        {"toggle", "toggle", kStr, kAppliesPathable, true, "", "Category toggled on interact."},
-        {"show", "show", kStr, kAppliesPathable, true, "", "Categories to show on trigger."},
-        {"hide", "hide", kStr, kAppliesPathable, true, "", "Categories to hide on trigger."},
-        {"copy", "copy", kStr, kAppliesPathable, true, "", "Text copied to the clipboard on interact."},
-        {"copy-message", "copy-message", kStr, kAppliesPathable, true, "", "Confirmation shown after a copy."},
-        {"info", "info", kStr, kAppliesPathable, true, "", "Text shown when in range."},
-        {"inforange", "infoRange", kFloat, kAppliesPathable, true, "", "Range (inches) at which info shows."},
+        {"resetlength", "resetLength", kFloat, kAppliesPoi, true, "0", "Seconds before a triggered marker returns."},
+        {"resetguid", "resetGuid", kGuid, kAppliesPoi, true, "", "Marker whose trigger also resets this one."},
+        {"togglecategory", "toggleCategory", kStr, kAppliesPoi, true, "", "Category toggled when this marker triggers."},
+        {"toggle", "toggle", kStr, kAppliesPoi, true, "", "Category toggled on interact."},
+        {"show", "show", kStr, kAppliesPoi, true, "", "Categories to show on trigger."},
+        {"hide", "hide", kStr, kAppliesPoi, true, "", "Categories to hide on trigger."},
+        // Read off the category itself too: clicking a separator category copies its `copy`
+        // value, with `copy-message` as the confirmation (CategoryContextMenuStripItem).
+        {"copy", "copy", kStr, kAppliesCategory | kAppliesPoi, true, "", "Text copied to the clipboard on interact."},
+        {"copy-message", "copy-message", kStr, kAppliesCategory | kAppliesPoi, true, "", "Confirmation shown after a copy."},
+        {"info", "info", kStr, kAppliesPoi, true, "", "Text shown when in range."},
+        {"inforange", "infoRange", kFloat, kAppliesPoi, true, "", "Range (inches) at which info shows."},
 
         // ── Labels ────────────────────────────────────────────────────────────
-        {"title", "title", kStr, kAppliesPathable, true, "", "Label drawn with the marker."},
-        {"title-color", "title-color", kColor, kAppliesPathable, true, "FFFFFFFF", "Label colour."},
-        {"text", "text", kStr, kAppliesPathable, true, "", "Additional text."},
-        {"tip-name", "tip-name", kStr, kAppliesPathable, true, "", "Tooltip heading."},
-        {"tip-description", "tip-description", kStr, kAppliesPathable, true, "", "Tooltip body."},
+        {"title", "title", kStr, kAppliesPoi, true, "", "Label drawn with the marker."},
+        {"title-color", "title-color", kColor, kAppliesPoi, true, "FFFFFFFF", "Label colour."},
+        {"text", "text", kStr, kAppliesPoi, true, "", "Additional text."},
+        {"tip-name", "tip-name", kStr, kAppliesPoi, true, "", "Tooltip heading."},
+        // A category's own menu tooltip, when it has no achievementId to show instead.
+        {"tip-description", "tip-description", kStr, kAppliesCategory | kAppliesPoi, true, "", "Tooltip body."},
 
         // ── Filters ───────────────────────────────────────────────────────────
+        // Filters run as behaviors on the pathable, so the pathable is what consumes them.
+        // The two achievement ones are the exception: a category reads them for its own menu
+        // entry, which greys out and hides once the achievement is done.
         {"achievementid", "achievementId", kInt, kAppliesAll, true, "", "Hide once this achievement is done."},
         {"achievementbit", "achievementBit", kInt, kAppliesAll, true, "", "Hide once this achievement bit is done."},
-        {"festival", "festival", kEnum, kAppliesAll, true, "", "Only show during these festivals."},
-        {"maptype", "mapType", kEnum, kAppliesAll, true, "", "Only show on these map types."},
-        {"mount", "mount", kEnum, kAppliesAll, true, "", "Only show on these mounts."},
-        {"profession", "profession", kEnum, kAppliesAll, true, "", "Only show for these professions."},
-        {"race", "race", kEnum, kAppliesAll, true, "", "Only show for these races."},
-        {"specialization", "specialization", kEnum, kAppliesAll, true, "", "Only show for these specializations."},
-        {"raid", "raid", kStr, kAppliesAll, true, "", "Tie visibility to raid encounter completion."},
-        {"schedule", "schedule", kStr, kAppliesAll, true, "", "Cron expression controlling when the marker shows."},
-        {"schedule-duration", "schedule-duration", kFloat, kAppliesAll, true, "", "Seconds the schedule window stays open."},
+        {"festival", "festival", kEnum, kAppliesPathable, true, "", "Only show during these festivals."},
+        {"maptype", "mapType", kEnum, kAppliesPathable, true, "", "Only show on these map types."},
+        {"mount", "mount", kEnum, kAppliesPathable, true, "", "Only show on these mounts."},
+        {"profession", "profession", kEnum, kAppliesPathable, true, "", "Only show for these professions."},
+        {"race", "race", kEnum, kAppliesPathable, true, "", "Only show for these races."},
+        {"specialization", "specialization", kEnum, kAppliesPathable, true, "", "Only show for these specializations."},
+        {"raid", "raid", kStr, kAppliesPathable, true, "", "Tie visibility to raid encounter completion."},
+        {"schedule", "schedule", kStr, kAppliesPathable, true, "", "Cron expression controlling when the marker shows."},
+        {"schedule-duration", "schedule-duration", kFloat, kAppliesPathable, true, "", "Seconds the schedule window stays open."},
 
         // ── Scripting (Blish HUD) ─────────────────────────────────────────────
         {"bounce", "bounce", kEnum, kAppliesPoi, true, "", "Bounce animation mode."},
         {"bounce-height", "bounce-height", kFloat, kAppliesPoi, true, "", "Bounce height."},
         {"bounce-delay", "bounce-delay", kFloat, kAppliesPoi, true, "", "Delay before bouncing."},
         {"bounce-duration", "bounce-duration", kFloat, kAppliesPoi, true, "", "Bounce duration."},
-        {"script-filter", "script-filter", kStr, kAppliesAll, true, "", "Lua predicate controlling visibility."},
-        {"script-focus", "script-focus", kStr, kAppliesAll, true, "", "Lua run while the marker is focused."},
-        {"script-once", "script-once", kStr, kAppliesAll, true, "", "Lua run once on load."},
-        {"script-tick", "script-tick", kStr, kAppliesAll, true, "", "Lua run every tick."},
-        {"script-trigger", "script-trigger", kStr, kAppliesAll, true, "", "Lua run on trigger."},
+        {"script-filter", "script-filter", kStr, kAppliesPathable, true, "", "Lua predicate controlling visibility."},
+        {"script-focus", "script-focus", kStr, kAppliesPathable, true, "", "Lua run while the marker is focused."},
+        {"script-once", "script-once", kStr, kAppliesPathable, true, "", "Lua run once on load."},
+        {"script-tick", "script-tick", kStr, kAppliesPathable, true, "", "Lua run every tick."},
+        {"script-trigger", "script-trigger", kStr, kAppliesPathable, true, "", "Lua run on trigger."},
+        // Ours and other editors', not Blish's: Pathing has a populate for it on both
+        // pathable types and calls neither. Free on anything, so it stays kAppliesAll.
         {"edittag", "editTag", kStr, kAppliesAll, true, "", "Free-form tag used by editors to group markers."},
     };
     return t;
@@ -154,6 +178,10 @@ constexpr std::string_view kBase64Alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefgh
 
 const std::vector<AttributeDef>& attributeTable() {
     return table();
+}
+
+uint8_t settableOn(const AttributeDef& def) {
+    return def.inherits ? static_cast<uint8_t>(def.applies_to | kAppliesCategory) : def.applies_to;
 }
 
 const AttributeDef* findAttribute(std::string_view name) {

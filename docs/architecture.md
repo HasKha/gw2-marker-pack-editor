@@ -372,6 +372,20 @@ The table also has to carry the explicit-vs-inherited distinction, because the p
 panel needs to show the effective value while making clear whether it is set here or
 came from an ancestor category — see [format.md](format.md).
 
+### Where an attribute *applies* and where it may be *set* are two questions
+
+`AttributeDef::applies_to` answers the first: which node kinds consume the attribute, traced
+to the Pathing file that reads it. `pack::settableOn` answers the second, and it is wider —
+`applies_to` plus categories whenever the attribute inherits, because a `markercategory` is
+precisely where an author sets `iconSize` for a whole subtree without consuming one itself.
+
+Asking `applies_to` where the answer is `settableOn` was a real bug: the "add attribute"
+picker offered a category only its own five structural attributes, so there was no way to
+give a category an icon size at all. Anything filtering the attribute table by node kind
+wants `settableOn`; `applies_to` is for deciding whether a value has an effect where it sits,
+which is what the property panel's "does nothing here" warning and `mpe_probe`'s matching
+lint are for. The reasoning behind each classification is in [format.md](format.md).
+
 ## A pack is a zip or a folder
 
 Everything above `pack/source.h` reads through the abstract `DataSource`, with two

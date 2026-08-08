@@ -29,7 +29,7 @@ it, save it back, and the edited markers show correctly in Blish HUD.**
 | UI | five independent windows — Tree, Details, Toolbar, Trail editor, Resources — with a View menu and a Nexus options checkbox each |
 | Resources | the pack's images as a folder tree, with reference counts, a preview, and add / remove pending until a save |
 | Trail editor | map id, the point list, drag fields, point handles in the world, and a Trail menu: reload, export, add circle |
-| Tree + properties | category tree with visibility toggles; attribute form generated from the attribute table |
+| Tree + properties | category tree with visibility toggles; attribute form generated from the attribute table, per-element attribute sets traced to Pathing, inheritance shown for categories as well as pathables |
 | World | billboards, trail ribbons, rotation, selection highlight, click-to-pick for markers and trail points; nothing drawn while the map is open |
 | Selection | ctrl+click in the tree and the world, shift+click ranges in the tree and the point list, world picks reveal the node in the tree |
 | 3D edit | ImGuizmo translate/rotate on the selection — markers and trail points alike — anchored on the first node selected; a group rotation orbits the rest about it |
@@ -39,7 +39,7 @@ it, save it back, and the edited markers show correctly in Blish HUD.**
 | Settings | the Settings toggles, gizmo mode, which windows are open and where the browsers start, kept in `settings.json` |
 | Create pack | `New Pack...` builds an empty pack in memory; Save As writes the first zip |
 | Write | serializes the owned document; comments, order, spelling, BOM, CRLF and the file split survive. 947/947 files stable on rewrite |
-| Tests | `mpe_test`, 30 cases over the real pack corpus, run by `ctest` |
+| Tests | `mpe_test`, 39 cases over the real pack corpus, run by `ctest` |
 
 A pack can be edited end to end, grown new branches, and started from nothing.
 
@@ -106,7 +106,13 @@ Roughly in order.
 - **Enum value lists** from the gw2pathing.com attribute pages, so `ValueKind::Enum` gets a
   dropdown instead of a text box.
 - **Validation pass in the UI**, reusing what `mpe_probe`'s lint already checks. Worth more
-  now that new content can be authored in the editor rather than only edited.
+  now that new content can be authored in the editor rather than only edited. Two of the
+  lint's checks already have a counterpart in the property panel — an unknown attribute and
+  one that does nothing where it sits are both flagged there — so the pattern is set.
+- **`fadecenter`**, Pathing's legacy alias for `canFade`, is not in the attribute table and
+  so reads as an unknown attribute. Adding it means also adding a `deprecated` flag to keep
+  it out of the "add attribute" picker. No pack in the corpus uses it; see
+  [format.md](format.md).
 - **`animspeed`** — parsed and stored, but trail textures do not scroll.
 - **Move pack loading off the render thread** if a large pack starts to stutter. 56k
   markers has not been slow enough to need it.
