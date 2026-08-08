@@ -4,6 +4,7 @@
 #include <imgui.h>
 
 #include <atomic>
+#include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <optional>
@@ -60,6 +61,13 @@ std::atomic<size_t> pending_select{pack::kNoIndex};
 // carried across: the render thread owns that and reads it when it consumes this.
 std::atomic<size_t> pending_select_point{pack::kNoIndex};
 std::atomic<bool> pending_select_additive{false};
+
+// A world click that hit nothing wants to clear the selection — but only if it was a click
+// and not the start of a camera drag, which cannot be known until the button comes back up.
+// See onWndProc.
+std::atomic<bool> pending_deselect{false};
+bool deselect_armed = false; // message thread only
+POINT deselect_origin{};
 
 // What the in-flight file dialog is for. One dialog runs at a time, so a single value is
 // enough, and it has to survive until the worker reports back.
@@ -171,8 +179,48 @@ bool isCursorVisible() {
 //
 // Returning 0 consumes the message (RiApi.cpp), which we only do when a marker was
 // actually hit, so ordinary clicks still drive the camera.
+// Clicking nothing clears the selection, which is the only way to clear it out here. The
+// catch is that a left *drag* on nothing is how the camera turns, and a drag begins with the
+// same WM_LBUTTONDOWN — so the deselect cannot be decided until the button comes back up.
+//
+// Telling the two apart by comparing the down and up positions does not work. GW2 hides the
+// cursor while it turns the camera, and Nexus's `MouseResetFix` optionally clips it to a 1x1
+// rect and `SetCursorPos`es it back to where it went down, so a long drag can report an up
+// position identical to its down position. The cursor going hidden is the reliable signal,
+// and it is the game telling us it has taken the mouse for mouselook. Movement past a few
+// pixels is checked too, for a drag where the cursor stays visible.
+//
+// Returns 1 throughout: the game has to keep seeing these, or the camera stops working.
+UINT trackDeselectClick(UINT uMsg, WPARAM wParam) {
+    constexpr int kDragSlack = 4; // px
+
+    switch (uMsg) {
+    case WM_MOUSEMOVE: {
+        if (!deselect_armed) break;
+        if (!isCursorVisible()) { // the game took the mouse — this is a camera drag
+            deselect_armed = false;
+            break;
+        }
+        POINT at{};
+        if (!GetCursorPos(&at)) break;
+        if (std::abs(at.x - deselect_origin.x) > kDragSlack || std::abs(at.y - deselect_origin.y) > kDragSlack) {
+            deselect_armed = false;
+        }
+        break;
+    }
+    case WM_LBUTTONUP:
+        if (deselect_armed && isCursorVisible()) pending_deselect.store(true);
+        deselect_armed = false;
+        break;
+    default: break;
+    }
+    return 1;
+}
+
 UINT onWndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
-    if (uMsg != WM_LBUTTONDOWN) return 1;
+    if (uMsg != WM_LBUTTONDOWN) return trackDeselectClick(uMsg, wParam);
+
+    deselect_armed = false;
     if (!state.loaded || !state.settings.select_in_viewport) return 1;
     if (ImGui::GetIO().WantCaptureMouse) return 1; // an addon window owns this click
     if (!isCursorVisible()) return 1;
@@ -181,7 +229,13 @@ UINT onWndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
     // open trail has them, and they are drawn precisely to be aimed at.
     const size_t point = world::renderer::hoveredTrailPoint();
     const size_t hovered = world::renderer::hoveredPathable();
-    if (point == pack::kNoIndex && hovered == pack::kNoIndex) return 1;
+    if (point == pack::kNoIndex && hovered == pack::kNoIndex) {
+        // Nothing under the cursor. A plain click here deselects, so watch for the button
+        // coming back up without a drag in between. Not with ctrl or shift held: those mean
+        // "add to what I have", and adding nothing should not throw the rest away.
+        if ((wParam & (MK_CONTROL | MK_SHIFT)) == 0 && GetCursorPos(&deselect_origin)) deselect_armed = true;
+        return 1;
+    }
 
     // Shift does what ctrl does out here. A range needs an order between two markers, and
     // the world has none — the tree is where a range means something.
@@ -753,6 +807,42 @@ void drawResourcesWindow() {
     ImGui::End();
 }
 
+// A viewport click that hit nothing. Clearing the selection is the point — but not while a
+// trail is open in the editor and what is selected is part of it.
+//
+// Editing a trail means aiming at its point handles one at a time, and they are 4px dots. A
+// miss that threw the trail away too would close the editor and cost a trip back to the tree
+// before the next point could be touched, which makes the whole loop hostile. So a miss falls
+// back to the trail itself: the points let go, the trail stays selected, the editor stays
+// open, and the next click can go straight at another handle.
+//
+// A miss never *creates* a selection, so an empty one is left alone rather than being given
+// the open trail.
+void deselectInViewport(editor::State& state) {
+    if (trail_edit::isOpen() && !state.selection.empty()) {
+        const size_t trail = trail_edit::pathable();
+
+        bool all_within = true;
+        for (editor::NodeRef node : state.selection.items()) {
+            const bool its_point = node.kind == editor::NodeKind::TrailPoint && node.index == trail;
+            const bool the_trail = node.kind == editor::NodeKind::Pathable && node.index == trail;
+            if (!its_point && !the_trail) {
+                all_within = false;
+                break;
+            }
+        }
+
+        // Something else is selected as well, so the trail is not what is being worked on and
+        // has no claim on the click.
+        if (all_within) {
+            state.selection.set(editor::NodeRef{editor::NodeKind::Pathable, trail});
+            return;
+        }
+    }
+
+    state.selection.clear();
+}
+
 void render() {
     if (std::optional<std::filesystem::path> picked = file_dialog::takeResult()) {
         switch (dialog_purpose) {
@@ -794,6 +884,11 @@ void render() {
 
     const size_t picked = pending_select.exchange(pack::kNoIndex);
     const size_t picked_point = pending_select_point.exchange(pack::kNoIndex);
+    const bool deselect = pending_deselect.exchange(false);
+
+    // Same gizmo guard as a pick: ImGuizmo::IsOver() is only knowable here, and a click on
+    // the gizmo is aimed at what is already selected, not at the empty world behind it.
+    if (deselect && !gizmo_active) deselectInViewport(state);
 
     if (!gizmo_active && picked_point != pack::kNoIndex && picked_point < trail_edit::pointCount()) {
         const editor::NodeRef node{editor::NodeKind::TrailPoint, trail_edit::pathable(), picked_point};

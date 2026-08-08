@@ -697,7 +697,9 @@ void drawTrailSection(
     }
 }
 
-void drawTrails(editor::State& state, const Camera& camera, ImDrawList* list, std::vector<Sorted>& order) {
+// No editor::State: a ribbon is drawn from its cached attributes and nothing else. Which
+// trails are in `order` at all is decided in draw(), selection included.
+void drawTrails(const Camera& camera, ImDrawList* list, std::vector<Sorted>& order) {
     for (const Sorted& entry : order) {
         if (!entry.is_trail) continue;
 
@@ -707,14 +709,12 @@ void drawTrails(editor::State& state, const Camera& camera, ImDrawList* list, st
 
         ImTextureID texture = resources::texture(trail.texture);
 
-        const bool selected =
-            state.settings.highlight_3d && state.selection.contains(editor::NodeRef{editor::NodeKind::Pathable, trail.pathable});
-
-        TrailDraw effective = trail;
-        if (selected) effective.tint = IM_COL32(255, 210, 60, (trail.tint >> IM_COL32_A_SHIFT) & 0xFF);
-
+        // Selecting a trail deliberately leaves the ribbon alone. Repainting a whole trail
+        // gold is a lot of screen to change for one bit of information, and it hides the very
+        // thing you selected it to look at — its texture, its tint, where it fades. The point
+        // handles in drawTrailPoints are the selection feedback.
         for (const pack::trl::Segment& segment : data->segments) {
-            drawTrailSection(camera, list, segment, effective, texture);
+            drawTrailSection(camera, list, segment, trail, texture);
         }
     }
 }
@@ -834,7 +834,7 @@ void draw(editor::State& state, const Camera& camera) {
     // Back to front: with no depth buffer, painter's order is all we have.
     std::sort(order.begin(), order.end(), [](const Sorted& a, const Sorted& b) { return a.distance > b.distance; });
 
-    drawTrails(state, camera, list, order);
+    drawTrails(camera, list, order);
     // Over the ribbon, under the markers: a handle you cannot see is a handle you cannot
     // click, and a marker sitting on a trail should still win the click.
     drawTrailPoints(state, camera, list, map_id);

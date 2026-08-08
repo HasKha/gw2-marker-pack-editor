@@ -386,6 +386,18 @@ void draw(editor::State& state) {
         }
     }
 
+    // A click in the tree's blank space clears the selection — the other half of being able
+    // to select something. Every row spans the full width, so "blank" is the space past the
+    // last row, and IsAnyItemHovered is what tells it from a row: the child being hovered
+    // says the click was inside this box, and no item being hovered says it missed them all.
+    //
+    // Not with ctrl or shift held, the same as in the world: those mean "add to what I have",
+    // and a miss should not discard the selection they are being held to extend.
+    const ImGuiIO& io = ImGui::GetIO();
+    if (ImGui::IsWindowHovered() && !ImGui::IsAnyItemHovered() && ImGui::IsMouseClicked(0) && !io.KeyCtrl && !io.KeyShift) {
+        state.selection.clear();
+    }
+
     ImGui::EndChild();
 }
 

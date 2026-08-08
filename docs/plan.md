@@ -30,8 +30,8 @@ it, save it back, and the edited markers show correctly in Blish HUD.**
 | Resources | the pack's images as a folder tree, with reference counts, a preview, and add / remove pending until a save |
 | Trail editor | map id, the point list, drag fields, point handles in the world, and a Trail menu: reload, export, add circle |
 | Tree + properties | category tree with visibility toggles; attribute form generated from the attribute table, per-element attribute sets traced to Pathing, inheritance shown for categories as well as pathables |
-| World | billboards, trail ribbons, rotation, selection highlight, click-to-pick for markers and trail points; nothing drawn while the map is open |
-| Selection | ctrl+click in the tree and the world, shift+click ranges in the tree and the point list, world picks reveal the node in the tree |
+| World | billboards, trail ribbons, rotation, click-to-pick for markers and trail points; nothing drawn while the map is open. Selection is shown by an outline on a marker and by the point handles on a trail — a selected ribbon is left untinted on purpose, so what the pack actually looks like stays readable |
+| Selection | ctrl+click in the tree and the world, shift+click ranges in the tree and the point list, world picks reveal the node in the tree. Cleared by a click that hits nothing — blank space in the tree, empty world in the viewport — except that a miss while editing a trail drops its points and keeps the trail |
 | 3D edit | ImGuizmo translate/rotate on the selection — markers and trail points alike — anchored on the first node selected; a group rotation orbits the rest about it |
 | Create | Add POI, Trail and Category from the toolbar, placed by the selection. A POI copies the selected marker's attributes; a trail comes with an empty `.trl`. Both get the current `MapID`, unless an ancestor category already supplies it |
 | Delete | a marker, or a category and its whole subtree, from the details window. Tombstoned, never erased |
@@ -144,6 +144,12 @@ editor, and undo/redo. What is left is not doubt about whether it works, but the
   game before deciding it is fine.
 - A trail is still moved a point at a time; there is no "move the whole trail" handle. The
   gizmo skips trail pathables themselves.
+- **A trail ribbon is not pickable in the viewport** — only markers and the open trail's
+  point handles are, so a trail is still selected from the tree. Clicking a ribbon counts as
+  a miss, which while that trail is open in the editor now falls back to selecting the trail
+  rather than clearing (see `deselectInViewport`), so the painful case is covered; clicking
+  some *other* trail's ribbon still just deselects. A segment-wise distance test against the
+  projected polyline would make ribbons pickable and close it properly.
 - Window positions are whatever ImGui's `imgui.ini` remembers. Visibility is ours and is
   persisted; position is not, deliberately.
 - `saveToDirectory`'s asset half — writing added images into a folder pack and deleting
