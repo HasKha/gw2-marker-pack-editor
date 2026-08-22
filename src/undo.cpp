@@ -170,8 +170,9 @@ void applyEntry(editor::State& state, Entry& entry, bool undoing) {
 
     for (AssetRecord& record : entry.assets) applyAssetState(state.pack, record.path, undoing ? record.before : record.after);
 
-    // Whatever was selected may have just stopped existing.
-    state.selection.retainIf([&](const editor::NodeRef& node) { return !editor::isDeleted(state, node); });
+    // Whatever was selected may have just stopped existing. Trail points are pruned by
+    // trail_edit when the caller refreshes the working copy — see applyUndo.
+    editor::prune(state);
     state.touch();
 }
 

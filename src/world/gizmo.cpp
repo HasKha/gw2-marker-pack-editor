@@ -56,6 +56,7 @@ glm::vec3 attributesFromRotation(const glm::mat4& world_rotation) {
 // about it.
 struct Target {
     editor::NodeRef node;
+    size_t point = pack::kNoIndex; // the trail point this is, or kNoIndex for a marker
     glm::vec3 position{0.0f}; // as drawn, i.e. including heightOffset
     glm::vec3 rotation{0.0f}; // radians, in the attributes' own axis order
     float height_offset = 0.0f;
@@ -65,44 +66,51 @@ struct Target {
     bool has_rotation = false;
 };
 
-// In selection order, so targets.front() is the first thing the user selected. Anything
-// without a transform — categories, a POI missing a coordinate, a trail point belonging to
-// a trail that is not the one open — is skipped rather than blocking the gizmo, so a mixed
-// selection still moves what it can.
+// In selection order, so targets.front() is the first thing the user selected. A category,
+// or a POI missing a coordinate, has no transform and is skipped rather than blocking the
+// gizmo, so a mixed selection still moves what it can.
+//
+// Points take priority over the node selection when there are any. The trail they belong to
+// is necessarily selected too — that is what opened the editor — so obeying both would drag
+// the whole trail every time a single point was nudged.
 std::vector<Target> collectTargets(const editor::State& state) {
     std::vector<Target> targets;
+
+    if (!state.points.empty() && state.points.trail == trail_edit::pathable()) {
+        for (size_t index : state.points.indices.items()) {
+            Target target;
+            target.node = editor::NodeRef{editor::NodeKind::Pathable, state.points.trail};
+            target.point = index;
+            target.position = trail_edit::point(index);
+            targets.push_back(target);
+        }
+        return targets;
+    }
+
     for (const editor::NodeRef& node : state.selection.items()) {
+        if (node.kind != editor::NodeKind::Pathable) continue;
+        if (node.index >= state.pack.pathables.size() || state.pack.pathables[node.index].grave.deleted) continue;
+
+        // The renderer's own resolution, so the handles land on the drawn icon.
+        renderer::MarkerTransform transform;
+        if (!renderer::markerTransform(state.pack, state.pack.pathables[node.index], &transform)) continue;
+
         Target target;
         target.node = node;
-
-        if (node.kind == editor::NodeKind::Pathable) {
-            if (node.index >= state.pack.pathables.size() || state.pack.pathables[node.index].grave.deleted) continue;
-
-            // The renderer's own resolution, so the handles land on the drawn icon.
-            renderer::MarkerTransform transform;
-            if (!renderer::markerTransform(state.pack, state.pack.pathables[node.index], &transform)) continue;
-
-            target.position = transform.position;
-            target.rotation = transform.rotation;
-            target.height_offset = transform.height_offset;
-            // Not transform.has_rotation: that says whether a rotate attribute is *there*,
-            // where this says the node is a kind that can carry one. Every POI can.
-            target.has_rotation = true;
-        } else if (node.kind == editor::NodeKind::TrailPoint) {
-            if (node.index != trail_edit::pathable() || node.sub >= trail_edit::pointCount()) continue;
-            target.position = trail_edit::point(node.sub);
-        } else {
-            continue;
-        }
-
+        target.position = transform.position;
+        target.rotation = transform.rotation;
+        target.height_offset = transform.height_offset;
+        // Not transform.has_rotation: that says whether a rotate attribute is *there*, where
+        // this says the node is a kind that can carry one. Every POI can.
+        target.has_rotation = true;
         targets.push_back(target);
     }
     return targets;
 }
 
 void writePosition(editor::State& state, const Target& target, const glm::vec3& drawn_position) {
-    if (target.node.kind == editor::NodeKind::TrailPoint) {
-        trail_edit::setPoint(state, target.node.sub, drawn_position);
+    if (target.point != pack::kNoIndex) {
+        trail_edit::setPoint(state, target.point, drawn_position);
         return;
     }
 

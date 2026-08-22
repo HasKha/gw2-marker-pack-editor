@@ -157,7 +157,9 @@ Removal remove(editor::State& state, editor::NodeRef node) {
         return removal;
     }
 
-    state.selection.clear();
+    // Only what actually went away: deleting one of three selected markers should leave the
+    // other two selected.
+    editor::prune(state);
     state.touch();
     return removal;
 }

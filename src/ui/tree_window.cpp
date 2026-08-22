@@ -13,41 +13,13 @@ namespace {
 
 // ── Reveal ────────────────────────────────────────────────────────────────────
 // A node picked in the world has to be shown in the tree, which means opening every
-// category above it. A parent chain is only walkable upwards, so it is collected once at
-// the top of draw() and consulted on the way down. Valid for the one frame that consumes
+// category above it. A parent chain is only walkable upwards, so it is collected once in
+// update() and consulted on the way down. Valid for the one frame that consumes
 // State::reveal_pending.
 bool reveal_active = false;
 editor::NodeRef reveal_target;
 std::vector<size_t> reveal_ancestors; // categories to force open, root-first
 bool reveal_orphans = false; // the target is a pathable with no resolvable category
-
-void beginReveal(editor::State& state) {
-    reveal_active = false;
-    reveal_orphans = false;
-    reveal_ancestors.clear();
-    if (!state.reveal_pending) return;
-
-    state.reveal_pending = false;
-    reveal_target = state.reveal_target;
-    reveal_active = true;
-
-    size_t category = pack::kNoIndex;
-    if (reveal_target.kind == editor::NodeKind::Category) {
-        category = reveal_target.index;
-    } else if (reveal_target.index < state.pack.pathables.size()) {
-        category = state.pack.pathables[reveal_target.index].category;
-    }
-
-    if (category == pack::kNoIndex || category >= state.pack.categories.size()) {
-        reveal_orphans = reveal_target.kind == editor::NodeKind::Pathable;
-        return;
-    }
-
-    while (category != pack::kNoIndex && category < state.pack.categories.size()) {
-        reveal_ancestors.push_back(category);
-        category = state.pack.categories[category].parent;
-    }
-}
 
 bool revealOpens(size_t category_index) {
     return reveal_active && std::find(reveal_ancestors.begin(), reveal_ancestors.end(), category_index) != reveal_ancestors.end();
@@ -193,40 +165,29 @@ std::vector<editor::NodeRef> rowsOf(const editor::State& state, const RowGroup& 
     return rows;
 }
 
-// Anchor to `node`, inclusive. The anchor is emitted first whichever way the range runs,
-// so it stays the selection's anchor and the gizmo does not jump to the other end.
-bool selectRange(editor::State& state, editor::NodeRef anchor, editor::NodeRef node) {
+// Anchor to `node`, inclusive, or empty when the two are not rows of one level — which
+// applyClick turns into a plain select, so a shift over a level boundary still lands
+// somewhere. The anchor is emitted first whichever way the range runs, so it stays the
+// selection's anchor and the gizmo does not jump to the other end.
+std::vector<editor::NodeRef> rowRange(const editor::State& state, editor::NodeRef anchor, editor::NodeRef node) {
     const RowGroup group = groupOf(state, anchor);
-    if (!(group == groupOf(state, node))) return false;
+    if (!(group == groupOf(state, node))) return {};
 
     const std::vector<editor::NodeRef> rows = rowsOf(state, group);
     const auto from = std::find(rows.begin(), rows.end(), anchor);
     const auto to = std::find(rows.begin(), rows.end(), node);
-    if (from == rows.end() || to == rows.end()) return false;
+    if (from == rows.end() || to == rows.end()) return {};
 
-    std::vector<editor::NodeRef> range;
-    if (from <= to) {
-        range.assign(from, to + 1);
-    } else {
-        range.assign(std::make_reverse_iterator(from + 1), std::make_reverse_iterator(to));
-    }
-
-    state.selection.setAll(std::move(range));
-    return true;
+    if (from <= to) return std::vector<editor::NodeRef>(from, to + 1);
+    return std::vector<editor::NodeRef>(std::make_reverse_iterator(from + 1), std::make_reverse_iterator(to));
 }
 
 void selectNode(editor::State& state, editor::NodeRef node) {
     const ImGuiIO& io = ImGui::GetIO();
 
-    // Shift over a level boundary falls back to a plain select rather than doing nothing,
-    // so the click always lands somewhere.
-    if (io.KeyShift && !state.selection.empty() && selectRange(state, state.selection.anchor(), node)) return;
-
-    if (io.KeyCtrl) {
-        state.selection.toggle(node);
-    } else {
-        state.selection.set(node);
-    }
+    editor::applyClick(state.selection, node, editor::clickMods(io.KeyCtrl, io.KeyShift), [&](editor::NodeRef anchor, editor::NodeRef to) {
+        return rowRange(state, anchor, to);
+    });
 }
 
 // Draws the eye and applies a click. Returns true when it consumed the click, so the row
@@ -358,13 +319,39 @@ std::string nodePath(const pack::Pack& pack, editor::NodeRef node) {
     return type.empty() ? "(no type)" : type;
 }
 
+void update(editor::State& state) {
+    reveal_active = false;
+    reveal_orphans = false;
+    reveal_ancestors.clear();
+    if (!state.reveal_pending) return;
+
+    state.reveal_pending = false;
+    reveal_target = state.reveal_target;
+    reveal_active = true;
+
+    size_t category = pack::kNoIndex;
+    if (reveal_target.kind == editor::NodeKind::Category) {
+        category = reveal_target.index;
+    } else if (reveal_target.index < state.pack.pathables.size()) {
+        category = state.pack.pathables[reveal_target.index].category;
+    }
+
+    if (category == pack::kNoIndex || category >= state.pack.categories.size()) {
+        reveal_orphans = reveal_target.kind == editor::NodeKind::Pathable;
+        return;
+    }
+
+    while (category != pack::kNoIndex && category < state.pack.categories.size()) {
+        reveal_ancestors.push_back(category);
+        category = state.pack.categories[category].parent;
+    }
+}
+
 void draw(editor::State& state) {
     if (!state.loaded) {
         ImGui::TextDisabled("No pack open.");
         return;
     }
-
-    beginReveal(state);
 
     ImGui::BeginChild("##tree", ImVec2(0, 0), false);
 

@@ -26,73 +26,21 @@ struct CircleParams {
 CircleParams circle;
 bool open_circle_popup = false;
 
-editor::NodeRef pointRef(size_t index) {
-    return editor::NodeRef{editor::NodeKind::TrailPoint, trail_edit::pathable(), index};
-}
-
-// The trail point driving the drag fields, or kNoIndex when the selection is something
-// else. The primary is the last thing clicked, which is the one the user is looking at.
-size_t selectedPoint(const editor::State& state) {
-    const editor::NodeRef primary = state.selection.primary();
-    if (primary.kind != editor::NodeKind::TrailPoint) return pack::kNoIndex;
-    if (primary.index != trail_edit::pathable() || primary.sub >= trail_edit::pointCount()) return pack::kNoIndex;
-    return primary.sub;
-}
-
-std::vector<size_t> selectedPoints(const editor::State& state) {
-    std::vector<size_t> points;
-    for (const editor::NodeRef& node : state.selection.items()) {
-        if (node.kind != editor::NodeKind::TrailPoint || node.index != trail_edit::pathable()) continue;
-        if (node.sub < trail_edit::pointCount()) points.push_back(node.sub);
-    }
-    return points;
-}
-
 // Same modifiers as the tree, over a flat list: the range is just an index span, so it
 // needs none of the tree's level bookkeeping.
 void selectPoint(editor::State& state, size_t index) {
     const ImGuiIO& io = ImGui::GetIO();
-    const editor::NodeRef anchor = state.selection.anchor();
 
-    if (io.KeyShift && anchor.kind == editor::NodeKind::TrailPoint && anchor.index == trail_edit::pathable() &&
-        anchor.sub < trail_edit::pointCount()) {
-        std::vector<editor::NodeRef> range;
-        if (anchor.sub <= index) {
-            for (size_t i = anchor.sub; i <= index; ++i) range.push_back(pointRef(i));
+    editor::applyClick(state.points.indices, index, editor::clickMods(io.KeyCtrl, io.KeyShift), [](size_t anchor, size_t to) {
+        std::vector<size_t> range;
+        // Anchor first whichever way the range runs, so it stays the gizmo's anchor.
+        if (anchor <= to) {
+            for (size_t i = anchor; i <= to; ++i) range.push_back(i);
         } else {
-            // Anchor first whichever way the range runs, so it stays the gizmo's anchor.
-            for (size_t i = anchor.sub + 1; i-- > index;) range.push_back(pointRef(i));
+            for (size_t i = anchor + 1; i-- > to;) range.push_back(i);
         }
-        state.selection.setAll(std::move(range));
-        return;
-    }
-
-    if (io.KeyCtrl) {
-        state.selection.toggle(pointRef(index));
-    } else {
-        state.selection.set(pointRef(index));
-    }
-}
-
-// Keeps the open trail in step with the selection, both ways: a trail selected is a trail
-// opened, and selecting anything else closes it. Without the second half the handles in the
-// world would outlive the reason they were drawn.
-//
-// Called every frame: reading the .trl is budgeted, so the first attempt after picking a
-// trail can legitimately come back empty and want another go.
-void followSelection(editor::State& state) {
-    const editor::NodeRef primary = state.selection.primary();
-
-    // A point of the trail already open. Editing its points is editing it.
-    if (primary.kind == editor::NodeKind::TrailPoint && primary.index == trail_edit::pathable()) return;
-
-    if (primary.kind == editor::NodeKind::Pathable && primary.index < state.pack.pathables.size() &&
-        state.pack.pathables[primary.index].type == pack::PathableType::Trail) {
-        trail_edit::open(state, primary.index);
-        return;
-    }
-
-    trail_edit::close();
+        return range;
+    });
 }
 
 void drawHeader(editor::State& state, const world::Camera& camera) {
@@ -141,7 +89,7 @@ void drawPointList(editor::State& state) {
             std::snprintf(label, sizeof(label), "%s%4zu   %8.2f, %8.2f, %8.2f", segment, index, position.x, position.y, position.z);
 
             ImGui::PushID(row);
-            if (ImGui::Selectable(label, state.selection.contains(pointRef(index)))) selectPoint(state, index);
+            if (ImGui::Selectable(label, state.points.indices.contains(index))) selectPoint(state, index);
             ImGui::PopID();
         }
     }
@@ -163,11 +111,13 @@ void drawAddPoint(editor::State& state, const world::Camera& camera, size_t sele
     if (!camera.valid) return;
 
     const size_t added = trail_edit::insertPoint(state, selected, camera.player);
-    if (added != pack::kNoIndex) state.selection.set(pointRef(added));
+    if (added != pack::kNoIndex) state.points.indices.set(added);
 }
 
 void drawSelectedPoint(editor::State& state, const world::Camera& camera) {
-    const size_t index = selectedPoint(state);
+    // The last point clicked, which is the one the user is looking at. No bounds check:
+    // trail_edit prunes the selection whenever the trail changes shape.
+    const size_t index = state.points.indices.primary();
     if (index == pack::kNoIndex) {
         ImGui::TextDisabled("No point selected.");
         drawAddPoint(state, camera, pack::kNoIndex);
@@ -187,16 +137,13 @@ void drawSelectedPoint(editor::State& state, const world::Camera& camera) {
 
     if (changed) trail_edit::setPoint(state, index, position);
 
-    const std::vector<size_t> selected = selectedPoints(state);
+    const std::vector<size_t>& selected = state.points.indices.items();
 
     drawAddPoint(state, camera, index);
     ImGui::SameLine();
-    if (ImGui::Button("Delete selected")) {
-        trail_edit::erasePoints(state, selected);
-        // Every index after the first deletion has moved; keeping the old refs would point
-        // at whatever slid into their place.
-        state.selection.clear();
-    }
+    // erasePoints drops the point selection itself — the indices it held all move. The
+    // trail stays selected either way, so the editor stays open on it.
+    if (ImGui::Button("Delete selected")) trail_edit::erasePoints(state, selected);
     ImGui::SameLine();
     ImGui::TextDisabled("%zu selected", selected.size());
 }
@@ -267,8 +214,8 @@ void draw(editor::State& state, const world::Camera& camera) {
         return;
     }
 
-    followSelection(state);
-
+    // Not followSelection: that runs from marker_editor every frame, because this body does
+    // not when the window is collapsed.
     if (!trail_edit::isOpen()) {
         ImGui::TextDisabled("Select a trail to edit it.");
         ImGui::TextWrapped("A trail's points live in its .trl file, which is loaded on demand - give it a frame after selecting.");

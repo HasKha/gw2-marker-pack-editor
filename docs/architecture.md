@@ -81,7 +81,8 @@ src/
   pathable_edit.*      creating and deleting markers and categories
   undo.*               the undo/redo stack: before/after images of what changed
   trail_edit.*         the open trail's working copy, shared by its window and the gizmo
-  editor_state.*       State: the open Pack, selection, per-node visibility, settings
+  editor_state.*       State: the open Pack, the two selections and the rules over them,
+                       per-node visibility, settings
   file_dialog.*        NFD on a worker thread (never block the render thread)
   resources.*          icons + .trl pulled from the pack source on demand, budgeted
   settings.*           the few things that outlive a session, as settings.json
@@ -144,7 +145,8 @@ closable, each remembering its own place:
 `ui/windows.*` is the registry: one table row per window with its title, its menu label
 and its default visibility, and everything else — the View menu, the Nexus options
 checkboxes, the keybind's hide-and-restore — is generated from that table. Adding a window
-is one row plus its draw function.
+is one row plus its draw function, and an `update` if it needs one — see
+[A window that is not drawing](#a-window-that-is-not-drawing).
 
 Two consequences of every window being closable:
 
@@ -160,6 +162,42 @@ Two consequences of every window being closable:
 
 Actions that reload or close the pack are applied at the *end* of the frame. They free the
 vectors every window has just drawn from, and a menu click happens partway through that.
+
+### A window that is not drawing
+
+A window's body does not run when it is hidden — and, easy to forget, not when it is merely
+*collapsed* either: `ImGui::Begin` returns false and `beginWindow` gives up before the body.
+Anything that has to stay correct across that has to run outside it.
+
+Editing `State` directly from a draw is fine and is the whole point of immediate mode. The
+question is only what happens on the frames where the draw does not happen. Two answers,
+and which one applies is decided by **lifetime**:
+
+| The state | Where it goes |
+|---|---|
+| Outlives the window — another subsystem would still need it if the window were deleted | a model module, ticked from `render()` |
+| The window's own, but has to stay correct while it is not drawing | `ui::<window>::update(State&)`, called from `render()` |
+
+Two live examples, one of each:
+
+- **Which trail is open** fails the lifetime test: the world renderer draws its handles and
+  the gizmo targets its points, and neither is the trail editor. So `followSelection` lives
+  in `trail_edit` and runs from `render()`. It used to run from the window body, and a
+  collapsed trail editor would then keep an unselected trail open — handles still in the
+  world, gizmo still on its points.
+- **The pending reveal** passes it: `reveal_active` and the ancestor chain are the tree's
+  alone. So `ui::tree_window::update` takes the request off `State` and works out what to
+  open, whether or not the tree draws afterwards. Consuming and dropping it when the tree is
+  away is the point — a reveal is about the moment it was asked for, and one replayed later
+  scrolls to a node picked minutes ago.
+
+`update()` is added where it has something to do, not as a stub on every window: an empty
+one invites model state into a window, which is the problem it exists to prevent. If a third
+window grows one, the calls are worth driving from the `ui/windows.*` table — which already
+carries a row per window — rather than by hand. A base class is the wrong shape for it: the
+draw signatures genuinely differ (a camera here, a returned request there, the Toolbar with
+no module at all), so a shared virtual would either widen every signature or keep the side
+channels that motivated it.
 
 The Nexus options page carries a checkbox per window, because a window closed with its X
 would otherwise only come back through a keybind that is unbound by default.
@@ -179,17 +217,22 @@ them. All three go through the one model.
   redraws from the new bytes. There is no separate "trail is dirty" state and no save step
   of its own: a pack save picks the trail up with everything else. Reserializing a few
   thousand points per edited frame is nothing next to a frame of rendering.
-- **A trail point is a `NodeRef`** like anything else — `NodeKind::TrailPoint`, with `sub`
-  carrying the point index. That is what lets the gizmo's group transform, the anchor and
-  ctrl/shift multi-select work on points without a second selection mechanism. The property
-  panel says so and defers; visibility ignores them, since they are not tree rows.
+- **Points are their own selection**, `State::points`, not entries in `State::selection` —
+  see [Two selections](#two-selections).
 - **Only the open trail gets handles** in the world. Every trail's points at once would be
   an unreadable field of dots, and a point that cannot be seen cannot be clicked.
 - **"Open" tracks the selection and the window, both ways.** Selecting a trail opens it;
-  selecting anything else closes it; closing the trail editor closes it too. That last one
-  has to be driven from `marker_editor`, because a closed window draws nothing and so
-  cannot notice it has been closed. Dropping the working copy costs nothing — every edit is
-  already committed to the pack — and reopening reads the same bytes back.
+  selecting anything else closes it; closing the trail editor closes it too. Both halves run
+  from `marker_editor::render`, against `trail_edit::followSelection` — *not* from the trail
+  editor's window body. A window that is hidden draws nothing, and one that is merely
+  collapsed draws nothing either, so anything that keeps model state in step has to run
+  outside it. Left inside, a collapsed trail editor would keep an unselected trail open:
+  handles in the world, and the gizmo still on its points. Dropping the working copy costs
+  nothing — every edit is already committed to the pack — and reopening reads the same bytes
+  back.
+- **`reindex` prunes the point selection.** It runs on every change to a trail's shape and
+  is the only thing that knows the new one, which is what lets everything downstream treat a
+  selected point index as one that exists.
 
 `Trail > Reload from file` drops the pending bytes and rereads the source **directly**
 rather than through `resources`, whose reads are budgeted a few per frame: a menu action
@@ -244,8 +287,8 @@ Two details worth knowing:
 - **Records that change nothing are dropped when the step closes**, and a step left empty is
   popped. Clicking into a field and out again does not fill the stack with no-ops.
 
-Undo bumps the revision like any other edit, drops selection entries whose node no longer
-exists, and — from the caller, not from `undo` — tells the trail editor to reread, since its
+Undo bumps the revision like any other edit, calls `editor::prune` to drop selection entries
+whose node no longer exists, and — from the caller, not from `undo` — tells the trail editor to reread, since its
 working copy is a cache of bytes that just changed underneath it.
 
 ## Deleting leaves a tombstone
@@ -329,6 +372,46 @@ all counted without being named in the UI. The counts and the folder tree are re
 The resources window previews **only the selected image**, deliberately. Nexus never
 releases a texture, so drawing a thumbnail per row would pin every image in a 1,375-image
 pack in memory for the session the first time the folder was opened.
+
+## Two selections
+
+The editor holds two independent selections, and which one a click lands in is decided by
+what was clicked, not by a mode:
+
+| | `State::selection` | `State::points` |
+|---|---|---|
+| Holds | categories and pathables, as `NodeRef` | point indices of one trail |
+| Filled by | the tree, the resources window, a world pick on a marker | the trail editor's list, a world pick on a handle |
+| Read by | details, the tree, delete, add, the gizmo | the trail editor, the handles, the gizmo |
+
+They were one list once, with `NodeKind::TrailPoint` and a `sub` field on every `NodeRef`.
+Folding them together looked cheaper — multi-select and the gizmo anchor came for free —
+but a trail point is not a sibling of a marker in the tree, it is a sub-selection *inside* a
+trail that is itself selected, and one list could not say that. Clicking a point evicted its
+trail from the details window; deleting a point had to clear the list and so read as
+deselecting the trail; a viewport miss needed a special case to put the trail back; and
+every consumer filtered the mixture apart by kind and bounds-checked the point index itself.
+Splitting them deleted all four, and `NodeRef` lost `sub` with them.
+
+What holds it together:
+
+- **`PointSelection` carries its trail index once**, rather than on every entry, and drops
+  its points when the trail changes. A stale point from a trail that is no longer open
+  cannot exist.
+- **The gizmo prefers points.** Whenever any are selected, the trail they belong to is
+  necessarily selected too — that is what opened the editor — so obeying both would drag the
+  whole trail every time one point was nudged. The cost is that a marker and a trail point
+  can no longer be transformed as one group, which nothing wanted.
+- **One click rule for both.** `editor::applyClick` applies plain/ctrl/shift to either
+  selection, with the range handed in by the caller — tree rows for one, an index span for
+  the other — so the two lists cannot drift apart on what a modifier means. The viewport
+  passes its own `ClickMods`: it has no rows to run between, so out there shift is a second
+  way to say ctrl.
+- **`editor::prune` is the only thing that checks for stale nodes**, and it runs after every
+  structural edit. Points are pruned by `trail_edit` instead, for the reason above.
+
+`editor_state.*` has no imgui or Nexus below it, so all of this is covered by
+`test/selection_test.cpp` rather than by hand.
 
 ## The gizmo anchor
 

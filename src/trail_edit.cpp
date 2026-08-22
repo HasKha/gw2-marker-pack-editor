@@ -22,11 +22,15 @@ pack::trl::Trail trail;
 // window and the gizmo can address a point by one number.
 std::vector<std::pair<size_t, size_t>> flat;
 
-void reindex() {
+// Called on every change to the trail's shape. Pruning the point selection here is what
+// lets everything downstream treat a selected point index as one that exists: this is the
+// only place that knows how many there are.
+void reindex(editor::State& state) {
     flat.clear();
     for (size_t s = 0; s < trail.segments.size(); ++s) {
         for (size_t p = 0; p < trail.segments[s].points.size(); ++p) flat.emplace_back(s, p);
     }
+    state.points.prune(flat.size());
 }
 
 // Reads the bytes the pack currently holds for the open trail: the pending edit if there is
@@ -117,15 +121,33 @@ bool open(editor::State& state, size_t pathable_index) {
     open_pathable = pathable_index;
     open_path = data;
     trail = *parsed;
-    reindex();
+    // Before reindex, so a switch to a different trail drops the old trail's points rather
+    // than reinterpreting their indices against the new one.
+    state.points.openOn(pathable_index);
+    reindex(state);
     return true;
 }
 
-void close() {
+void close(editor::State& state) {
     open_pathable = pack::kNoIndex;
     open_path.clear();
     trail = pack::trl::Trail{};
     flat.clear();
+    state.points.close();
+}
+
+void followSelection(editor::State& state) {
+    const editor::NodeRef primary = state.selection.primary();
+
+    // Reading the .trl is budgeted, so the first attempt after picking a trail can
+    // legitimately come back empty — which is fine, the next frame tries again.
+    if (primary.kind == editor::NodeKind::Pathable && primary.index < state.pack.pathables.size() &&
+        state.pack.pathables[primary.index].type == pack::PathableType::Trail) {
+        open(state, primary.index);
+        return;
+    }
+
+    close(state);
 }
 
 void setMapId(editor::State& state, int32_t map_id) {
@@ -180,7 +202,11 @@ void erasePoints(editor::State& state, std::vector<size_t> indices) {
             [](const pack::trl::Segment& segment) { return segment.points.empty(); }),
         trail.segments.end());
 
-    reindex();
+    reindex(state);
+    // Every index after the first deletion has shifted, so pruning is not enough: the
+    // survivors would name whatever slid into their place. The trail itself is a different
+    // selection and is untouched, so it stays selected and the editor stays open on it.
+    state.points.indices.clear();
     commit(state);
 }
 
@@ -208,7 +234,7 @@ size_t insertPoint(editor::State& state, size_t after, const glm::vec3& position
     std::vector<glm::vec3>& points = trail.segments[segment].points;
     points.insert(points.begin() + static_cast<long long>(at), position);
 
-    reindex();
+    reindex(state);
     commit(state);
 
     // Back to a flat index for the caller, which is what everything outside speaks.
@@ -235,7 +261,7 @@ void addArc(editor::State& state, const glm::vec3& centre, float radius, int seg
     }
 
     trail.segments.push_back(std::move(arc));
-    reindex();
+    reindex(state);
     commit(state);
 }
 
@@ -265,7 +291,7 @@ bool reload(editor::State& state) {
     resources::forget(open_path);
 
     trail = std::move(parsed);
-    reindex();
+    reindex(state);
     state.touch();
     return true;
 }
@@ -277,7 +303,7 @@ bool refresh(editor::State& state) {
     if (!readFromPack(state, &parsed)) return false;
 
     trail = std::move(parsed);
-    reindex();
+    reindex(state);
     resources::forget(open_path);
     return true;
 }

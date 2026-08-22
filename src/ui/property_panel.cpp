@@ -551,14 +551,6 @@ void draw(editor::State& state) {
         return;
     }
 
-    // Trail points carry no attributes; they are numbers in a .trl and belong to the trail
-    // editor. Saying so beats an empty form or a "stale selection".
-    if (state.selection.primary().kind == editor::NodeKind::TrailPoint) {
-        ImGui::TextDisabled("Trail point %zu selected.", state.selection.primary().sub);
-        ImGui::TextWrapped("Points have no attributes. Edit them in the Trail Editor window.");
-        return;
-    }
-
     if (state.selection.size() > 1) {
         drawMultiSelection(state);
         return;

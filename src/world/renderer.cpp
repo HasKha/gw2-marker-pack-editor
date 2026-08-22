@@ -748,7 +748,7 @@ void drawTrailPoints(editor::State& state, const Camera& camera, ImDrawList* lis
         if (screen.x < 0.0f || screen.y < 0.0f || screen.x > camera.viewport.x || screen.y > camera.viewport.y) continue;
 
         const ImVec2 at(screen.x, screen.y);
-        const bool selected = state.selection.contains(editor::NodeRef{editor::NodeKind::TrailPoint, pathable, i});
+        const bool selected = state.points.indices.contains(i);
 
         list->AddCircleFilled(at, kHandleRadius, selected ? IM_COL32(255, 210, 60, 255) : IM_COL32(60, 140, 255, 200));
         if (selected || i == hover_point_highlight) {

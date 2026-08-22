@@ -56,8 +56,8 @@ struct Removal {
 
 Removal wouldRemove(const editor::State& state, editor::NodeRef node);
 
-// Deletes `node`, and clears the selection: the thing it pointed at is gone. Nothing is
-// erased from the pack's vectors — see the tombstone note in docs/architecture.md — so
+// Deletes `node`, and drops it from the selection: the thing it pointed at is gone. What
+// else was selected stays. Nothing is erased from the pack's vectors — see the tombstone note in docs/architecture.md — so
 // every other index survives.
 Removal remove(editor::State& state, editor::NodeRef node);
 

@@ -5,7 +5,7 @@ project(MarkerPackEditor)
 # compiled in here, and only offers an update when the tag is greater. Tags are
 # vMAJOR.MINOR.BUILD — its parser rejects a two-component version.
 set(VERSION_MAJOR 1)
-set(VERSION_MINOR 3)
+set(VERSION_MINOR 4)
 set(VERSION_BUILD 0)
 
 add_compile_definitions(
@@ -126,6 +126,11 @@ file(GLOB TEST_SOURCES "test/*_test.cpp")
 # miserable to check by launching the game. It costs three header-only interface targets
 # to compile it in here, so it gets tested.
 list(APPEND TEST_SOURCES "src/world/camera.cpp")
+
+# editor_state.cpp for the same reason: selection, and the click and prune rules over it,
+# are plain functions on editor::State with no imgui or Nexus below them. The windows that
+# drive them cannot be tested; the rules they all share can.
+list(APPEND TEST_SOURCES "src/editor_state.cpp")
 
 target_sources(mpe_test PRIVATE ${TEST_SOURCES})
 source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" PREFIX "" FILES ${TEST_SOURCES})

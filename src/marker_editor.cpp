@@ -60,7 +60,16 @@ std::atomic<size_t> pending_select{pack::kNoIndex};
 // The same for a point of the trail open in the editor. Which trail it belongs to is not
 // carried across: the render thread owns that and reads it when it consumes this.
 std::atomic<size_t> pending_select_point{pack::kNoIndex};
+// Latched with the click rather than read on the render thread, where the key may already
+// have come back up.
 std::atomic<bool> pending_select_additive{false};
+
+// Ctrl and shift both mean "add to what I have" out here. The viewport has no rows to run
+// between, so a range is the one thing shift cannot mean — which is why this does not go
+// through editor::clickMods.
+editor::ClickMods viewportMods() {
+    return pending_select_additive.load() ? editor::ClickMods::Toggle : editor::ClickMods::Replace;
+}
 
 // A world click that hit nothing wants to clear the selection — but only if it was a click
 // and not the start of a camera drag, which cannot be known until the button comes back up.
@@ -117,7 +126,7 @@ void openPack(std::filesystem::path path) {
     state.reset();
     // Its pathable index and its working copy both belong to the pack going away, and so
     // does every undo record.
-    trail_edit::close();
+    trail_edit::close(state);
     undo::clear();
 
     // Zip or folder — pack::open picks by what the path actually is.
@@ -335,7 +344,7 @@ void savePack() {
 // closing it warns and saving it has to go through Save As.
 void newPack(const std::string& file_name, const std::string& category_name, const std::string& display_name) {
     state.reset();
-    trail_edit::close();
+    trail_edit::close(state);
     undo::clear();
     resources::setSource(nullptr);
     open_pack_path.clear();
@@ -366,7 +375,7 @@ void newPack(const std::string& file_name, const std::string& category_name, con
 
 void closePack() {
     state.reset();
-    trail_edit::close();
+    trail_edit::close(state);
     undo::clear();
     resources::setSource(nullptr);
     open_pack_path.clear();
@@ -807,38 +816,22 @@ void drawResourcesWindow() {
     ImGui::End();
 }
 
-// A viewport click that hit nothing. Clearing the selection is the point — but not while a
-// trail is open in the editor and what is selected is part of it.
-//
-// Editing a trail means aiming at its point handles one at a time, and they are 4px dots. A
-// miss that threw the trail away too would close the editor and cost a trip back to the tree
-// before the next point could be touched, which makes the whole loop hostile. So a miss falls
-// back to the trail itself: the points let go, the trail stays selected, the editor stays
-// open, and the next click can go straight at another handle.
-//
-// A miss never *creates* a selection, so an empty one is left alone rather than being given
-// the open trail.
+// A viewport click that hit nothing. The points let go first: editing a trail means aiming
+// at its handles one at a time and they are 4px dots, so a miss that dropped the trail as
+// well would close the editor and cost a trip back to the tree before the next point could
+// be touched. Letting go of the points and keeping the trail means the next click can go
+// straight at another handle.
 void deselectInViewport(editor::State& state) {
-    if (trail_edit::isOpen() && !state.selection.empty()) {
-        const size_t trail = trail_edit::pathable();
-
-        bool all_within = true;
-        for (editor::NodeRef node : state.selection.items()) {
-            const bool its_point = node.kind == editor::NodeKind::TrailPoint && node.index == trail;
-            const bool the_trail = node.kind == editor::NodeKind::Pathable && node.index == trail;
-            if (!its_point && !the_trail) {
-                all_within = false;
-                break;
-            }
-        }
-
-        // Something else is selected as well, so the trail is not what is being worked on and
-        // has no claim on the click.
-        if (all_within) {
-            state.selection.set(editor::NodeRef{editor::NodeKind::Pathable, trail});
-            return;
-        }
+    if (!state.points.empty()) {
+        state.points.indices.clear();
+        return;
     }
+
+    // Nothing but the trail left to take, and taking it would close the editor — the same
+    // reason as above, one step later. A trail is deselected from the tree, or by picking
+    // something else.
+    const editor::NodeRef open_trail{editor::NodeKind::Pathable, trail_edit::pathable()};
+    if (trail_edit::isOpen() && state.selection.size() == 1 && state.selection.primary() == open_trail) return;
 
     state.selection.clear();
 }
@@ -865,10 +858,16 @@ void render() {
     // Compares and writes only when something moved, so this is free on almost every frame.
     settings::update(state.settings, last_folder, last_image_folder);
 
-    // The trail editor's window is what makes a trail "open", and a closed window draws
-    // nothing — including its followSelection — so the close has to happen out here. The
-    // working copy is committed on every edit, so nothing is lost by dropping it.
-    if (!ui::windows::visible(ui::windows::Id::TrailEditor)) trail_edit::close();
+    // Which trail is open follows the selection, and the trail editor's window decides
+    // whether one is open at all. Both belong out here rather than in the window body: a
+    // window that is hidden — or merely collapsed — draws nothing, and an open trail left
+    // behind would keep its handles in the world and the gizmo on its points. The working
+    // copy is committed on every edit, so closing costs nothing.
+    if (ui::windows::visible(ui::windows::Id::TrailEditor)) {
+        trail_edit::followSelection(state);
+    } else {
+        trail_edit::close(state);
+    }
 
     // The world is drawn whether or not any editor window is open — the point is to see
     // the pack in the game.
@@ -891,23 +890,20 @@ void render() {
     if (deselect && !gizmo_active) deselectInViewport(state);
 
     if (!gizmo_active && picked_point != pack::kNoIndex && picked_point < trail_edit::pointCount()) {
-        const editor::NodeRef node{editor::NodeKind::TrailPoint, trail_edit::pathable(), picked_point};
-        if (pending_select_additive.load()) {
-            state.selection.toggle(node);
-        } else {
-            state.selection.set(node);
-        }
+        // Straight into the point selection: the trail it belongs to keeps whatever standing
+        // it had in the tree, and in the details window.
+        editor::applyClick(state.points.indices, picked_point, viewportMods());
     } else if (picked != pack::kNoIndex && !gizmo_active && picked < state.pack.pathables.size()) {
         const editor::NodeRef node{editor::NodeKind::Pathable, picked};
-        if (pending_select_additive.load()) {
-            state.selection.toggle(node);
-        } else {
-            state.selection.set(node);
-        }
+        editor::applyClick(state.selection, node, viewportMods());
         // Picking in the world is only half the job: the marker has to be findable in the
         // tree afterwards, which for a deep category means opening the way down to it.
         if (state.selection.contains(node)) state.requestReveal(node);
     }
+
+    // After the picks above, so a world pick reveals its marker in the same frame, and
+    // outside drawTreeWindow, so a hidden or collapsed tree still consumes the request.
+    ui::tree_window::update(state);
 
     drawTreeWindow();
     drawDetailsWindow();

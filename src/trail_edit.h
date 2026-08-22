@@ -39,7 +39,20 @@ size_t segmentCount();
 // Returns false while the `.trl` has not been read yet — reads are budgeted per frame, so
 // the caller should simply try again next frame — and when there is nothing to open.
 bool open(editor::State& state, size_t pathable);
-void close();
+// Takes State because the point selection is scoped to the open trail and goes with it.
+void close(editor::State& state);
+
+// Keeps the open trail in step with the node selection, both ways: a trail selected is a
+// trail opened, and selecting anything else closes it. Without the second half the handles
+// in the world would outlive the reason they were drawn, and the gizmo would stay on points
+// of a trail nobody has selected.
+//
+// Points do not enter into it — they are their own selection, so picking one leaves the
+// trail selected and this alone.
+//
+// Must be called every frame from somewhere that always runs. It cannot live in the trail
+// editor window: a window that is hidden, or merely collapsed, draws nothing.
+void followSelection(editor::State& state);
 
 void setMapId(editor::State& state, int32_t map_id);
 void setPoint(editor::State& state, size_t index, const glm::vec3& position);

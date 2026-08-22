@@ -4,24 +4,6 @@
 
 namespace editor {
 
-bool Selection::contains(NodeRef node) const {
-    return std::find(items_.begin(), items_.end(), node) != items_.end();
-}
-
-void Selection::set(NodeRef node) {
-    items_.clear();
-    items_.push_back(node);
-}
-
-void Selection::toggle(NodeRef node) {
-    auto it = std::find(items_.begin(), items_.end(), node);
-    if (it != items_.end()) {
-        items_.erase(it);
-    } else {
-        items_.push_back(node);
-    }
-}
-
 void State::rebuildIndex() {
     pathables_by_category.assign(pack.categories.size(), {});
     orphan_pathables.clear();
@@ -61,6 +43,10 @@ bool isDeleted(const State& state, NodeRef node) {
         return node.index < state.pack.pathables.size() && state.pack.pathables[node.index].grave.deleted;
     }
     return false;
+}
+
+void prune(State& state) {
+    state.selection.retainIf([&](const NodeRef& node) { return !isDeleted(state, node); });
 }
 
 void State::pathableAdded(size_t index, size_t after) {
@@ -157,6 +143,7 @@ void State::reset() {
     dirty = false;
     status.clear();
     selection.clear();
+    points.close();
     reveal_pending = false;
     reveal_target = NodeRef{};
     pathables_by_category.clear();

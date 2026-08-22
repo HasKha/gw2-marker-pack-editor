@@ -31,7 +31,7 @@ it, save it back, and the edited markers show correctly in Blish HUD.**
 | Trail editor | map id, the point list, drag fields, point handles in the world, and a Trail menu: reload, export, add circle |
 | Tree + properties | category tree with visibility toggles; attribute form generated from the attribute table, per-element attribute sets traced to Pathing, inheritance shown for categories as well as pathables |
 | World | billboards, trail ribbons, rotation, click-to-pick for markers and trail points; nothing drawn while the map is open. Selection is shown by an outline on a marker and by the point handles on a trail — a selected ribbon is left untinted on purpose, so what the pack actually looks like stays readable |
-| Selection | ctrl+click in the tree and the world, shift+click ranges in the tree and the point list, world picks reveal the node in the tree. Cleared by a click that hits nothing — blank space in the tree, empty world in the viewport — except that a miss while editing a trail drops its points and keeps the trail |
+| Selection | two independent selections — nodes and trail points — sharing one click rule. ctrl+click in the tree and the world, shift+click ranges in the tree and the point list, world picks reveal the node in the tree. Cleared by a click that hits nothing — blank space in the tree, empty world in the viewport — where a miss lets go of the points first and keeps the trail |
 | 3D edit | ImGuizmo translate/rotate on the selection — markers and trail points alike — anchored on the first node selected; a group rotation orbits the rest about it |
 | Create | Add POI, Trail and Category from the toolbar, placed by the selection. A POI copies the selected marker's attributes; a trail comes with an empty `.trl`. Both get the current `MapID`, unless an ancestor category already supplies it |
 | Delete | a marker, or a category and its whole subtree, from the details window. Tombstoned, never erased |
@@ -39,7 +39,7 @@ it, save it back, and the edited markers show correctly in Blish HUD.**
 | Settings | the Settings toggles, gizmo mode, which windows are open and where the browsers start, kept in `settings.json` |
 | Create pack | `New Pack...` builds an empty pack in memory; Save As writes the first zip |
 | Write | serializes the owned document; comments, order, spelling, BOM, CRLF and the file split survive. 947/947 files stable on rewrite |
-| Tests | `mpe_test`, 39 cases over the real pack corpus, run by `ctest` |
+| Tests | `mpe_test`, 51 cases over the real pack corpus and the selection rules, run by `ctest` |
 
 A pack can be edited end to end, grown new branches, and started from nothing.
 
@@ -116,9 +116,10 @@ Roughly in order.
 - **`animspeed`** — parsed and stored, but trail textures do not scroll.
 - **Move pack loading off the render thread** if a large pack starts to stutter. 56k
   markers has not been slow enough to need it.
-- **Tests above the pack layer.** `mpe_test` links `mpe_pack` only, so undo, selection and
-  the editor's own indexes are still covered by hand. `editor::State` has no dependency on
-  imgui or Nexus and could be tested the same way; the windows cannot.
+- **Tests above the pack layer.** Selection is done — `editor_state.cpp` compiles into
+  `mpe_test` and `test/selection_test.cpp` covers the click rules, pruning and the two
+  selections. Undo and the editor's own indexes are still covered by hand; both are plain
+  functions over `editor::State` and could go the same way. The windows cannot.
 - **Screenshots in the README.** The rest of the release prep is done.
 - **CI.** A Windows job that configures and builds would catch a break from a clean clone,
   which is the one thing a local build cannot. The suite skips itself without a corpus, so
@@ -146,12 +147,15 @@ editor, and undo/redo. What is left is not doubt about whether it works, but the
   gizmo skips trail pathables themselves.
 - **A trail ribbon is not pickable in the viewport** — only markers and the open trail's
   point handles are, so a trail is still selected from the tree. Clicking a ribbon counts as
-  a miss, which while that trail is open in the editor now falls back to selecting the trail
-  rather than clearing (see `deselectInViewport`), so the painful case is covered; clicking
-  some *other* trail's ribbon still just deselects. A segment-wise distance test against the
-  projected polyline would make ribbons pickable and close it properly.
+  a miss, which lets go of the open trail's points and leaves the trail itself selected (see
+  `deselectInViewport`), so the painful case is covered; clicking some *other* trail's ribbon
+  still deselects. A segment-wise distance test against the projected polyline would make
+  ribbons pickable and close it properly.
 - Window positions are whatever ImGui's `imgui.ini` remembers. Visibility is ours and is
   persisted; position is not, deliberately.
+- Only the tree has an `update()` so far. If a second and third window grow one, drive the
+  calls from the `ui/windows.*` table instead of by hand — see [A window that is not
+  drawing](architecture.md#a-window-that-is-not-drawing).
 - `saveToDirectory`'s asset half — writing added images into a folder pack and deleting
   removed ones from disk — is the one write path the tests do not exercise, because the
   folder they point at is a real git checkout and a test that deletes from it would be

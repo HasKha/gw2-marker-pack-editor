@@ -10,55 +10,159 @@
 
 namespace editor {
 
-enum class NodeKind { Category, Pathable, TrailPoint };
+enum class NodeKind { Category, Pathable };
 
-// A selectable thing. `index` is into Pack::categories or Pack::pathables; a TrailPoint
-// additionally carries `sub`, the point's flat index within the trail open in the editor.
-//
-// Trail points are ordinary selection entries on purpose: multi-select, the anchor and the
-// gizmo's group transform then work on them without a second mechanism beside Selection.
+// A selectable node of the tree. `index` is into Pack::categories or Pack::pathables.
 struct NodeRef {
     NodeKind kind = NodeKind::Category;
     size_t index = pack::kNoIndex;
-    size_t sub = pack::kNoIndex;
 
-    bool operator==(const NodeRef& other) const { return kind == other.kind && index == other.index && sub == other.sub; }
+    bool operator==(const NodeRef& other) const { return kind == other.kind && index == other.index; }
 };
 
-// Ordered so bulk edits apply in a predictable sequence, and so the last-clicked item can
-// act as the anchor for shift-select.
-class Selection
+// An ordered set of selected things. Ordered so bulk edits apply in a predictable sequence,
+// and so the first and last clicked items can act as the anchor and the primary.
+//
+// Templated because the editor selects two unrelated kinds of thing — tree nodes and the
+// points of a trail — and the container is the same for both. What differs is only what an
+// element is; see PointSelection for why they are not one list.
+template <typename T>
+class SelectionOf
 {
 public:
-    const std::vector<NodeRef>& items() const { return items_; }
+    // What primary() and anchor() report when nothing is selected. Specialised per element
+    // type because a default-constructed size_t is point 0 — a real point — where a
+    // default-constructed NodeRef names nothing.
+    static T none();
+
+    const std::vector<T>& items() const { return items_; }
     bool empty() const { return items_.empty(); }
     size_t size() const { return items_.size(); }
-    bool contains(NodeRef node) const;
+    bool contains(const T& item) const { return std::find(items_.begin(), items_.end(), item) != items_.end(); }
 
     // Last item clicked. Drives the property panel when several things are selected.
-    NodeRef primary() const { return items_.empty() ? NodeRef{} : items_.back(); }
+    T primary() const { return items_.empty() ? none() : items_.back(); }
 
     // First item selected. The gizmo sits here and a group rotation orbits about it, so it
     // has to stay put as the selection grows — which is why every add appends.
-    NodeRef anchor() const { return items_.empty() ? NodeRef{} : items_.front(); }
+    T anchor() const { return items_.empty() ? none() : items_.front(); }
 
     void clear() { items_.clear(); }
-    void set(NodeRef node);
-    void toggle(NodeRef node);
 
-    // Drops entries the predicate rejects. What an undo needs: a node it has just
+    void set(const T& item) {
+        items_.clear();
+        items_.push_back(item);
+    }
+
+    void toggle(const T& item) {
+        auto it = std::find(items_.begin(), items_.end(), item);
+        if (it != items_.end()) {
+            items_.erase(it);
+        } else {
+            items_.push_back(item);
+        }
+    }
+
+    // Drops entries the predicate rejects. What a structural edit needs: a node it has just
     // un-created is not something the user can still have selected.
     template <typename Predicate>
     void retainIf(Predicate keep) {
-        items_.erase(std::remove_if(items_.begin(), items_.end(), [&](const NodeRef& node) { return !keep(node); }), items_.end());
+        items_.erase(std::remove_if(items_.begin(), items_.end(), [&](const T& item) { return !keep(item); }), items_.end());
     }
+
     // Replaces the selection wholesale. The caller's order is kept, so whatever it puts
     // first becomes the anchor.
-    void setAll(std::vector<NodeRef> nodes) { items_ = std::move(nodes); }
+    void setAll(std::vector<T> items) { items_ = std::move(items); }
 
 private:
-    std::vector<NodeRef> items_;
+    std::vector<T> items_;
 };
+
+template <>
+inline NodeRef SelectionOf<NodeRef>::none() {
+    return NodeRef{};
+}
+
+template <>
+inline size_t SelectionOf<size_t>::none() {
+    return pack::kNoIndex;
+}
+
+using Selection = SelectionOf<NodeRef>;
+
+// The selected points of the trail open in the trail editor.
+//
+// Deliberately not part of `Selection`. A trail point is not a sibling of a marker in the
+// tree; it is a sub-selection *inside* a trail that is itself selected. Folding the two into
+// one list meant clicking a point evicted its trail from the details panel, made deleting a
+// point look like deselecting the trail, and left every consumer filtering the mixture back
+// apart by kind. Keeping them apart also carries the trail index once, here, rather than on
+// every entry.
+//
+// The invariant every consumer relies on: `indices` only ever holds points that exist, in
+// the trail `trail` names. It is maintained here and in trail_edit, which is the only thing
+// that can know a trail's shape — so nothing downstream has to bounds-check a point again.
+struct PointSelection {
+    size_t trail = pack::kNoIndex; // the pathable, or kNoIndex when no trail is open
+    SelectionOf<size_t> indices;
+
+    bool empty() const { return indices.empty(); }
+
+    // Points at `trail_index`, dropping what was selected when it is a different trail.
+    void openOn(size_t trail_index) {
+        if (trail == trail_index) return;
+        trail = trail_index;
+        indices.clear();
+    }
+
+    void close() {
+        trail = pack::kNoIndex;
+        indices.clear();
+    }
+
+    // Drops indices past the end of a trail that has just changed shape.
+    void prune(size_t point_count) {
+        indices.retainIf([&](size_t index) { return index < point_count; });
+    }
+};
+
+// What a click's modifiers mean. One rule for every list that selects, so the tree and the
+// trail's point list cannot drift apart on what ctrl and shift do.
+enum class ClickMods { Replace, Toggle, Range };
+
+inline ClickMods clickMods(bool ctrl, bool shift) {
+    if (shift) return ClickMods::Range;
+    return ctrl ? ClickMods::Toggle : ClickMods::Replace;
+}
+
+// Applies `mods` to `selection`. `resolveRange` is handed the anchor and the clicked item
+// and returns the run between them in the order it wants them selected — anchor first, so
+// the gizmo does not jump to the other end — or an empty vector when the two do not share a
+// range. A shift click that cannot make one falls back to a plain replace, so the click
+// always lands somewhere.
+template <typename SelectionT, typename ItemT, typename RangeFn>
+void applyClick(SelectionT& selection, const ItemT& item, ClickMods mods, RangeFn resolveRange) {
+    if (mods == ClickMods::Range && !selection.empty()) {
+        std::vector<ItemT> range = resolveRange(selection.anchor(), item);
+        if (!range.empty()) {
+            selection.setAll(std::move(range));
+            return;
+        }
+    }
+
+    if (mods == ClickMods::Toggle) {
+        selection.toggle(item);
+    } else {
+        selection.set(item);
+    }
+}
+
+// For a list with no ranges of its own — the viewport, where there are no rows to run
+// between.
+template <typename SelectionT, typename ItemT>
+void applyClick(SelectionT& selection, const ItemT& item, ClickMods mods) {
+    applyClick(selection, item, mods, [](const ItemT&, const ItemT&) { return std::vector<ItemT>{}; });
+}
 
 enum class GizmoMode { Disabled, Translate, Rotate, TranslateRotate };
 
@@ -75,7 +179,12 @@ struct State {
     std::string status;
 
     Settings settings;
+
+    // Categories and pathables — what the tree shows and the details window edits.
     Selection selection;
+    // Points of the trail open in the editor. Independent of `selection`: a trail stays
+    // selected, and stays in the details window, while its points are picked over.
+    PointSelection points;
 
     // A click in the world asks the tree to open down to the node and scroll it into view.
     // The tree consumes it on its next frame — deferred rather than done directly because
@@ -140,14 +249,19 @@ struct State {
     }
 };
 
-// The attributes a node owns, or nullptr for one that has none — a trail point, or a stale
-// index. Lives here rather than in whichever window needed it first, because by now three
-// of them do.
+// The attributes a node owns, or nullptr for a stale index. Lives here rather than in
+// whichever window needed it first, because by now three of them do.
 pack::AttributeCollection* attributesOf(State& state, NodeRef node);
 const pack::AttributeCollection* attributesOf(const State& state, NodeRef node);
 
 // True for a node that has been deleted. Tombstones keep their slot, so an index alone
 // does not tell you whether the thing is still there.
 bool isDeleted(const State& state, NodeRef node);
+
+// Drops selected nodes that no longer name anything. The one place that checks, run after
+// every structural edit, so no consumer has to defend itself against a stale entry.
+//
+// Points are pruned by trail_edit instead: only it knows a trail's shape.
+void prune(State& state);
 
 } // namespace editor
