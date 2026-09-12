@@ -40,10 +40,27 @@ size_t addTrail(editor::State& state, int32_t map_id);
 // trail's `.trl` header and its attribute to the same value.
 bool setMapId(const editor::State& state, pack::AttributeCollection* attributes, size_t category, int32_t map_id);
 
-// Adds a category named `name` under the selected one — or under the selected marker's
-// category, or at the root when nothing is selected. Returns its index, or pack::kNoIndex
-// when the name is empty, contains a dot, or is already taken at that level.
-size_t addCategory(editor::State& state, const std::string& name);
+// Adds a category at the dotted id `name` — e.g. "root.foo.bar" — nested under whatever
+// already exists at "root.foo". No dot at all makes a root category. This is also how
+// placement is chosen: editing just the last segment of a selected category's own id makes
+// a sibling, appending a segment makes a child, and trimming segments walks back up its
+// ancestors — so there is no separate placement to choose.
+//
+// `display_name` becomes the category's DisplayName and is required; `description`, when
+// non-empty, becomes its tip-description. With `copy_attributes` set, every attribute the
+// selected category (or a selected marker's filing category) carries — its DisplayName and
+// tip-description included — is copied onto the new one first, so `display_name` and a
+// non-empty `description` still win.
+//
+// Returns the new category's index, or pack::kNoIndex when `name` or `display_name` is
+// empty, `name`'s parent segments do not name an existing category, its last segment is
+// empty or contains no valid characters, or the resulting id is already taken.
+size_t addCategory(
+    editor::State& state,
+    const std::string& name,
+    const std::string& display_name,
+    const std::string& description,
+    bool copy_attributes);
 
 // What deleting `node` would take with it. A category takes its whole subtree: the
 // categories nested under it and every marker in any of them.

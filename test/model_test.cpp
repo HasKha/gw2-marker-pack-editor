@@ -3,6 +3,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <string>
 #include <vector>
 
@@ -352,6 +353,56 @@ TEST_CASE("a category name that cannot be an id segment is refused", "[model]") 
 
     // Already taken at that level.
     CHECK(model.addCategory(0, "FINE", 0) == pack::kNoIndex);
+}
+
+TEST_CASE("a category placed after a sibling lands next to it, not at the end", "[model]") {
+    pack::Pack model = pack::createPack("markers.xml", "root", "Root");
+
+    // Three children of root, appended in order: a, b, c.
+    const size_t a = model.addCategory(0, "a", 0);
+    const size_t c = model.addCategory(0, "c", 0);
+    REQUIRE(a != pack::kNoIndex);
+    REQUIRE(c != pack::kNoIndex);
+
+    // Inserted after `a`, it should land between a and c in both the tree and the file —
+    // not appended past c, which plain addCategory would do.
+    const size_t b = model.addCategory(0, "b", 0, a);
+    REQUIRE(b != pack::kNoIndex);
+
+    REQUIRE(model.categories[0].children.size() == 3);
+    CHECK(model.categories[0].children[0] == a);
+    CHECK(model.categories[0].children[1] == b);
+    CHECK(model.categories[0].children[2] == c);
+
+    // categories itself is still append-only: no existing index moved.
+    CHECK(model.categories[a].name == "a");
+    CHECK(model.categories[c].name == "c");
+
+    // The XML mirrors the tree order.
+    const pugi::xml_node a_node = model.categories[a].declarations.back().node;
+    const pugi::xml_node b_node = model.categories[b].declarations.back().node;
+    REQUIRE(a_node);
+    REQUIRE(b_node);
+    CHECK(std::string(a_node.next_sibling().attribute("name").value()) == "b");
+    CHECK(std::string(b_node.next_sibling().attribute("name").value()) == "c");
+
+    // Two roots: `after` works the same way with no parent at all.
+    const size_t root_a = model.addCategory(pack::kNoIndex, "roota", 0);
+    const size_t root_c = model.addCategory(pack::kNoIndex, "rootc", 0);
+    const size_t root_b = model.addCategory(pack::kNoIndex, "rootb", 0, root_a);
+    REQUIRE(root_b != pack::kNoIndex);
+
+    const auto root_index = [&](size_t category) {
+        return std::find(model.roots.begin(), model.roots.end(), category) - model.roots.begin();
+    };
+    CHECK(root_index(root_b) == root_index(root_a) + 1);
+    CHECK(root_index(root_c) == root_index(root_b) + 1);
+
+    // `after` naming a category under a different parent than `parent` is nonsensical, so
+    // it is ignored rather than misplacing the new category: appended to the end instead.
+    const size_t stray = model.addCategory(0, "stray", 0, root_a);
+    REQUIRE(stray != pack::kNoIndex);
+    CHECK(model.categories[0].children.back() == stray);
 }
 
 TEST_CASE("adding a marker appends so no existing index moves", "[model]") {

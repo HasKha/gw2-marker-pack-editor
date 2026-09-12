@@ -93,6 +93,20 @@ std::vector<size_t> pathablesIn(const editor::State& state, const std::vector<si
     return found;
 }
 
+// Splits a dotted id at its last dot: everything before names the parent an existing
+// category has to match, everything after is the new leaf segment. No dot at all is a root
+// category, so `parent_id` comes back empty.
+struct CategoryPath {
+    std::string parent_id;
+    std::string leaf;
+};
+
+CategoryPath splitCategoryPath(const std::string& full_id) {
+    const size_t dot = full_id.find_last_of('.');
+    if (dot == std::string::npos) return CategoryPath{std::string(), full_id};
+    return CategoryPath{full_id.substr(0, dot), full_id.substr(dot + 1)};
+}
+
 } // namespace
 
 bool setMapId(const editor::State& state, pack::AttributeCollection* attributes, size_t category, int32_t map_id) {
@@ -275,28 +289,62 @@ size_t addTrail(editor::State& state, int32_t map_id) {
     return index;
 }
 
-size_t addCategory(editor::State& state, const std::string& name) {
-    if (!state.loaded) return pack::kNoIndex;
+size_t addCategory(
+    editor::State& state,
+    const std::string& name,
+    const std::string& display_name,
+    const std::string& description,
+    bool copy_attributes) {
+    if (!state.loaded || name.empty() || display_name.empty()) return pack::kNoIndex;
 
     undo::Step step(state, "Add category");
 
-    const editor::NodeRef node = state.selection.primary();
-
-    // Under whatever is selected: a category takes a child, a marker hands over the
-    // category it is filed under, and nothing selected makes a new root.
+    // Everything but the last segment has to already exist; that is what places the new
+    // category, without a separate control for it.
+    const CategoryPath path = splitCategoryPath(name);
     size_t parent = pack::kNoIndex;
-    if (node.kind == editor::NodeKind::Category && node.index < state.pack.categories.size()) {
-        parent = node.index;
-    } else if (node.kind == editor::NodeKind::Pathable && node.index < state.pack.pathables.size()) {
-        parent = state.pack.pathables[node.index].category;
+    if (!path.parent_id.empty()) {
+        const pack::Category* found = state.pack.findCategory(path.parent_id);
+        if (!found) return pack::kNoIndex;
+        parent = static_cast<size_t>(found - state.pack.categories.data());
     }
+
+    // The category context the selection implies: itself if a category, its filing
+    // category if a marker, or none. Used only for attribute copying and to place the new
+    // category next to it rather than at the end, when the typed id keeps it a sibling.
+    const editor::NodeRef node = state.selection.primary();
+    size_t reference = pack::kNoIndex;
+    if (node.kind == editor::NodeKind::Category && node.index < state.pack.categories.size()) {
+        reference = node.index;
+    } else if (node.kind == editor::NodeKind::Pathable && node.index < state.pack.pathables.size()) {
+        reference = state.pack.pathables[node.index].category;
+    }
+    if (reference >= state.pack.categories.size()) reference = pack::kNoIndex;
+
+    const size_t after =
+        (reference < state.pack.categories.size() && state.pack.categories[reference].parent == parent) ? reference : pack::kNoIndex;
 
     // A root category has no parent declaration to nest in, so it needs a file of its own;
     // the first is as good a guess as any and the author can move it.
     const size_t file = parent < state.pack.categories.size() ? fileForCategory(state, parent) : 0;
 
-    const size_t index = state.pack.addCategory(parent, name, file);
+    const size_t index = state.pack.addCategory(parent, path.leaf, file, after);
     if (index == pack::kNoIndex) return pack::kNoIndex;
+
+    pack::AttributeCollection& attributes = state.pack.categories[index].attributes;
+
+    // Everything the reference category carries is already legal on a category, `name`
+    // excepted — the new one has its own. displayname and description, set explicitly
+    // below, are free to overwrite whatever comes along with the rest.
+    if (copy_attributes && reference < state.pack.categories.size()) {
+        for (const pack::Attribute& source : state.pack.categories[reference].attributes.all()) {
+            if (source.key == "name") continue;
+            attributes.set(source.name, source.value);
+        }
+    }
+
+    set(&attributes, "displayname", display_name);
+    if (!description.empty()) set(&attributes, "tip-description", description);
 
     state.categoryAdded(index);
 

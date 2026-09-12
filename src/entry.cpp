@@ -39,7 +39,7 @@ extern "C" __declspec(dllexport) AddonDefinition* GetAddonDef() {
     AddonDef.UpdateLink = "https://github.com/HasKha/gw2-marker-pack-editor";
     return &AddonDef;
 }
-
+ 
 void AddonLoad(AddonAPI* aApi) {
     ImGui::SetCurrentContext((ImGuiContext*)aApi->ImguiContext);
     ImGui::SetAllocatorFunctions((void* (*)(size_t, void*))aApi->ImguiMalloc, (void (*)(void*, void*))aApi->ImguiFree);

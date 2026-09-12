@@ -286,7 +286,7 @@ Pack createPack(std::string_view file_name, std::string_view category_name, std:
     return pack;
 }
 
-size_t Pack::addCategory(size_t parent, std::string_view name, size_t file) {
+size_t Pack::addCategory(size_t parent, std::string_view name, size_t file, size_t after) {
     const std::string key = attributeKey(name);
     // A dot would split the id into two levels that do not exist, and an empty segment
     // would give the category no name at all.
@@ -295,10 +295,28 @@ size_t Pack::addCategory(size_t parent, std::string_view name, size_t file) {
     const std::string id = parent < categories.size() ? categories[parent].id + "." + key : key;
     if (findCategory(id) != nullptr) return kNoIndex;
 
+    const size_t resolved_parent = parent < categories.size() ? parent : kNoIndex;
+    const bool has_sibling = after < categories.size() && categories[after].parent == resolved_parent;
+
     pugi::xml_node node;
     size_t target_file = file;
 
-    if (parent < categories.size()) {
+    if (has_sibling) {
+        // Right behind the sibling's own declaration, in whichever file it lives in — that
+        // is where a reader would expect the new one, and it keeps the file in step with
+        // the tree order below.
+        pugi::xml_node sibling;
+        for (const SourceNode& declaration : categories[after].declarations) {
+            if (!declaration.node) continue;
+            if (!sibling || declaration.file == file) {
+                sibling = declaration.node;
+                target_file = declaration.file;
+            }
+            if (declaration.file == file) break;
+        }
+        if (!sibling) return kNoIndex;
+        node = sibling.parent().insert_child_after("MarkerCategory", sibling);
+    } else if (parent < categories.size()) {
         // Inside the parent's declaration: nesting is what makes it a child. Prefer the
         // requested file, but any declaration will do rather than nothing.
         pugi::xml_node under;
@@ -331,8 +349,6 @@ size_t Pack::addCategory(size_t parent, std::string_view name, size_t file) {
     if (!node) return kNoIndex;
     node.append_attribute("name") = std::string(name).c_str();
 
-    const size_t resolved_parent = parent < categories.size() ? parent : kNoIndex;
-
     Category category;
     category.name = std::string(name);
     category.key = key;
@@ -344,10 +360,12 @@ size_t Pack::addCategory(size_t parent, std::string_view name, size_t file) {
     const size_t index = categories.size();
     categories.push_back(std::move(category));
 
-    if (resolved_parent == kNoIndex) {
-        roots.push_back(index);
+    std::vector<size_t>& siblings = resolved_parent == kNoIndex ? roots : categories[resolved_parent].children;
+    if (has_sibling) {
+        const auto at = std::find(siblings.begin(), siblings.end(), after);
+        siblings.insert(at == siblings.end() ? siblings.end() : at + 1, index);
     } else {
-        categories[resolved_parent].children.push_back(index);
+        siblings.push_back(index);
     }
 
     return index;

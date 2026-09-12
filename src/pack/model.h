@@ -227,9 +227,15 @@ struct Pack {
     //
     // The element is nested inside the parent's declaration — which is what makes it a
     // child — so `file` only decides anything for a root category, and for a child it is
-    // taken from whichever declaration the element goes into. Appended to `categories`, so
-    // no existing index moves.
-    size_t addCategory(size_t parent, std::string_view name, size_t file);
+    // taken from whichever declaration the element goes into. Always appended to
+    // `categories`, so no existing index moves.
+    //
+    // `after`, when it names a live category that is also a child of `parent` (kNoIndex
+    // included, for two roots), places the new category as its next sibling — both in the
+    // XML, right behind that category's own declaration, and in `parent`'s `children` (or
+    // `roots`), which is what decides tree order. Left at kNoIndex, or given a category that
+    // is not `parent`'s child, the new category is appended at the end instead.
+    size_t addCategory(size_t parent, std::string_view name, size_t file, size_t after = kNoIndex);
 
     // Tombstones a pathable and lifts its element out of the document.
     void removePathable(size_t index);

@@ -717,17 +717,40 @@ void drawAddTrail() {
 // A category needs a name, so the button opens a prompt rather than acting on the spot.
 bool open_category_popup = false;
 char new_category_name[64] = "";
+char new_category_display_name[128] = "";
+char new_category_description[256] = "";
+bool new_category_copy_attributes = true;
+
+// The category the popup's default name and attribute copy are relative to: the selected
+// category itself, or the one a selected marker is filed under. Mirrors
+// pathable_edit::addCategory's own resolution, so what the popup shows is what pressing
+// Create will actually do.
+size_t categoryPopupReference() {
+    const editor::NodeRef selected = state.selection.primary();
+    if (selected.kind == editor::NodeKind::Category && selected.index < state.pack.categories.size()) return selected.index;
+    if (selected.kind == editor::NodeKind::Pathable && selected.index < state.pack.pathables.size()) {
+        const size_t category = state.pack.pathables[selected.index].category;
+        if (category < state.pack.categories.size()) return category;
+    }
+    return pack::kNoIndex;
+}
 
 void drawAddCategory() {
     if (button("Add Category...", state.loaded)) {
         if (canCreate(false)) {
-            new_category_name[0] = '\0';
+            const size_t reference = categoryPopupReference();
+            const std::string default_name = reference < state.pack.categories.size() ? state.pack.categories[reference].id : "";
+            std::snprintf(new_category_name, sizeof(new_category_name), "%s", default_name.c_str());
+            new_category_display_name[0] = '\0';
+            new_category_description[0] = '\0';
+            new_category_copy_attributes = true;
             open_category_popup = true;
         }
     } else if (ImGui::IsItemHovered()) {
         ImGui::SetTooltip(
-            state.loaded ? "Adds a category under the selected one,\n"
-                           "or at the top level with nothing selected."
+            state.loaded ? "Adds a category at the id you give it —\n"
+                           "editing the last segment of the selected one\n"
+                           "makes a sibling, appending one makes a child."
                          : "Open or create a pack first.");
     }
 
@@ -739,26 +762,56 @@ void drawAddCategory() {
 
     if (!ImGui::BeginPopupModal(kTitle, nullptr, ImGuiWindowFlags_AlwaysAutoResize)) return;
 
-    const editor::NodeRef selected = state.selection.primary();
-    if (selected.kind == editor::NodeKind::Category && selected.index < state.pack.categories.size()) {
-        ImGui::TextDisabled("Under %s", state.pack.categories[selected.index].id.c_str());
+    const size_t reference = categoryPopupReference();
+    if (reference < state.pack.categories.size()) {
+        ImGui::TextDisabled("Selected: %s", state.pack.categories[reference].id.c_str());
     } else {
-        ImGui::TextDisabled("At the top level");
+        ImGui::TextDisabled("Nothing selected");
     }
 
     ImGui::SetNextItemWidth(260.0f);
-    const bool submitted = ImGui::InputText("Name", new_category_name, sizeof(new_category_name), ImGuiInputTextFlags_EnterReturnsTrue);
-    ImGui::TextDisabled("Becomes the last part of the category's id. No dots.");
+    const bool name_submitted =
+        ImGui::InputText("Name", new_category_name, sizeof(new_category_name), ImGuiInputTextFlags_EnterReturnsTrue);
+    ImGui::TextDisabled(
+        "The category's full id. The last segment is edited for a sibling,\nadded to for a child, trimmed to go further up.");
+
+    ImGui::SetNextItemWidth(260.0f);
+    const bool display_submitted = ImGui::InputText(
+        "Display name",
+        new_category_display_name,
+        sizeof(new_category_display_name),
+        ImGuiInputTextFlags_EnterReturnsTrue);
+    ImGui::TextDisabled("Shown in the in-game menu.");
+
+    ImGui::SetNextItemWidth(260.0f);
+    ImGui::InputText(
+        "Description (optional)",
+        new_category_description,
+        sizeof(new_category_description),
+        ImGuiInputTextFlags_EnterReturnsTrue);
+
+    ImGui::Separator();
+    ImGui::Checkbox("Copy attributes of selected", &new_category_copy_attributes);
     ImGui::Separator();
 
-    const bool create = ImGui::Button("Create", ImVec2(110, 0)) || submitted;
+    const bool enabled = new_category_name[0] != '\0' && new_category_display_name[0] != '\0';
+    if (!enabled) ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.4f);
+    const bool create_pressed = ImGui::Button("Create", ImVec2(110, 0));
+    if (!enabled) ImGui::PopStyleVar();
+    const bool create = enabled && (create_pressed || name_submitted || display_submitted);
     ImGui::SameLine();
     if (ImGui::Button("Cancel", ImVec2(110, 0))) ImGui::CloseCurrentPopup();
 
     if (create) {
-        const size_t added = pathable_edit::addCategory(state, new_category_name);
+        const size_t added = pathable_edit::addCategory(
+            state,
+            new_category_name,
+            new_category_display_name,
+            new_category_description,
+            new_category_copy_attributes);
         if (added == pack::kNoIndex) {
-            status_message = "Could not add that category: the name is empty, has a dot in it, or is already taken.";
+            status_message = "Could not add that category: check the name and display name aren't empty, that everything before "
+                             "the name's last segment names an existing category, and that the id isn't already taken.";
         } else {
             status_message = "Added category " + state.pack.categories[added].id;
             ImGui::CloseCurrentPopup();
