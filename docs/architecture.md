@@ -37,15 +37,22 @@ New for this project:
 
 ## Build targets
 
-Five, because the pack layer is worth keeping testable outside the game:
+Six, because the code worth testing outside the game is most of it:
 
 | Target | Kind | Contents |
 |---|---|---|
 | `mpe_pack` | static lib | `src/pack/**` — the format. Links only pugixml, miniz, glm. **Knows nothing about Nexus, imgui or the game.** |
-| `MarkerPackEditor` | shared lib | everything else in `src/` — the addon. Links `mpe_pack` plus imgui, ImGuizmo, Nexus, Mumble, NFD |
+| `mpe_editor` | static lib | everything else in `src/` bar `entry.cpp` — the editor. Links `mpe_pack` plus imgui, ImGuizmo, Nexus, Mumble, NFD |
+| `MarkerPackEditor` | shared lib | `src/entry.cpp` and nothing else. Links `mpe_editor` |
 | `mpe_corpus` | static lib | `test/corpus.*` — where the real packs are. Shared by the two below so they cannot disagree about it |
-| `mpe_test` | console exe | `test/*_test.cpp` — the assertions, under Catch2. Links `mpe_pack` |
+| `mpe_test` | console exe | `test/*_test.cpp` — the assertions, under Catch2. Links `mpe_editor` |
 | `mpe_probe` | console exe | `test/pack_probe.cpp` — the harness that prints. Links `mpe_pack` |
+
+`mpe_editor` exists so `mpe_test` links the code the addon runs rather than naming source
+files a second time. Only the objects a test reaches get linked in, so nothing there needs
+a live Nexus or an imgui context; what does touch Nexus goes through an `AddonAPI*` that
+stays null, which `resources.cpp` already has to handle for a pack made in the editor. The
+windows and the renderer are in the library and simply never pulled in.
 
 **The two test targets do different jobs and both are worth having.** `mpe_test` answers
 *is it broken* and fails a build; `mpe_probe` answers *what does this pack look like* and
@@ -76,7 +83,8 @@ one outcome worse than a red one.
 
 ```
 src/
-  entry.cpp            Nexus entry, AddonDefinition, hands DataLinks to marker_editor
+  entry.cpp            — MarkerPackEditor.dll; everything below it is mpe_editor
+                       Nexus entry, AddonDefinition, hands DataLinks to marker_editor
   marker_editor.*      lifecycle, the windows and the shared menu bar, save/open, WndProc
   pathable_edit.*      creating and deleting markers and categories
   undo.*               the undo/redo stack: before/after images of what changed
@@ -105,7 +113,9 @@ src/
     renderer.*         billboards + trail ribbons into an ImGui draw list, hit testing
     gizmo.*            ImGuizmo translate/rotate over the selection, writes back to attributes
 test/
-  pack_probe.cpp       the harness
+  corpus.*             where the real packs are
+  pack_probe.cpp       the harness that prints
+  *_test.cpp           the assertions, over mpe_editor and mpe_pack
 ```
 
 ## Things that are easy to get wrong
@@ -162,6 +172,18 @@ Two consequences of every window being closable:
 
 Actions that reload or close the pack are applied at the *end* of the frame. They free the
 vectors every window has just drawn from, and a menu click happens partway through that.
+
+### A panel over a selection is scoped by that selection
+
+The property panel identifies each field by its attribute name, which is the same name on
+every node — so to imgui one node's `xpos` box and the next node's are one widget, and an
+edit still active when the selection changes commits onto whatever is now selected. Typing
+a new `traildata` on one trail and clicking the other left the second pointing at the
+first's file.
+
+`ui::property_panel::draw` pushes the primary selection's kind and index around everything
+it draws. Any other panel that draws same-named fields for whatever is selected needs the
+same.
 
 ### A window that is not drawing
 
@@ -233,6 +255,29 @@ them. All three go through the one model.
 - **`reindex` prunes the point selection.** It runs on every change to a trail's shape and
   is the only thing that knows the new one, which is what lets everything downstream treat a
   selected point index as one that exists.
+- **A trail that cannot be opened closes whatever was.** `resources::trail` caches a failed
+  read as a miss, so a `traildata` naming a file the pack does not have never comes good.
+  Leaving the previous trail open over that showed one trail's points under another trail's
+  name — two differently named trails looking like they shared a point list. `open` therefore
+  tells "over budget, ask next frame" from "tried and failed" and closes on the second.
+  Nothing records *why*: a trail selected with nothing open is a trail whose data is missing,
+  which is what the window says.
+
+### Renaming traildata moves the .trl
+
+A trail has no name of its own — the tree labels it with its `.trl`'s basename, the trail
+editor shows the path — so renaming `traildata` is how a trail gets named, and the attribute
+is explicit-only ([format.md](format.md)) so no category can carry a name instead.
+
+Left alone, that rename points the trail at a file the pack does not have and strands its
+points under the old path. `pathable_edit::attributeRenamed` is the hook the property panel
+calls after every attribute edit; `traildata` on a trail is the one case it acts on. It never
+writes over a path the pack already has — that is a re-point, and sharing one `.trl` between
+trails is legal — and never deletes a file that shipped in the pack.
+
+It runs once the field is committed, not per keystroke, because it moves a file and
+`InputText` reports every character. That needs the value the field started from, which the
+panel keeps between `IsItemActivated` and `IsItemDeactivatedAfterEdit`.
 
 `Trail > Reload from file` drops the pending bytes and rereads the source **directly**
 rather than through `resources`, whose reads are budgeted a few per frame: a menu action

@@ -52,20 +52,22 @@ target_link_libraries(mpe_pack PUBLIC
     miniz
 )
 
-# ── MarkerPackEditor ──────────────────────────────────────────────────────────
-# The Nexus addon itself.
-add_library(MarkerPackEditor SHARED)
+# ── mpe_editor ────────────────────────────────────────────────────────────────
+# The editor on top of the format: selection, undo, creating and deleting, the asset
+# cache, the windows and the world view. A library rather than part of the DLL so the
+# test binary links the same code the addon runs, instead of listing source files again.
+add_library(mpe_editor STATIC)
 
-file(GLOB_RECURSE SOURCES
+file(GLOB_RECURSE EDITOR_SOURCES
     "src/*.h"
     "src/*.cpp"
 )
-list(REMOVE_ITEM SOURCES ${PACK_SOURCES})
-target_sources(MarkerPackEditor PRIVATE ${SOURCES})
-source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" PREFIX "" FILES ${SOURCES})
+list(REMOVE_ITEM EDITOR_SOURCES ${PACK_SOURCES} "${CMAKE_CURRENT_SOURCE_DIR}/src/entry.cpp")
+target_sources(mpe_editor PRIVATE ${EDITOR_SOURCES})
+source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" PREFIX "" FILES ${EDITOR_SOURCES})
 
-target_include_directories(MarkerPackEditor PRIVATE "src/")
-target_link_libraries(MarkerPackEditor PRIVATE
+target_include_directories(mpe_editor PUBLIC "src/")
+target_link_libraries(mpe_editor PUBLIC
     mpe_pack
     imgui
     imguizmo
@@ -76,6 +78,12 @@ target_link_libraries(MarkerPackEditor PRIVATE
     shell32  # SHGetKnownFolderPath
     ole32    # CoTaskMemFree
 )
+
+# ── MarkerPackEditor ──────────────────────────────────────────────────────────
+# The Nexus addon itself: the entry point, and nothing else.
+add_library(MarkerPackEditor SHARED "src/entry.cpp")
+source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" PREFIX "" FILES "src/entry.cpp")
+target_link_libraries(MarkerPackEditor PRIVATE mpe_editor)
 
 # ── Test corpus ───────────────────────────────────────────────────────────────
 # Both test targets read real marker packs rather than fixtures: what a pack author
@@ -120,27 +128,15 @@ enable_testing()
 add_executable(mpe_test)
 
 file(GLOB TEST_SOURCES "test/*_test.cpp")
-
-# world/camera.cpp is not part of mpe_pack — it reads MumbleLink — but everything below
-# fromMumble is plain glm, and the projection maths is exactly the kind of thing that is
-# miserable to check by launching the game. It costs three header-only interface targets
-# to compile it in here, so it gets tested.
-list(APPEND TEST_SOURCES "src/world/camera.cpp")
-
-# editor_state.cpp for the same reason: selection, and the click and prune rules over it,
-# are plain functions on editor::State with no imgui or Nexus below them. The windows that
-# drive them cannot be tested; the rules they all share can.
-list(APPEND TEST_SOURCES "src/editor_state.cpp")
-
 target_sources(mpe_test PRIVATE ${TEST_SOURCES})
 source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" PREFIX "" FILES ${TEST_SOURCES})
 
+# mpe_editor pulls mpe_pack in with it. Only the objects the tests reach get linked, so
+# nothing here needs a live Nexus or an imgui context; what does touch Nexus reaches it
+# through an AddonAPI* that stays null, which resources.cpp already has to handle.
 target_link_libraries(mpe_test PRIVATE
-    mpe_pack
+    mpe_editor
     mpe_corpus
-    mumble
-    nexus
-    nlohmann_json::nlohmann_json
     Catch2::Catch2WithMain
 )
 

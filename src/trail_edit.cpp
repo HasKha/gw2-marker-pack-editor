@@ -111,12 +111,21 @@ size_t segmentCount() {
 
 bool open(editor::State& state, size_t pathable_index) {
     const std::string data = trailDataOf(state, pathable_index);
-    if (data.empty()) return false;
+    if (data.empty()) {
+        close(state);
+        return false;
+    }
     if (open_pathable == pathable_index && open_path == data) return true;
 
-    // Budgeted, so this can legitimately come back empty for a frame or two.
-    const pack::trl::Trail* parsed = resources::trail(data);
-    if (!parsed) return false;
+    // A read that is only over budget comes back next frame; one that failed is cached as a
+    // miss and never will. Holding the previous trail open over that second case is what
+    // made two differently named trails look like they shared a point list.
+    bool deferred = false;
+    const pack::trl::Trail* parsed = resources::trail(data, &deferred);
+    if (!parsed) {
+        if (!deferred) close(state);
+        return false;
+    }
 
     open_pathable = pathable_index;
     open_path = data;

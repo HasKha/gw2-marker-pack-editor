@@ -113,6 +113,12 @@ pathable (`xpos`/`ypos`/`zpos`, `guid`, `type`), which inherit in Pathing but on
 pathologically; the category's own structural attributes, which mean nothing on a pathable;
 and `trailData`, for the reason below.
 
+#### A category may hold as many trails as it likes
+
+Nothing pairs a category with one trail. `PackReader.TryLoadPois` walks every child of every
+`<POIs>` block and builds each into its own pathable; `type` only files it, and
+`Trail.Preprocess` loads that trail's own `traildata`.
+
 #### trailData is the exception
 
 `Trail.Preprocess` resolves `traildata` through the chain like everything else — but

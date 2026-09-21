@@ -108,14 +108,43 @@ void log(ELogLevel level, const std::string& message) {
 // <Documents>/Guild Wars 2/addons/blishhud/markers — where Blish HUD's Pathing module
 // looks for packs, and so the sensible place to start browsing. Resolved rather than
 // hardcoded so this works on anyone's machine.
+//
+// Falls back to the deepest ancestor that exists: a dialog handed a folder that is not
+// there opens wherever Windows was last instead — see file_dialog.h.
 std::filesystem::path blishhudMarkersFolder() {
     PWSTR documents = nullptr;
     if (FAILED(SHGetKnownFolderPath(FOLDERID_Documents, 0, nullptr, &documents))) return {};
     std::filesystem::path path = std::filesystem::path(documents) / "Guild Wars 2" / "addons" / "blishhud" / "markers";
     CoTaskMemFree(documents);
+
     std::error_code ec;
-    if (!std::filesystem::is_directory(path, ec)) return {};
+    while (!path.empty() && !std::filesystem::is_directory(path, ec)) {
+        const std::filesystem::path parent = path.parent_path();
+        if (parent == path) return {};
+        path = parent;
+    }
     return path;
+}
+
+// Where a pack browser starts: wherever packs were last opened or saved, else the Blish
+// HUD markers folder.
+std::filesystem::path packFolder() {
+    std::error_code ec;
+    if (!last_folder.empty() && std::filesystem::is_directory(last_folder, ec)) return last_folder;
+    return blishhudMarkersFolder();
+}
+
+// A zip contributes the folder holding it; a folder pack is one.
+void rememberPackFolder(const std::filesystem::path& path) {
+    if (path.empty()) return;
+    std::error_code ec;
+    last_folder = std::filesystem::is_directory(path, ec) ? path : path.parent_path();
+}
+
+std::filesystem::path imageFolder() {
+    std::error_code ec;
+    if (!last_image_folder.empty() && std::filesystem::is_directory(last_image_folder, ec)) return last_image_folder;
+    return packFolder();
 }
 
 // By value on purpose: Reload passes open_pack_path, which this function reassigns
@@ -151,7 +180,7 @@ void openPack(std::filesystem::path path) {
     state.rebuildIndex();
     state.loaded = true;
     open_pack_path = state.pack.source_path;
-    if (state.pack.from_directory) last_folder = state.pack.source_path;
+    rememberPackFolder(state.pack.source_path);
 
     status_message = std::to_string(state.pack.categories.size()) + " categories, " +
                      std::to_string(state.pack.countByType(pack::PathableType::Poi)) + " POIs, " +
@@ -316,6 +345,7 @@ void savePackTo(const std::filesystem::path& target, bool as_directory) {
         state.pack.clearAssetChanges();
         state.dirty = false;
         open_pack_path = target;
+        rememberPackFolder(target);
         // The pack now lives in a zip, whatever it was read from. Without this a folder
         // pack saved with Save As keeps from_directory set, and the next plain Save tries
         // to write its .xml files *into* the archive's path as if it were a folder.
@@ -413,11 +443,11 @@ void drawMenuBar(ui::windows::Id owner) {
 
         if (ImGui::MenuItem("Open Pack...", nullptr, false, !file_dialog::isPending())) {
             dialog_purpose = DialogPurpose::OpenFile;
-            file_dialog::requestOpenFile(blishhudMarkersFolder(), {{"Marker pack", "zip,taco"}});
+            file_dialog::requestOpenFile(packFolder(), {{"Marker pack", "zip,taco"}});
         }
         if (ImGui::MenuItem("Open Folder...", nullptr, false, !file_dialog::isPending())) {
             dialog_purpose = DialogPurpose::OpenFolder;
-            file_dialog::requestOpenFolder(last_folder.empty() ? blishhudMarkersFolder() : last_folder);
+            file_dialog::requestOpenFolder(packFolder());
         }
 
         ImGui::Separator();
@@ -432,7 +462,7 @@ void drawMenuBar(ui::windows::Id owner) {
             if (open_pack_path.empty()) {
                 // Never saved: Save is Save As, or it would have nowhere to write.
                 dialog_purpose = DialogPurpose::SaveAs;
-                file_dialog::requestSaveFile(blishhudMarkersFolder(), "markers.zip", {{"Marker pack", "zip,taco"}});
+                file_dialog::requestSaveFile(packFolder(), "markers.zip", {{"Marker pack", "zip,taco"}});
             } else {
                 savePack();
             }
@@ -448,7 +478,7 @@ void drawMenuBar(ui::windows::Id owner) {
             dialog_purpose = DialogPurpose::SaveAs;
             const std::string suggested =
                 open_pack_path.empty() ? std::string("markers.zip") : open_pack_path.filename().replace_extension(".zip").string();
-            file_dialog::requestSaveFile(blishhudMarkersFolder(), suggested, {{"Marker pack", "zip,taco"}});
+            file_dialog::requestSaveFile(packFolder(), suggested, {{"Marker pack", "zip,taco"}});
         }
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("Always writes a zip — the only form Blish HUD loads reliably.");
 
@@ -485,7 +515,7 @@ void drawMenuBar(ui::windows::Id owner) {
     if (owner == ui::windows::Id::TrailEditor) {
         if (ui::trail_editor::drawMenu(state, frame_camera) == ui::trail_editor::Request::Export && !file_dialog::isPending()) {
             dialog_purpose = DialogPurpose::ExportTrail;
-            const std::filesystem::path folder = last_folder.empty() ? blishhudMarkersFolder() : last_folder;
+            const std::filesystem::path folder = packFolder();
             file_dialog::requestSaveFile(folder, "trail.trl", {{"Trail data", "trl"}});
         }
     }
@@ -863,7 +893,7 @@ void drawResourcesWindow() {
     // knows what the in-flight dialog is for.
     if (ui::resource_window::draw(state) && !file_dialog::isPending()) {
         dialog_purpose = DialogPurpose::AddResource;
-        file_dialog::requestOpenFile(last_image_folder, {{"Image", "png,jpg,jpeg,bmp"}});
+        file_dialog::requestOpenFile(imageFolder(), {{"Image", "png,jpg,jpeg,bmp"}});
     }
 
     ImGui::End();

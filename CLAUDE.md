@@ -125,6 +125,13 @@ hold in any change:
   `AddFontFromMemoryTTF`, i.e. raw TTF, while `HasKha/imgui-fonts` ships *compressed*
   data. Draw icons with `ImDrawList` primitives instead — see `eyeButton` in
   `ui/tree_window.cpp`.
+- **A native file dialog opens where Windows last left one, not where we ask.** NFD calls
+  `IFileDialog::SetDefaultFolder`, which Windows ignores once it has a recently used location
+  for the process — and the process is Gw2-64.exe, so that is shared with every other addon
+  and can even be an Explorer search result. `cmake/nfd.cmake` defines
+  `NFD_OVERRIDE_RECENT_WITH_DEFAULT` to force `SetFolder`. A folder that does not exist is
+  still ignored silently, so never hand a dialog an empty or speculative path — see
+  `packFolder` in `marker_editor.cpp`.
 - **CMake 4 rejects `cmake_minimum_required` below 3.5.** miniz's repo CMakeLists trips
   this, which is why `cmake/miniz.cmake` fetches the release amalgamation and declares
   the target by hand instead. Expect the same for other old dependencies.

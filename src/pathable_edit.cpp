@@ -42,6 +42,43 @@ size_t fileForCategory(const editor::State& state, size_t category) {
     return declarations.empty() ? pack::kNoIndex : declarations.back().file;
 }
 
+// The bytes the pack currently holds for `path` — a pending edit first, then the source.
+// `out` may be null to ask only whether the path names anything.
+bool assetBytes(const editor::State& state, const std::string& path, std::vector<uint8_t>* out) {
+    if (path.empty()) return false;
+
+    if (const pack::Pack::AddedAsset* pending = state.pack.findAddedAsset(path)) {
+        if (out) *out = pending->bytes;
+        return true;
+    }
+
+    if (state.pack.isAssetRemoved(path)) return false;
+
+    const pack::DataSource* source = resources::source();
+    if (!source) return false;
+
+    const std::string key = pack::normalizePath(path);
+    if (!out) return source->contains(key);
+
+    std::string error;
+    return source->read(key, out, &error);
+}
+
+// Whether any live pathable other than `except` resolves `traildata` to `path`.
+bool trailDataSharedWith(const editor::State& state, size_t except, const std::string& path) {
+    const std::string key = pack::normalizePath(path);
+
+    for (size_t i = 0; i < state.pack.pathables.size(); ++i) {
+        if (i == except) continue;
+        const pack::Pathable& pathable = state.pack.pathables[i];
+        if (pathable.grave.deleted || pathable.type != pack::PathableType::Trail) continue;
+
+        const std::string* data = state.pack.effectiveValue(pathable, "traildata");
+        if (data && pack::normalizePath(*data) == key) return true;
+    }
+    return false;
+}
+
 // A path for a new .trl, in the folder the pack already keeps its trail data in, under a
 // name nothing is using yet.
 std::string newTrailPath(const editor::State& state, const std::string& stem) {
@@ -353,6 +390,35 @@ size_t addCategory(
     state.selection.set(added);
     state.requestReveal(added);
     return index;
+}
+
+void attributeRenamed(editor::State& state, editor::NodeRef node, const std::string& key, const std::string& previous) {
+    if (node.kind != editor::NodeKind::Pathable || node.index >= state.pack.pathables.size()) return;
+    if (pack::attributeKey(key) != "traildata") return;
+    if (state.pack.pathables[node.index].type != pack::PathableType::Trail) return;
+
+    const std::string* current = state.pack.effectiveValue(state.pack.pathables[node.index], "traildata");
+    const std::string new_path = current ? *current : std::string();
+    if (previous.empty() || new_path.empty()) return;
+    if (pack::normalizePath(previous) == pack::normalizePath(new_path)) return;
+
+    // A re-point, not a rename.
+    if (assetBytes(state, new_path, nullptr)) return;
+
+    std::vector<uint8_t> bytes;
+    if (!assetBytes(state, previous, &bytes)) return;
+
+    undo::asset(state, new_path);
+    state.pack.addAsset(new_path, bytes);
+    resources::forget(new_path);
+
+    // Anything that shipped in the pack stays where it is: a rename is not a delete, and
+    // the resources window is where a file gets removed on purpose.
+    if (state.pack.findAddedAsset(previous) && !trailDataSharedWith(state, node.index, previous)) {
+        undo::asset(state, previous);
+        state.pack.dropAddedAsset(previous);
+        resources::forget(previous);
+    }
 }
 
 } // namespace pathable_edit

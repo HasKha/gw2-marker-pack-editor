@@ -123,14 +123,18 @@ ImTextureID texture(const std::string& path) {
     return image(path).texture;
 }
 
-const pack::trl::Trail* trail(const std::string& path) {
+const pack::trl::Trail* trail(const std::string& path, bool* deferred) {
+    if (deferred) *deferred = false;
     if (path.empty()) return nullptr;
 
     const std::string key = pack::normalizePath(path);
     auto it = trails.find(key);
     if (it != trails.end()) return it->second.get();
 
-    if (budget <= 0) return nullptr;
+    if (budget <= 0) {
+        if (deferred) *deferred = true;
+        return nullptr;
+    }
     --budget;
 
     std::unique_ptr<pack::trl::Trail> parsed;
