@@ -5,7 +5,7 @@ project(MarkerPackEditor)
 # compiled in here, and only offers an update when the tag is greater. Tags are
 # vMAJOR.MINOR.BUILD — its parser rejects a two-component version.
 set(VERSION_MAJOR 1)
-set(VERSION_MINOR 5)
+set(VERSION_MINOR 6)
 set(VERSION_BUILD 0)
 
 add_compile_definitions(
