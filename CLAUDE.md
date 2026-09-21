@@ -101,7 +101,7 @@ hold in any change:
   bent along the diagonal instead of foreshortened; and nothing stops you handing it a
   corner from behind the camera. Anything textured and projected has to be subdivided in
   world space *and* clipped against the near plane — see `drawTexturedQuad` in
-  `world/renderer.cpp` and `docs/architecture.md`.
+  `editor/world/renderer.cpp` and `docs/architecture.md`.
 - **Never cull on a marker's centre.** A large marker is one you can stand inside, so its
   centre goes behind the camera while most of it is still on screen. Clip the quad; do not
   drop it.
@@ -116,7 +116,7 @@ hold in any change:
   `WM_LBUTTONDOWN` itself. Returning 0 from that callback consumes the message; return
   non-zero to let the game have it.
 - **Nexus never releases a texture.** `Textures.GetOrCreateFromMemory` has no counterpart,
-  so textures live for the session. `resources.cpp` puts a generation counter in each
+  so textures live for the session. `editor/resources.cpp` puts a generation counter in each
   identifier so two packs cannot collide; the cost is that reopening packs accumulates
   them. Fine for an editor, worth revisiting if it ever isn't.
 - **Icon fonts cannot reach the atlas.** Nexus's `CFontManager` rebuilds every font with
@@ -124,14 +124,14 @@ hold in any change:
   FontAwesome's `0xF000-0xF8FF` glyphs are dropped whatever we pass. It also calls
   `AddFontFromMemoryTTF`, i.e. raw TTF, while `HasKha/imgui-fonts` ships *compressed*
   data. Draw icons with `ImDrawList` primitives instead — see `eyeButton` in
-  `ui/tree_window.cpp`.
+  `editor/ui/tree_window.cpp`.
 - **A native file dialog opens where Windows last left one, not where we ask.** NFD calls
   `IFileDialog::SetDefaultFolder`, which Windows ignores once it has a recently used location
   for the process — and the process is Gw2-64.exe, so that is shared with every other addon
   and can even be an Explorer search result. `cmake/nfd.cmake` defines
   `NFD_OVERRIDE_RECENT_WITH_DEFAULT` to force `SetFolder`. A folder that does not exist is
   still ignored silently, so never hand a dialog an empty or speculative path — see
-  `packFolder` in `marker_editor.cpp`.
+  `packFolder` in `editor/marker_editor.cpp`.
 - **CMake 4 rejects `cmake_minimum_required` below 3.5.** miniz's repo CMakeLists trips
   this, which is why `cmake/miniz.cmake` fetches the release amalgamation and declares
   the target by hand instead. Expect the same for other old dependencies.

@@ -158,7 +158,7 @@ editor, and undo/redo. What is left is not doubt about whether it works, but the
 - Window positions are whatever ImGui's `imgui.ini` remembers. Visibility is ours and is
   persisted; position is not, deliberately.
 - Only the tree has an `update()` so far. If a second and third window grow one, drive the
-  calls from the `ui/windows.*` table instead of by hand — see [A window that is not
+  calls from the `editor/ui/windows.*` table instead of by hand — see [A window that is not
   drawing](architecture.md#a-window-that-is-not-drawing).
 - `saveToDirectory`'s asset half — writing added images into a folder pack and deleting
   removed ones from disk — is the one write path the tests do not exercise, because the
@@ -175,7 +175,7 @@ editor, and undo/redo. What is left is not doubt about whether it works, but the
 - **Perspective-correct texturing is capped at 16 subdivisions a side.** That covers every
   marker anyone would author; a quad both enormous and right in the camera's face still
   carries a little of the affine bend near the corner closest to you. Raising the cap is a
-  constant in `world/camera.h`, paid for in vertices.
+  constant in `editor/world/camera.h`, paid for in vertices.
 - **Quads are clipped against the near plane only, not the sides of the frustum.** A marker
   you are standing inside can project a corner tens of thousands of pixels off screen, and
   those cells are subdivided and emitted like any other before ImGui's scissor throws them

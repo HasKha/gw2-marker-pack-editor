@@ -42,17 +42,20 @@ Six, because the code worth testing outside the game is most of it:
 | Target | Kind | Contents |
 |---|---|---|
 | `mpe_pack` | static lib | `src/pack/**` — the format. Links only pugixml, miniz, glm. **Knows nothing about Nexus, imgui or the game.** |
-| `mpe_editor` | static lib | everything else in `src/` bar `entry.cpp` — the editor. Links `mpe_pack` plus imgui, ImGuizmo, Nexus, Mumble, NFD |
+| `mpe_editor` | static lib | `src/editor/**` — the editor. Links `mpe_pack` plus imgui, ImGuizmo, Nexus, Mumble, NFD |
 | `MarkerPackEditor` | shared lib | `src/entry.cpp` and nothing else. Links `mpe_editor` |
 | `mpe_corpus` | static lib | `test/corpus.*` — where the real packs are. Shared by the two below so they cannot disagree about it |
 | `mpe_test` | console exe | `test/*_test.cpp` — the assertions, under Catch2. Links `mpe_editor` |
 | `mpe_probe` | console exe | `test/pack_probe.cpp` — the harness that prints. Links `mpe_pack` |
 
+**One directory under `src/` per library**, so a file's folder says which one it is in and
+no target has to be described by subtracting another's sources.
+
 `mpe_editor` exists so `mpe_test` links the code the addon runs rather than naming source
 files a second time. Only the objects a test reaches get linked in, so nothing there needs
 a live Nexus or an imgui context; what does touch Nexus goes through an `AddonAPI*` that
-stays null, which `resources.cpp` already has to handle for a pack made in the editor. The
-windows and the renderer are in the library and simply never pulled in.
+stays null, which `editor/resources.cpp` already has to handle for a pack made in the
+editor. The windows and the renderer are in the library and simply never pulled in.
 
 **The two test targets do different jobs and both are worth having.** `mpe_test` answers
 *is it broken* and fails a build; `mpe_probe` answers *what does this pack look like* and
@@ -83,17 +86,8 @@ one outcome worse than a red one.
 
 ```
 src/
-  entry.cpp            — MarkerPackEditor.dll; everything below it is mpe_editor
+  entry.cpp            — MarkerPackEditor.dll
                        Nexus entry, AddonDefinition, hands DataLinks to marker_editor
-  marker_editor.*      lifecycle, the windows and the shared menu bar, save/open, WndProc
-  pathable_edit.*      creating and deleting markers and categories
-  undo.*               the undo/redo stack: before/after images of what changed
-  trail_edit.*         the open trail's working copy, shared by its window and the gizmo
-  editor_state.*       State: the open Pack, the two selections and the rules over them,
-                       per-node visibility, settings
-  file_dialog.*        NFD on a worker thread (never block the render thread)
-  resources.*          icons + .trl pulled from the pack source on demand, budgeted
-  settings.*           the few things that outlive a session, as settings.json
   pack/                — mpe_pack, no Nexus/imgui dependency
     source.*           DataSource: a pack is a zip OR a folder. Path normalization.
     zip.*              DataSource over a .zip/.taco, via miniz
@@ -102,16 +96,26 @@ src/
     xml_reader.*       pugixml -> model; the document is kept and owned by the Pack
     writer.*           serializes the document back out, rebuilds the zip (format.md)
     trl.*              .trl read/write, byte-exact
-  ui/
-    windows.*          the window registry: titles, visibility, View menu, options page
-    tree_window.*      category tree, selection (ctrl / shift range), per-node eye toggles
-    property_panel.*   attribute form + "add attribute" + inherited values
-    resource_window.*  the pack's images, what references them, add / remove
-    trail_editor.*     the open trail: map id, point list, the Trail menu, shape tools
-  world/
-    camera.*           MumbleLink -> view/projection, world->screen
-    renderer.*         billboards + trail ribbons into an ImGui draw list, hit testing
-    gizmo.*            ImGuizmo translate/rotate over the selection, writes back to attributes
+  editor/              — mpe_editor
+    marker_editor.*    lifecycle, the windows and the shared menu bar, save/open, WndProc
+    pathable_edit.*    creating and deleting markers and categories
+    undo.*             the undo/redo stack: before/after images of what changed
+    trail_edit.*       the open trail's working copy, shared by its window and the gizmo
+    editor_state.*     State: the open Pack, the two selections and the rules over them,
+                       per-node visibility, settings
+    file_dialog.*      NFD on a worker thread (never block the render thread)
+    resources.*        icons + .trl pulled from the pack source on demand, budgeted
+    settings.*         the few things that outlive a session, as settings.json
+    ui/
+      windows.*        the window registry: titles, visibility, View menu, options page
+      tree_window.*    category tree, selection (ctrl / shift range), per-node eye toggles
+      property_panel.* attribute form + "add attribute" + inherited values
+      resource_window.* the pack's images, what references them, add / remove
+      trail_editor.*   the open trail: map id, point list, the Trail menu, shape tools
+    world/
+      camera.*         MumbleLink -> view/projection, world->screen
+      renderer.*       billboards + trail ribbons into an ImGui draw list, hit testing
+      gizmo.*          ImGuizmo translate/rotate over the selection, writes to attributes
 test/
   corpus.*             where the real packs are
   pack_probe.cpp       the harness that prints
@@ -152,7 +156,7 @@ closable, each remembering its own place:
 | Trail editor | the open trail's map id and points, with drag fields for the selected one |
 | Resources | the pack's images: folder tree, references, preview, add / remove |
 
-`ui/windows.*` is the registry: one table row per window with its title, its menu label
+`editor/ui/windows.*` is the registry: one table row per window with its title, its menu label
 and its default visibility, and everything else — the View menu, the Nexus options
 checkboxes, the keybind's hide-and-restore — is generated from that table. Adding a window
 is one row plus its draw function, and an `update` if it needs one — see
@@ -215,7 +219,7 @@ Two live examples, one of each:
 
 `update()` is added where it has something to do, not as a stub on every window: an empty
 one invites model state into a window, which is the problem it exists to prevent. If a third
-window grows one, the calls are worth driving from the `ui/windows.*` table — which already
+window grows one, the calls are worth driving from the `editor/ui/windows.*` table — which already
 carries a row per window — rather than by hand. A base class is the wrong shape for it: the
 draw signatures genuinely differ (a camera here, a returned request there, the Toolbar with
 no module at all), so a shared virtual would either widen every signature or keep the side
@@ -455,8 +459,7 @@ What holds it together:
 - **`editor::prune` is the only thing that checks for stale nodes**, and it runs after every
   structural edit. Points are pruned by `trail_edit` instead, for the reason above.
 
-`editor_state.*` has no imgui or Nexus below it, so all of this is covered by
-`test/selection_test.cpp` rather than by hand.
+All of this is covered by `test/selection_test.cpp` rather than by hand.
 
 ## The gizmo anchor
 

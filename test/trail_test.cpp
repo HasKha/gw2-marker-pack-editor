@@ -4,13 +4,13 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include "corpus.h"
-#include "editor_state.h"
+#include "editor/editor_state.h"
+#include "editor/pathable_edit.h"
+#include "editor/resources.h"
+#include "editor/trail_edit.h"
+#include "editor/undo.h"
 #include "pack/model.h"
 #include "pack/xml_reader.h"
-#include "pathable_edit.h"
-#include "resources.h"
-#include "trail_edit.h"
-#include "undo.h"
 
 namespace {
 

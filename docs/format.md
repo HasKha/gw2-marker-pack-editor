@@ -48,7 +48,7 @@ different map here than it does in Blish. It cannot be resolved with the rest of
 attributes, though: reading a `.trl` goes through the per-frame load budget, so
 `TrailDraw::map_id` starts unknown and the draw loop fills it in on the first frame the file
 is there — until then the trail is on no map, exactly as it already was while its geometry
-was still loading. See `world/renderer.cpp`.
+was still loading. See `editor/world/renderer.cpp`.
 
 The attribute is still worth writing, and the editor writes it on a trail it creates: it is
 how a reader tells which map a `<Trail>` is for without opening its `.trl`, which is why every

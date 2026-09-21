@@ -1,12 +1,12 @@
-#include "trail_edit.h"
+#include "editor/trail_edit.h"
 
 #include <algorithm>
 #include <cmath>
 #include <fstream>
 
-#include "pathable_edit.h"
-#include "resources.h"
-#include "undo.h"
+#include "editor/pathable_edit.h"
+#include "editor/resources.h"
+#include "editor/undo.h"
 
 namespace trail_edit {
 

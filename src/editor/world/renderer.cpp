@@ -1,4 +1,4 @@
-#include "world/renderer.h"
+#include "editor/world/renderer.h"
 
 #include <imgui.h>
 
@@ -8,8 +8,8 @@
 #include <string>
 #include <vector>
 
-#include "resources.h"
-#include "trail_edit.h"
+#include "editor/resources.h"
+#include "editor/trail_edit.h"
 
 namespace world::renderer {
 

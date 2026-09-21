@@ -7,7 +7,7 @@
 #include <string>
 #include <vector>
 
-#include "editor_state.h"
+#include "editor/editor_state.h"
 #include "pack/trl.h"
 
 // The trail currently being edited, as a mutable working copy of its `.trl`.

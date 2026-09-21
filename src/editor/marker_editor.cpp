@@ -1,4 +1,4 @@
-#include "marker_editor.h"
+#include "editor/marker_editor.h"
 
 #include <ShlObj.h>
 #include <imgui.h>
@@ -10,24 +10,24 @@
 #include <optional>
 #include <string>
 
-#include "editor_state.h"
-#include "file_dialog.h"
+#include "editor/editor_state.h"
+#include "editor/file_dialog.h"
+#include "editor/pathable_edit.h"
+#include "editor/resources.h"
+#include "editor/settings.h"
+#include "editor/trail_edit.h"
+#include "editor/ui/property_panel.h"
+#include "editor/ui/resource_window.h"
+#include "editor/ui/trail_editor.h"
+#include "editor/ui/tree_window.h"
+#include "editor/ui/windows.h"
+#include "editor/undo.h"
+#include "editor/world/camera.h"
+#include "editor/world/gizmo.h"
+#include "editor/world/renderer.h"
 #include "pack/source.h"
 #include "pack/writer.h"
 #include "pack/xml_reader.h"
-#include "pathable_edit.h"
-#include "resources.h"
-#include "settings.h"
-#include "trail_edit.h"
-#include "ui/property_panel.h"
-#include "ui/resource_window.h"
-#include "ui/trail_editor.h"
-#include "ui/tree_window.h"
-#include "ui/windows.h"
-#include "undo.h"
-#include "world/camera.h"
-#include "world/gizmo.h"
-#include "world/renderer.h"
 
 namespace marker_editor {
 

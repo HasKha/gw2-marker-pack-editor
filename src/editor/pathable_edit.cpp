@@ -1,12 +1,12 @@
-#include "pathable_edit.h"
+#include "editor/pathable_edit.h"
 
 #include <vector>
 
+#include "editor/resources.h"
+#include "editor/undo.h"
 #include "pack/attributes.h"
 #include "pack/source.h"
 #include "pack/trl.h"
-#include "resources.h"
-#include "undo.h"
 
 namespace pathable_edit {
 

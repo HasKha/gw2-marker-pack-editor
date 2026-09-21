@@ -1,4 +1,4 @@
-#include "world/gizmo.h"
+#include "editor/world/gizmo.h"
 
 #include <imgui.h>
 
@@ -12,10 +12,10 @@
 #include <glm/gtc/type_ptr.hpp>
 #include <glm/gtx/euler_angles.hpp>
 
-#include "editor_state.h"
-#include "trail_edit.h"
-#include "undo.h"
-#include "world/renderer.h"
+#include "editor/editor_state.h"
+#include "editor/trail_edit.h"
+#include "editor/undo.h"
+#include "editor/world/renderer.h"
 
 namespace world::gizmo {
 

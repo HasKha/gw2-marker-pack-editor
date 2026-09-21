@@ -1,4 +1,4 @@
-#include "ui/trail_editor.h"
+#include "editor/ui/trail_editor.h"
 
 #include <imgui.h>
 
@@ -7,7 +7,7 @@
 #include <string>
 #include <vector>
 
-#include "trail_edit.h"
+#include "editor/trail_edit.h"
 
 namespace ui::trail_editor {
 

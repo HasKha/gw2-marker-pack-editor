@@ -2,7 +2,7 @@
 
 #include <string>
 
-#include "editor_state.h"
+#include "editor/editor_state.h"
 
 namespace ui::tree_window {
 

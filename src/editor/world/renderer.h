@@ -1,7 +1,7 @@
 #pragma once
 
-#include "editor_state.h"
-#include "world/camera.h"
+#include "editor/editor_state.h"
+#include "editor/world/camera.h"
 
 namespace world::renderer {
 

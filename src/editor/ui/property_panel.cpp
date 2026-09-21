@@ -1,4 +1,4 @@
-#include "ui/property_panel.h"
+#include "editor/ui/property_panel.h"
 
 #include <imgui.h>
 
@@ -9,8 +9,8 @@
 #include <string>
 #include <vector>
 
-#include "pathable_edit.h"
-#include "undo.h"
+#include "editor/pathable_edit.h"
+#include "editor/undo.h"
 
 namespace ui::property_panel {
 

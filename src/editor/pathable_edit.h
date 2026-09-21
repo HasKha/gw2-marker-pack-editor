@@ -2,7 +2,7 @@
 
 #include <glm/vec3.hpp>
 
-#include "editor_state.h"
+#include "editor/editor_state.h"
 
 // Creating and deleting markers. The pack layer does the document surgery; this decides
 // what a new marker should be and where it belongs, which is an editor question.

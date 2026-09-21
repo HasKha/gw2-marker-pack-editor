@@ -32,6 +32,9 @@ include(catch2)
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${PROJECT_SOURCE_DIR}/bin/")
 
+# One directory under src/ per target, so a file's folder says which library it is in and
+# no target has to be described by subtracting another's sources.
+#
 # ── mpe_pack ──────────────────────────────────────────────────────────────────
 # Everything that understands the marker pack format, and nothing that knows about
 # Nexus, imgui or the game. Keeping this layer standalone is what lets the console
@@ -59,10 +62,9 @@ target_link_libraries(mpe_pack PUBLIC
 add_library(mpe_editor STATIC)
 
 file(GLOB_RECURSE EDITOR_SOURCES
-    "src/*.h"
-    "src/*.cpp"
+    "src/editor/*.h"
+    "src/editor/*.cpp"
 )
-list(REMOVE_ITEM EDITOR_SOURCES ${PACK_SOURCES} "${CMAKE_CURRENT_SOURCE_DIR}/src/entry.cpp")
 target_sources(mpe_editor PRIVATE ${EDITOR_SOURCES})
 source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" PREFIX "" FILES ${EDITOR_SOURCES})
 

@@ -1,4 +1,4 @@
-#include "resources.h"
+#include "editor/resources.h"
 
 #include <unordered_map>
 #include <vector>

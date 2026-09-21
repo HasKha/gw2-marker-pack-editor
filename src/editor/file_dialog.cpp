@@ -1,4 +1,4 @@
-#include "file_dialog.h"
+#include "editor/file_dialog.h"
 
 #include <nfd.h>
 

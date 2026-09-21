@@ -2,7 +2,7 @@
 
 #include <string>
 
-#include "editor_state.h"
+#include "editor/editor_state.h"
 
 // Undo and redo, recorded as before/after images rather than as inverse operations.
 //

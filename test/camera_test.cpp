@@ -10,7 +10,7 @@
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtc/matrix_transform.hpp>
 
-#include "world/camera.h"
+#include "editor/world/camera.h"
 
 using Catch::Approx;
 
