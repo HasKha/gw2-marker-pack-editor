@@ -58,8 +58,24 @@ ones above:
 | Settings players expect | `ModuleSettings.cs` |
 | The pack catalog | `MarkerPackRepo/MarkerPackRepo.cs`, `MarkerPackRepo/MarkerPackPkg.cs` |
 
+Scripts see more than Pathing's own code. What else defines the API they are written against:
+
+| What | Where | Read for |
+|---|---|---|
+| **Blish HUD** | `github.com/blish-hud/Blish-HUD` — `Blish HUD/GameServices/Gw2MumbleService.cs`, `Blish HUD/GameServices/Gw2Mumble/` (`CurrentMap`, `PlayerCharacter`, `PlayerCamera`, `UI`, `Info`) | **every `Mumble.*` member.** `PathingGlobal` hands scripts Blish HUD's own `GameService.Gw2Mumble`, so its names, units and types are the API, not MumbleLink's |
+| **NeoLua** | `github.com/neolithos/neolua` | how a .NET object behaves in Lua: method calls with `.` or `:`, number and string conversions, `Int32`/`Float` arithmetic. What the call-style shim and the number notes in [viewer.md](viewer.md#lua) imitate |
+| **MonoGame 3.8** | `github.com/MonoGame/MonoGame` — `MonoGame.Framework/Vector3.cs`, `Color.cs`, `GameTime.cs` | the value types scripts hold: `Vector3`'s methods, `Color`'s constructors and channels, `GameTime` as `OnTick` hands it. Pathing pins 3.8.0.1641 |
+
+Other viewers, read for how, never copied from:
+
+| What | Where | Read for |
+|---|---|---|
+| **GoodRender's own docs** | `github.com/HasKha/gw2-good-render` — `README.md` (subscribing, versions), `docs/how_it_works.md` | how a subscriber is expected to behave, beyond what the header says |
+| **Taquito** | local clone `taquito/` — `src/UI/OverlayRenderer.cpp`, `src/Entry.cpp`, `ATTRIBUTE_SUPPORT.md` | the one other marker viewer drawing through GoodRender, and a checklist of attributes. MIT: anything taken from it is credited. Where it differs from Pathing, Pathing wins |
+
 The Lua corpus is the scripts inside the test packs, Hero's pack above all; see
-[viewer.md](viewer.md#the-census).
+[viewer.md](viewer.md#the-census). Pathing's Lua API has no documentation of its own to
+read: `gw2pathing.com/docs/` answers 404, so the source above is the reference.
 
 ## Fetched dependencies
 

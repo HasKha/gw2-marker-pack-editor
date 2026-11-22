@@ -141,7 +141,7 @@ Lua almost as they are. The job is to present the same names and the same behavi
   shim, wrapped around every row, never a special case per member.
 - **.NET shows through, and is reproduced.** `Event:OnTick` hands an XNA `GameTime`, so
   scripts read `.TotalGameTime.TotalSeconds`; `Vector3` has `Length`, `Dot`, `Cross`,
-  `Normalize`; `I:Vector`, `I:Color`, `I:Guid`, `I:Texture`, `I:Marker` construct.
+  `Normalize`; `I:Vector3`, `I:Color` (byte channels, alpha 255 by default), `I:Guid`, `I:Texture`, `I:Marker` and `I:Trail` construct.
 - **Numbers.** Pathing builds its state with Int32 integers and single floats
   (`new Lua(LuaIntegerType.Int32, LuaFloatType.Float)`); 5.4 has 64-bit integers and
   doubles. The difference only shows on overflow and precision. Noted, and not imitated unless
@@ -167,7 +167,7 @@ The scripts in the installed packs, as a starting point:
 
 | Pack | Lua files | Most used |
 |---|---|---|
-| `hero.blish.pack.zip` | 939 | `I:Vector`, `World:CategoryByType`, `Mumble.PlayerCharacter.Position`, `I:Color`, `World:MarkerByGuid`, `Mumble.CurrentMap.Id`, `Storage:*`, `Debug:Watch`, `Event:OnTick` |
+| `hero.blish.pack.zip` | 939 | `I:Vector3`, `World:CategoryByType`, `Mumble.PlayerCharacter.Position`, `I:Color`, `World:MarkerByGuid`, `Mumble.CurrentMap.Id`, `Storage:*`, `Debug:Watch`, `Event:OnTick` |
 | `TehsTrails.taco` | 44 | `I:Color`, `Debug:Print`, `World:CategoryByType`, `Debug:Watch`, `World:TrailByGuid`, `Mumble.UI.MapScale`, `Vector3` methods |
 | `LadyElyssa.taco` | 5 | `User.SetClipboard`, `Debug:Print`, `Menu:Add` |
 
