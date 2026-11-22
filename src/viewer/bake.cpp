@@ -151,6 +151,33 @@ BakedPathables bake(const pack::Pack& pack) {
     return out;
 }
 
+std::vector<BakedCategory> bakeCategories(const pack::Pack& pack) {
+    std::vector<BakedCategory> out;
+    out.reserve(pack.categories.size());
+
+    // Each flag is read the way TmfLib reads it — isseparator only on exactly "1", the other
+    // two on anything but "0" — rather than through parseBool, so that "true" means here what
+    // it means in Pathing.
+    const auto flag = [](const pack::Category& category, const char* key, bool on_when_equal, const char* text) -> std::optional<bool> {
+        const std::string* value = category.attributes.value(key);
+        if (!value) return std::nullopt;
+        return (*value == text) == on_when_equal;
+    };
+
+    for (const pack::Category& category : pack.categories) {
+        BakedCategory baked;
+        baked.id = category.id;
+        baked.name = category.name;
+        baked.parent = category.parent;
+        if (const std::string* display = category.attributes.value("displayname")) baked.display_name = *display;
+        baked.is_separator = flag(category, "isseparator", true, "1");
+        baked.default_toggle = flag(category, "defaulttoggle", false, "0");
+        baked.is_hidden = flag(category, "ishidden", false, "0");
+        out.push_back(std::move(baked));
+    }
+    return out;
+}
+
 float fadeFactor(float distance_inches, float fade_near, float fade_far) {
     if (fade_near < 0.0f || fade_far <= fade_near) return 1.0f;
     if (distance_inches >= fade_far) return 0.0f;

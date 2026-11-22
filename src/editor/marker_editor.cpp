@@ -1,6 +1,5 @@
 #include "editor/marker_editor.h"
 
-#include <ShlObj.h>
 #include <imgui.h>
 
 #include <atomic>
@@ -28,6 +27,7 @@
 #include "pack/writer.h"
 #include "pack/xml_reader.h"
 #include "viewer/camera.h"
+#include "viewer/registry.h"
 #include "viewer/viewer.h"
 
 namespace marker_editor {
@@ -113,10 +113,7 @@ void log(ELogLevel level, const std::string& message) {
 // Falls back to the deepest ancestor that exists: a dialog handed a folder that is not
 // there opens wherever Windows was last instead — see file_dialog.h.
 std::filesystem::path blishhudMarkersFolder() {
-    PWSTR documents = nullptr;
-    if (FAILED(SHGetKnownFolderPath(FOLDERID_Documents, 0, nullptr, &documents))) return {};
-    std::filesystem::path path = std::filesystem::path(documents) / "Guild Wars 2" / "addons" / "blishhud" / "markers";
-    CoTaskMemFree(documents);
+    std::filesystem::path path = viewer::registry::blishMarkersFolder();
 
     std::error_code ec;
     while (!path.empty() && !std::filesystem::is_directory(path, ec)) {

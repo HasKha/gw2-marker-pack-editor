@@ -76,6 +76,8 @@ target_link_libraries(mpe_viewer PUBLIC
     mumble
     nexus
     nlohmann_json::nlohmann_json
+    shell32  # SHGetKnownFolderPath
+    ole32    # CoTaskMemFree
 )
 
 # ── mpe_editor ────────────────────────────────────────────────────────────────
@@ -101,8 +103,6 @@ target_link_libraries(mpe_editor PUBLIC
     nexus
     nlohmann_json::nlohmann_json
     nfd
-    shell32  # SHGetKnownFolderPath
-    ole32    # CoTaskMemFree
 )
 
 # ── MarkerPackEditor ──────────────────────────────────────────────────────────

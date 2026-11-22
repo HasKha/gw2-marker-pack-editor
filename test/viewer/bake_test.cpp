@@ -128,3 +128,35 @@ TEST_CASE("a fade is linear between its bounds and off when either is negative",
     CHECK(viewer::fadeFactor(1e9f, -1.0f, 200.0f) == Approx(1.0f));
     CHECK(viewer::fadeFactor(1e9f, -1.0f, -1.0f) == Approx(1.0f));
 }
+
+TEST_CASE("category flags are read the way TmfLib reads them", "[bake]") {
+    const corpus::TempDir temp("bake_categories");
+    std::ofstream(temp / "markers.xml") << R"(<OverlayData>
+        <MarkerCategory name="a" DisplayName="Alpha" isSeparator="1" defaultToggle="0" isHidden="1">
+            <MarkerCategory name="b" isSeparator="true" defaultToggle="false"/>
+        </MarkerCategory>
+        <MarkerCategory name="c"/>
+    </OverlayData>)";
+    const Loaded loaded = loadPath(temp.path());
+
+    const std::vector<viewer::BakedCategory> baked = viewer::bakeCategories(loaded.model);
+    REQUIRE(baked.size() == 3);
+
+    CHECK(baked[0].id == "a");
+    CHECK(baked[0].display_name == "Alpha");
+    CHECK(baked[0].is_separator == true);
+    CHECK(baked[0].default_toggle == false);
+    CHECK(baked[0].is_hidden == true);
+
+    // Only "1" makes a separator, and only "0" turns a default off: "true" and "false" are
+    // neither, so a separator stays off and the toggle stays on, as in Pathing.
+    CHECK(baked[1].id == "a.b");
+    CHECK(baked[1].parent == 0);
+    CHECK(baked[1].is_separator == false);
+    CHECK(baked[1].default_toggle == true);
+
+    // Saying nothing is not saying no: a merge has to keep what another pack said.
+    CHECK_FALSE(baked[2].display_name.has_value());
+    CHECK_FALSE(baked[2].is_separator.has_value());
+    CHECK_FALSE(baked[2].default_toggle.has_value());
+}

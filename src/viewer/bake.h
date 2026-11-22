@@ -5,6 +5,7 @@
 #include <glm/vec3.hpp>
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -94,6 +95,25 @@ struct BakedPathables {
     std::vector<BakedMarker> markers;
     std::vector<BakedTrail> trails;
 };
+
+// A category as one pack declares it, ready to merge into the tree every pack shares.
+struct BakedCategory {
+    std::string id; // full dotted path, lowercase: what packs are merged on
+    std::string name; // its own segment as written: the label when no pack gives it one
+    size_t parent = pack::kNoIndex; // into the same list
+
+    // What this pack's declarations say, and nothing when they say nothing, so that merging
+    // keeps whatever another pack said. TmfLib's PathableCategoryBuilder overrides only the
+    // attributes a declaration has.
+    std::optional<std::string> display_name;
+    std::optional<bool> is_separator;
+    std::optional<bool> default_toggle;
+    std::optional<bool> is_hidden;
+};
+
+// One entry per Pack::categories, in the same order, so a baked pathable's `category` indexes
+// this list too.
+std::vector<BakedCategory> bakeCategories(const pack::Pack& pack);
 
 // Every live marker and trail of `pack`, in Pack::pathables order. Deleted pathables, routes
 // and POIs without a position are left out.
