@@ -123,6 +123,33 @@ void Camera::quadNearDepths(const glm::vec3 world[4], float out_depth[4]) const 
     for (int i = 0; i < 4; ++i) out_depth[i] = glm::dot(world[i] - position, front) - near_plane;
 }
 
+float clampedBillboardSize(const Camera& camera, const glm::vec3& centre, float world_size, float min_size, float max_size) {
+    // What minSize and maxSize multiply up to, in real pixels.
+    //
+    // StandardMarker.World.cs clamps between minSize*4 and maxSize*4, but the quantity it
+    // clamps is not a pixel height:
+    //
+    //     pixelSizeY = (maxY - minY) * Viewport.Height
+    //
+    // with maxY and minY in normalized device coordinates, which span **2** across the
+    // viewport, so multiplying an NDC extent by the viewport height without halving it yields
+    // twice the pixel height. Its floor of minSize*4 therefore bites at minSize*2 real pixels.
+    //
+    // Matching that is the point: the editor exists to show what Blish will show. With the
+    // literal *4 a marker pins to a fixed size twice as far out and twice as large, which is
+    // the "icons never get smaller in the distance" bug this replaced.
+    constexpr float kBlishSizeLimit = 2.0f;
+
+    glm::vec2 corners[4];
+    if (!camera.billboardCorners(centre, world_size, corners)) return world_size;
+
+    const float measured = quadPixelHeight(corners);
+    const float pixels = std::clamp(measured, min_size * kBlishSizeLimit, max_size * kBlishSizeLimit);
+    if (pixels < 1.0f) return 0.0f;
+    if (measured <= 0.0001f || std::abs(pixels - measured) <= 0.001f) return world_size;
+    return world_size * pixels / measured;
+}
+
 float quadPixelHeight(const glm::vec2* points, int count) {
     if (count <= 0) return 0.0f;
 

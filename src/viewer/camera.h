@@ -129,6 +129,19 @@ struct Camera {
 // diagonal — is the quantity Blish's minSize/maxSize clamp is expressed in.
 float quadPixelHeight(const glm::vec2* points, int count = 4);
 
+// The size across, in metres, to draw a billboard `world_size` across centred on `centre` so
+// that its projected height obeys minSize and maxSize the way Blish's does. Returns 0 when it
+// would come out under a pixel tall: not worth drawing.
+//
+// Blish clamps by rescaling the model matrix about the marker, so the quad is rebuilt at the
+// new size rather than stretched, or its shape would not be Blish's — which is why this
+// returns a size and not a screen rectangle.
+//
+// A billboard straddling the near plane has no projected height to measure and keeps its
+// true size. Blish's own screen bounds are meaningless there too, and inventing a height
+// would resize a marker for walking into it.
+float clampedBillboardSize(const Camera& camera, const glm::vec3& centre, float world_size, float min_size, float max_size);
+
 // The most ways a quad is ever split. The renderer sizes a stack grid on this, so it is a
 // bound rather than a preference.
 constexpr int kMaxQuadSubdivisions = 16;

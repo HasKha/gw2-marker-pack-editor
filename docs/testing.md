@@ -9,7 +9,9 @@ ctest --test-dir build -C Release --output-on-failure
 
 They assert the whole read → model → write → save round trip — every pack parses, the writer is stable,
 comments and BOM and CRLF survive, a save reopens as the same model — against the real packs rather than
-fixtures. Under two seconds, no game needed.
+fixtures. No game needed, and a few seconds: about two and a half run one case at a time, which is how ctest
+runs by default, and half that with `-j8`. Nearly all of it is the corpus sweep in `corpus_test.cpp` and a
+process per case; `mpe_viewer_test` on its own takes milliseconds.
 
 **A fix comes with a case that fails before it.** A fix without one is a fix that comes back. Never verify
 pack-layer work by launching the game, or by hand.

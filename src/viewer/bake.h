@@ -1,0 +1,134 @@
+#pragma once
+
+#include <imgui.h>
+
+#include <glm/vec3.hpp>
+
+#include <memory>
+#include <string>
+#include <vector>
+
+#include "pack/model.h"
+#include "pack/trl.h"
+#include "viewer/camera.h"
+
+// A pack resolved for drawing: every inherited attribute looked up once, so a frame never
+// walks the category chain.
+//
+// Both halves draw from this. The viewer bakes each pack once, on its worker; the editor bakes
+// its open pack again whenever State::revision moves. One reading of inheritance for both is
+// what keeps what an author sees and what a player sees from disagreeing.
+namespace viewer {
+
+// Where a POI sits and how it is oriented, resolved through the category chain.
+//
+// The editor's gizmo places its handles with this too, because the two have to agree to the
+// last digit: the handles are supposed to sit on the drawn icon, and a second copy of this
+// logic is a second chance to disagree with the picture. (There were two, and they did — one
+// accepted a partial rotate="90" the way Blish does, the other required all three components
+// and silently read it as no rotation at all.)
+struct MarkerTransform {
+    glm::vec3 position{0.0f}; // as drawn, i.e. with heightOffset already applied
+    glm::vec3 rotation{0.0f}; // radians, in the attributes' own axis order
+    float height_offset = 0.0f;
+
+    // Any of rotate / rotate-x / rotate-y / rotate-z turns the marker from a billboard into a
+    // fixed-orientation quad — including rotate="0,0,0", which is not a no-op.
+    bool has_rotation = false;
+};
+
+// False for anything that cannot be placed: a trail, or a POI missing a coordinate. Those are
+// invisible anchors, and Pathing drops them too.
+bool markerTransform(const pack::Pack& pack, const pack::Pathable& pathable, MarkerTransform* out);
+
+struct BakedMarker {
+    size_t pathable = pack::kNoIndex; // into Pack::pathables
+    size_t category = pack::kNoIndex; // into Pack::categories; kNoIndex for a dangling type
+    int map_id = 0;
+
+    glm::vec3 position{0.0f}; // with heightOffset applied
+    bool has_rotation = false; // see MarkerTransform
+    glm::vec3 rotation{0.0f}; // radians
+
+    float icon_size = 1.0f;
+    float alpha = 1.0f;
+    float min_size = 5.0f;
+    float max_size = 2048.0f;
+    float fade_near = -1.0f; // inches; negative turns the fade off
+    float fade_far = -1.0f; // inches
+    ImU32 tint = IM_COL32_WHITE;
+    std::string icon;
+};
+
+// No real map has this id, so it is safe as "not resolved yet" — see BakedTrail::map_id.
+constexpr int kMapUnknown = -1;
+
+struct BakedTrail {
+    size_t pathable = pack::kNoIndex;
+    size_t category = pack::kNoIndex;
+
+    // **From the `.trl` header, not from the XML.** `UnpackTrailPoi` reads the header and then
+    // does `AddOrUpdateAttribute("mapid", ...)`, overwriting whatever the XML said, so the
+    // header is what decides which map Pathing draws a trail on and the attribute is dead
+    // weight — see docs/format.md. So it is unknown until the file has been read, by
+    // whoever reads it: the registry does so for every trail on its worker, the editor one at
+    // a time as its load budget allows.
+    int map_id = kMapUnknown;
+
+    float alpha = 1.0f;
+    float scale = 1.0f;
+    float anim_speed = 1.0f; // texture lengths per second along the trail
+    bool is_wall = false;
+    float fade_near = 700.0f; // inches
+    float fade_far = 900.0f; // inches
+    ImU32 tint = IM_COL32_WHITE;
+    std::string texture;
+    std::string data;
+
+    // The points, when they were read up front. Null in the editor, which reads them through
+    // its own cache so that an edit shows at once.
+    std::shared_ptr<const pack::trl::Trail> geometry;
+};
+
+struct BakedPathables {
+    std::vector<BakedMarker> markers;
+    std::vector<BakedTrail> trails;
+};
+
+// Every live marker and trail of `pack`, in Pack::pathables order. Deleted pathables, routes
+// and POIs without a position are left out.
+BakedPathables bake(const pack::Pack& pack);
+
+// How much of a fade is left at `distance_inches` from the player: 1 inside `fade_near`, 0
+// past `fade_far`, linear between. A negative bound turns the fade off, as Pathing does by
+// moving both to float.MaxValue (StandardMarker[fadenear,fadefar].cs).
+float fadeFactor(float distance_inches, float fade_near, float fade_far);
+
+// `colour` with its alpha multiplied by `opacity`, clamped to 0..1.
+ImU32 applyOpacity(ImU32 colour, float opacity);
+
+// The four world corners of a marker carrying `rotate`, in kQuadCorners order: a quad fixed in
+// the world rather than turned towards the camera.
+void rotatedMarkerQuad(const glm::vec3& position, const glm::vec3& rotation, float icon_size, glm::vec3 out[4]);
+
+// Texture coordinates for a marker's corners in kQuadCorners order. Blish derives each from
+// the sign of the vertex it belongs to,
+//     new Vector2(vert.X < 0 ? 1 : 0, vert.Y < 0 ? 1 : 0)
+// so in its own space the -X,-Y corner carries uv (1,1) and the +X,+Y corner (0,0) — both
+// axes inverted, which is exactly a 180-degree in-plane rotation of the image. That is what a
+// rotated marker gets.
+extern const ImVec2 kRotatedMarkerUv[4];
+
+// A billboard gets the plain mapping instead, and the difference is not a choice. Its corners
+// come from Matrix.CreateBillboard, whose `right` axis points to screen *left* in Blish's
+// right-handed space and to screen right in Mumble's left-handed one (see
+// Camera::billboardCorners). Building the same basis in our space therefore flips u back,
+// leaving only the vertical inversion — which the corner order absorbs.
+extern const ImVec2 kBillboardUv[4];
+
+// Blish HUD's StandardTrail.World.cs: TRAIL_WIDTH = 20 * 0.0254f, used as the half-width
+// offset either side of the path, scaled by trailScale. One texture length along the trail is
+// twice this, whatever the scale.
+constexpr float kTrailHalfWidth = 20.0f * kMetresPerInch;
+
+} // namespace viewer

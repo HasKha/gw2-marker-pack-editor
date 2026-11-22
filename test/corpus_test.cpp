@@ -17,6 +17,7 @@
 #include "pack/source.h"
 #include "pack/writer.h"
 #include "pack/xml_reader.h"
+#include "viewer/bake.h"
 
 namespace {
 
@@ -177,6 +178,41 @@ TEST_CASE("every pack in the corpus holds its invariants", "[corpus]") {
                     CHECK(reparsed.pathables[i].attributes.all()[a].value == model.pathables[i].attributes.all()[a].value);
                 }
             }
+
+            // ── The viewer's bake ─────────────────────────────────────────────
+            // Here rather than in mpe_viewer_test because loading the corpus is most of
+            // this case's time, and ctest runs every case in a process of its own: a sweep
+            // of its own would load every pack a second time.
+            const viewer::BakedPathables baked = viewer::bake(model);
+
+            // Every placeable POI and every trail, and nothing else.
+            size_t placeable = 0;
+            size_t trails = 0;
+            for (const pack::Pathable& pathable : model.pathables) {
+                viewer::MarkerTransform transform;
+                if (viewer::markerTransform(model, pathable, &transform)) ++placeable;
+                if (pathable.type == pack::PathableType::Trail) ++trails;
+            }
+            CHECK(baked.markers.size() == placeable);
+            CHECK(baked.trails.size() == trails);
+
+            // Two readings of inheritance would be two chances to disagree: each baked
+            // value is the effective one for its node. Sampled, because a reading that
+            // disagrees does so for a kind of node, not for one marker in sixteen, and every
+            // lookup walks the category chain.
+            constexpr size_t kSampleStride = 16;
+            size_t mismatches = 0;
+            for (size_t i = 0; i < baked.markers.size(); i += kSampleStride) {
+                const viewer::BakedMarker& marker = baked.markers[i];
+                const pack::Pathable& pathable = model.pathables[marker.pathable];
+                if (marker.category != pathable.category) ++mismatches;
+                if (marker.map_id != model.effectiveInt(pathable, "mapid")) ++mismatches;
+                if (marker.icon_size != model.effectiveFloat(pathable, "iconsize")) ++mismatches;
+                if (marker.fade_far != model.effectiveFloat(pathable, "fadefar")) ++mismatches;
+                const std::string* icon = model.effectiveValue(pathable, "iconfile");
+                if (marker.icon != (icon ? *icon : std::string())) ++mismatches;
+            }
+            CHECK(mismatches == 0);
         }
     }
 }

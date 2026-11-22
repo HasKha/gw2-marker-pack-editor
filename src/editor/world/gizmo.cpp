@@ -15,7 +15,7 @@
 #include "editor/editor_state.h"
 #include "editor/trail_edit.h"
 #include "editor/undo.h"
-#include "editor/world/renderer.h"
+#include "viewer/bake.h"
 
 namespace world::gizmo {
 
@@ -91,9 +91,10 @@ std::vector<Target> collectTargets(const editor::State& state) {
         if (node.kind != editor::NodeKind::Pathable) continue;
         if (node.index >= state.pack.pathables.size() || state.pack.pathables[node.index].grave.deleted) continue;
 
-        // The renderer's own resolution, so the handles land on the drawn icon.
-        renderer::MarkerTransform transform;
-        if (!renderer::markerTransform(state.pack, state.pack.pathables[node.index], &transform)) continue;
+        // The bake's own resolution, the one the renderer draws with, so the handles land
+        // on the drawn icon.
+        viewer::MarkerTransform transform;
+        if (!viewer::markerTransform(state.pack, state.pack.pathables[node.index], &transform)) continue;
 
         Target target;
         target.node = node;
