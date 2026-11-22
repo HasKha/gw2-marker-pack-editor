@@ -12,6 +12,9 @@ A pack is a zip (`.zip` or `.taco`) containing one or more `.xml` files plus res
 (`.png` icons, `.trl` trails). Nothing requires the xml files to be at the root, and
 nothing requires resources to live under `Data/`.
 
+**Zipped is the shipping format.** Blish HUD does not reliably load images from an
+unzipped folder, so a folder is something to author in, never what a pack ships as.
+
 **Resource paths are normalized before lookup.** TmfLib's `AsyncSafeZipArchive` does:
 
 ```

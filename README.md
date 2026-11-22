@@ -14,7 +14,7 @@ the pack is a zip again.
 1. Download `MarkerPackEditor.dll` from the
    [latest release](https://github.com/HasKha/gw2-marker-pack-editor/releases/latest).
 2. Drop it in `<Guild Wars 2>/addons/`.
-3. Enable it in Nexus
+3. Enable it in Nexus.
 
 ## Using it
 
@@ -28,12 +28,13 @@ Resources — each shown or hidden from the **View** menu.
 rebuilt beside itself and swapped in, keeping the previous file as `.bak`.
 Make backups before saving, the editor may change your formatting.
 
+## Contributing
+- Pull requests are welcome.
+
 ## Build
 
 ```bash
-mkdir build && cd build
-cmake ..
-cmake --build . --config Release
+cmake -S . -B build && cmake --build build --config Release
 ```
 
 The DLL lands in `bin/Release/`. For the IDE, `cmake --open build`.
@@ -44,19 +45,11 @@ The DLL lands in `bin/Release/`. For the IDE, `cmake --open build`.
 ctest --test-dir build -C Release --output-on-failure
 ```
 
-The pack layer is tested against real marker packs rather than fixtures — by default
-the ones in `<Documents>/Guild Wars 2/addons/blishhud/markers`. None of them ship with this
-repo, so point the suite at your own with `MPE_TEST_PACK_DIR` (and `MPE_TEST_FOLDER_PACK`
-for an unzipped pack). Tests whose pack is missing skip and say so; a corpus that is
-missing entirely fails, because a suite that silently tests nothing is worse than none.
+The pack layer is tested against real marker packs rather than fixtures, by default the ones in
+`<Documents>/Guild Wars 2/addons/blishhud/markers`. None of them ship with this repo; how to point the
+suite at your own is [docs/testing.md](docs/testing.md).
 
-`mpe_probe` is the companion tool: it loads a pack and prints what it found, what it could
-not parse, and what a save would change. Reach for it when the question is what a pack
-looks like rather than whether something is broken.
 
 ## Docs
 
-[plan.md](docs/plan.md) — roadmap and current state ·
-[architecture.md](docs/architecture.md) — how it is built and why ·
-[format.md](docs/format.md) — the marker pack format ·
-[references.md](docs/references.md) — where the format's ground truth lives
+Every doc in `docs/` is listed in [CLAUDE.md](CLAUDE.md#docs), with when to read it.

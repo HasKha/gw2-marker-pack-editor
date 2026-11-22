@@ -4,19 +4,25 @@ Roadmap and current state. Living document: update it in the same change that ma
 stale. It holds *what is left and in what order* — not how anything works.
 
 Sibling docs — keep this file free of their content:
-[architecture.md](architecture.md) (how it is built and why) ·
+[architecture.md](architecture.md) (how the editor is built and why) ·
+[viewer.md](viewer.md) (how the viewer is built and why) ·
 [format.md](format.md) (the marker pack format) ·
 [references.md](references.md) (where the ground truth lives)
 
 ## Goal
 
-A Nexus addon that opens a GW2 marker pack, shows its contents as an editable tree,
-draws every marker and trail in the world at its real position, lets you drag them
-around with a 3D gizmo, and writes the pack back out as a zip that Blish HUD and
-TaimiHUD can load.
+Two halves of one Nexus addon:
 
-Primary use is editing [`gw2-markers`](https://github.com/HasKha/gw2-markers), but
-nothing in the addon may be specific to that pack.
+- **The viewer** (planned — see [The viewer](#the-viewer)): loads every installed pack and
+  draws it into the game's frame through GoodRender, under the game's windows, with packs'
+  behaviors and Lua scripts working as they do in Blish HUD's Pathing. What most players run.
+- **The editor** (released): opens a GW2 marker pack, shows its contents as an editable
+  tree, draws every marker and trail in the world at its real position, lets you drag them
+  around with a 3D gizmo, and writes the pack back out as a zip that Blish HUD and TaimiHUD
+  can load. Off unless a player turns it on.
+
+Primary use of the editor is editing [`gw2-markers`](https://github.com/HasKha/gw2-markers),
+but nothing in the addon may be specific to that pack.
 
 ## Current state
 
@@ -41,56 +47,8 @@ it, save it back, and the edited markers show correctly in Blish HUD.**
 | Write | serializes the owned document; comments, order, spelling, BOM, CRLF and the file split survive. 947/947 files stable on rewrite |
 | Tests | `mpe_test`, 52 cases over the real pack corpus and the selection rules, run by `ctest` |
 
-A pack can be edited end to end, grown new branches, and started from nothing.
-
-Before touching the pack layer, run the tests:
-
-```
-ctest --test-dir build -C Release --output-on-failure
-```
-
-They assert what this table claims — every pack parses, the writer is stable, comments and
-BOM and CRLF survive, a save reopens as the same model — against the real packs rather than
-fixtures. Under two seconds, no game needed. See [Testing](#testing) below.
-
-`mpe_probe` is still there and is still the thing to reach for when the question is *what
-does this pack look like* rather than *is it broken*: it prints and lints, it does not
-assert. Every format claim in `format.md` was measured with it.
-
-```
-mpe_probe --save-test <scratch-dir> <pack.zip> <pack-folder>
-```
-
-### Test packs
-
-Whatever is in the corpus folder gets swept, but two shapes are the ones worth having
-there, and the claims above were measured against them:
-
-| Pack | Shape | Why |
-|---|---|---|
-| A hand-authored pack | ~80 entries, ten xml files at the root, `Data/`, comments throughout | the round-trip target — losing a comment here is a bug |
-| `hero.blish.pack.zip` | 1918 entries, 64 xml, 140 trl, 1375 png; `_markerCategories.xml` + `map<id>.xml` | large, popular, and already TmfLib `PackWriter` output — the scale and machine-generated case |
-
-Plus one pack as an **unzipped folder**, which must produce the same model as the zip built
-from it. That zip is built by the test rather than taken from the corpus: a checkout and a
-shipped archive of "the same" pack drift the moment either is edited, and the test would
-then be reporting the drift instead of the reader.
-
-### Testing
-
-`mpe_test` reads the packs in `<Documents>/Guild Wars 2/addons/blishhud/markers`, resolved
-at configure time. Nothing is checked into the repo: these are other people's packs, some
-of them hundreds of megabytes, and testing against what authors actually ship is the whole
-point. Point it elsewhere without reconfiguring:
-
-| Variable | What |
-|---|---|
-| `MPE_TEST_PACK_DIR` | folder of `.zip`/`.taco` packs |
-| `MPE_TEST_FOLDER_PACK` | an *unzipped* pack, to check a folder source matches its zip |
-
-Both exist as CMake cache variables too, for setting the default at configure time. A test
-whose pack is missing skips with a reason rather than failing; a corpus that is missing
-*entirely* fails, because a suite that silently tests nothing is worse than no suite.
+A pack can be edited end to end, grown new branches, and started from nothing. The test
+row's claims are measured against the corpus in [testing.md](testing.md).
 
 ---
 
@@ -125,14 +83,9 @@ Roughly in order.
   which is the one thing a local build cannot. The suite skips itself without a corpus, so
   it would run green and prove only that it links — worth having anyway.
 
-Watch out, for anything that adds to the pack:
-
-- `Pack` is move-only, and `Category` / `Pathable` are now move-only too, since a tombstone
-  owns a document. That is deliberate; do not "fix" it by adding copy constructors.
-- Anything new that mutates the pack needs an `undo::Step` around it and the matching
-  capture inside, or it will be the one edit Ctrl+Z cannot take back.
-- `State::pathables_by_category` and `category_hidden` are indexed by category, so a new
-  category has to grow them — `State::categoryAdded` is the one place that does.
+Anything that adds to the pack keeps [architecture.md's rules](architecture.md#rules):
+move-only nodes, an `undo::Step` around every edit, and new categories through
+`State::categoryAdded`.
 
 ### Known rough edges
 
@@ -177,7 +130,83 @@ editor, and undo/redo. What is left is not doubt about whether it works, but the
   those cells are subdivided and emitted like any other before ImGui's scissor throws them
   away. Correct, just wasteful; side planes would be four more of the same clip.
 
+## The viewer
+
+Nothing built yet. Each milestone ends in something that works and can ship; none leaves
+the editor broken in between. How each part works is [viewer.md](viewer.md).
+
+### 0. Split, with no change in behaviour
+
+- `src/` into `pack/`, `viewer/` and `editor/` as in [viewer.md](viewer.md#layout): three
+  static libraries and the DLL. `camera.*`, the texture half of `resources.*` and the
+  draw-list quad path move to `viewer/`; nothing else does yet.
+- `entry.cpp` gates the editor on the "Enable pack editing" setting, on for an install that
+  already has `settings.json`.
+- **Done when** `mpe_test` passes unchanged, `viewer/` builds without `editor/` in its include
+  path, and the editor is the same in game as before.
+
+### 1. Packs drawn, no scripts
+
+- The registry: both pack folders, loading on a worker, the merged category tree.
+- The bake and the live map; the scene; the GoodRender sink beside the overlay fallback.
+- Markers (billboard, rotated, min/max size, the fades as per-quad alpha) and trails
+  (strips, `animspeed`).
+- A category menu with toggles, persisted.
+- **Done when** the bake tests pass over the corpus, and in one pull Hero's pack and
+  `gw2-markers` draw under an open window, hidden behind a wall, matching Pathing in Blish
+  HUD at the same spot.
+
+### 2. Lua
+
+- The state, the sandbox, the call-style shim, the census.
+- The API table, filled in order of what the census reports most, starting from the table in
+  [viewer.md](viewer.md#the-census): `World`, `Mumble`, `I`, marker and trail members,
+  `Event:OnTick`, `Storage`, `Debug`, `Menu`, `User.SetClipboard`.
+- The script console: messages, errors with file and line, per-pack frame time.
+- **Done when** every corpus script loads and ticks without an error offline, and the census
+  is empty for Hero's pack and Teh's Trails.
+
+### 3. Behaviors and interaction
+
+- Every filter and modifier except achievement and raid, each with its tests.
+- Behavior state across sessions; interaction (info, toggle, copy), with Pathing's clipboard
+  consent setting.
+- **First beta here**: local packs, scripts and behaviors all working.
+
+### 4. Maps and screen
+
+- The minimap and the full map, the compass, info text, tooltips, Pathing's map settings.
+
+### 5. The catalog
+
+- List, install and update from the public catalog, into our own folder.
+- **First public release here.**
+
+### 6. Edit from the viewer
+
+- The Edit button: close the source, hand the pack to the editor, draw it from the live
+  model, pause its scripts, give it back on save. A catalog pack is copied first.
+- The editor's own renderer is retired: its overlays draw through the viewer's hook.
+
+### 7. Later
+
+- Achievement and raid filters, once the API key question is settled.
+- Pathing's per-pixel fades, with a shader of our own, if the per-quad version shows.
+
 ## Open questions
 
-None open. The last one — tombstone or erase — was settled by building it: tombstones, for
-the reasons in [architecture.md](architecture.md).
+- **The addon's name**, and whether the repo is renamed to match. The signature stays either
+  way; whether Nexus's GitHub update check follows a renamed repo needs checking first.
+- **Where a GW2 API key comes from** for the achievement and raid filters. Nexus has no
+  provider of its own.
+- **How the viewer hears the interact key.** Nexus's game binds can press a bind and say
+  whether it is bound, not which key it is.
+- **Whether `world_quad` samples with wrap.** A trail texture repeats along its length; with
+  clamping, every repeat has to be its own quad.
+- **Whether the full map counts as a window** at `BEFORE_WINDOWS`, i.e. whether markers drawn
+  there land over it or under it. One pull answers it.
+- **Texture memory with every pack loaded.** Nexus never releases a texture, which was fine
+  for one pack; with all of them, a long session accumulates every icon it has seen.
+
+The editor has none open. Its last one — tombstone or erase — was settled by building it:
+tombstones, for the reasons in [architecture.md](architecture.md).

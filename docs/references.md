@@ -39,6 +39,27 @@ Useful files within them:
 | A hand-authored pack to test against | `github.com/HasKha/gw2-markers` — `scripts/trltools.py` corroborates the TRL layout, `scripts/shared.py` is the spec for the shape tools |
 | Addon templates this project was seeded from | `github.com/HasKha/VfxDenoiser`, `github.com/HasKha/gw2-oops-wrong-template` |
 | GW2TacO — the original implementation the defaults trace back to | `github.com/BoyC/GW2TacO`, `gw2tactical.h` |
+| GoodRender — the service the viewer draws through | `github.com/HasKha/gw2-good-render` — `include/good_render.h` is the whole contract |
+
+## For the viewer
+
+Pathing is the behaviour the viewer copies. The files that define it, beyond the rendering
+ones above:
+
+| What | Where in `Pathing/` |
+|---|---|
+| The Lua environment and its sandbox | `Scripting/PathingGlobal.cs`, `Scripting/ScriptEngine.cs`, `Scripting/Lib/Std/LuaLibraryOS.cs` |
+| The Lua API | `Scripting/Lib/*.cs`, `Scripting/Extensions/*ScriptExtensions.cs` |
+| When scripts reset, how packs merge, per-map loading | `PackInitiator.cs` (`LoadMapFromEachPack`), `SharedPackCollection.cs` |
+| Behaviors | `Behavior/StandardPathableBehavior.cs`, `Behavior/Filter/`, `Behavior/Modifier/` |
+| Persisted state | `State/KvStates.cs` (script `Storage`), `State/BehaviorStates.cs`, `State/CategoryStates.cs` |
+| Opacity, size and fade rules | `Entity/StandardMarker.World.cs` (`GetOpacity`, min/max size), `Entity/StandardTrail.World.cs` |
+| Minimap and full map | `Entity/MapProjection.cs`, `Entity/StandardMarker.MiniMap.cs`, `UI/Controls/FlatMap.cs` |
+| Settings players expect | `ModuleSettings.cs` |
+| The pack catalog | `MarkerPackRepo/MarkerPackRepo.cs`, `MarkerPackRepo/MarkerPackPkg.cs` |
+
+The Lua corpus is the scripts inside the test packs, Hero's pack above all; see
+[viewer.md](viewer.md#the-census).
 
 ## Fetched dependencies
 

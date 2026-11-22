@@ -1,14 +1,58 @@
 # Architecture
 
-How the addon is built and why. For the pack format itself see [format.md](format.md);
-for what is done and what is next see [plan.md](plan.md).
+How the editor is built and why. For the pack format itself see [format.md](format.md);
+for what is done and what is next see [plan.md](plan.md); for how code is written,
+[code_style.md](code_style.md).
+
+The addon is becoming two halves in one DLL: a viewer that every player runs, and this
+editor behind a setting. The viewer, and the split of `src/` into `pack/`, `viewer/` and
+`editor/` with the dependency running one way, are [viewer.md](viewer.md). Until that split
+lands, what follows describes the addon as it is.
+
+## Rules
+
+The invariants every change keeps. The sections below are why.
+
+- **`mpe_pack` knows nothing of Nexus, imgui or the game.** `src/pack/` links only pugixml,
+  miniz and glm, which is what lets the whole format be tested offline. Never add an addon
+  header to it.
+- **An attribute is defined once, in the attribute table.** Parsing, serialization, the
+  property form and the resources window's reference counts are all generated from it; an
+  attribute named anywhere else is a second definition. See
+  [The attribute table](#the-attribute-table-is-the-core-abstraction).
+- **Never block the render thread.** Anything modal or slow — native file dialogs today, pack
+  loading later — runs on a worker and is polled from `render()`.
+- **One pack open at a time.** The loaded pack is the single source of truth in memory; the
+  zip on disk is touched only on open and on save.
+- **The parsed XML document is the storage.** `Pack` owns a `pugi::xml_document` per file for
+  its whole lifetime; the model indexes into it, saving serializes it, and adding or removing a
+  marker is a node insert or erase. `Pack` is move-only as a result, and so are `Category` and
+  `Pathable`, since a tombstone owns a document: never "fix" that with a copy constructor.
+- **Nothing a pack author wrote is dropped on save** — no unknown attribute, no comment.
+  Whitespace is the one thing given up: a pack reformats once, on its first save. See
+  [Saving serializes](#saving-serializes-it-does-not-diff).
+- **Every edit is an `undo::Step`** with the matching capture inside, or it is the one edit
+  Ctrl+Z cannot take back. See [Undo](#undo-records-images-not-inverses).
+- **Nothing is erased from `Pack::categories` or `Pack::pathables`**, and nothing is inserted
+  into their middle: delete tombstones, add appends. Every index into them stays valid. A new
+  category also grows the per-category indexes, through `State::categoryAdded` alone.
+- **World rendering is ImGui draw lists**, not a pipeline of our own. See
+  [Rendering](#rendering).
+- **Each module is a `snake_case` namespace** with a matching `.h`/`.cpp` pair, and its header
+  exposes only what other modules need.
+- **`src/entry.cpp` stays minimal**: it fills in the `AddonDefinition`, resolves the DataLink
+  pointers and hands them to `marker_editor::load()`. No feature logic, no globals beyond
+  `AddonDef` and `hSelf`. **Its flags never include `EAddonFlags_IsVolatile`**, which is for
+  addons that hook the game: Nexus refuses to load a volatile addon once the game build is
+  more than 350 past the one it last recorded, until the player re-enables it by hand
+  (`IsVolatileDisabled` in Nexus's `Host/Addons/Addon.cpp`).
+- **Every dependency comes in through FetchContent**, one `cmake/<dep>.cmake` each, pinned to a
+  tag or commit. Nothing is vendored into `src/`.
 
 ## Decisions
 
 | Decision | Choice | Why |
 |---|---|---|
-| Formatting | VfxDenoiser's `.clang-format` verbatim | 4 spaces, no tabs, 140 col; enforceable |
-| Naming | VfxDenoiser style | snake_case files/namespaces, camelCase functions, PascalCase types |
 | Dependencies | FetchContent only, one `cmake/*.cmake` per dep | nothing vendored into `src/` |
 | entry.cpp | oops-wrong-template's minimal form | no globals beyond `AddonDef`/`hSelf`, no feature logic |
 | World rendering | ImGui draw list + hand-built matrices | see [Rendering](#rendering) |
@@ -47,30 +91,7 @@ Five, because the pack layer is worth keeping testable outside the game:
 | `mpe_test` | console exe | `test/*_test.cpp` — the assertions, under Catch2. Links `mpe_pack` |
 | `mpe_probe` | console exe | `test/pack_probe.cpp` — the harness that prints. Links `mpe_pack` |
 
-**The two test targets do different jobs and both are worth having.** `mpe_test` answers
-*is it broken* and fails a build; `mpe_probe` answers *what does this pack look like* and
-prints — its lint, its byte-offset anchoring report and its round-trip diffs are how a
-format question gets settled in the first place. Turning the probe into assertions would
-throw that away, and turning the tests into printf would put us back to reading nine blocks
-of numbers and remembering what they were last time.
-
-Run the tests after any change to `src/pack/`:
-
-```
-ctest --test-dir build -C Release --output-on-failure
-```
-
-### What the tests are pointed at
-
-Real packs, not fixtures. The corpus is the nine packs in the Blish HUD markers folder plus
-the `gw2-markers` checkout as a folder source — 947 XML files, 3,863 entries in the largest
-archive, comments and BOMs and CRLFs and mixed-case paths that no synthetic file would
-think to contain. None of it is in the repo; `mpe_corpus` resolves the location and both
-`MPE_TEST_PACK_DIR` and `MPE_TEST_FOLDER_PACK` override it. See [plan.md](plan.md#testing).
-
-The trade is that the suite needs those packs present. A missing individual pack skips with
-a reason; a missing corpus fails outright, because a green run that tested nothing is the
-one outcome worse than a red one.
+Why there are two test targets, and what they are pointed at, is [testing.md](testing.md).
 
 ## Module layout
 
