@@ -104,11 +104,16 @@ What goes where, through GoodRender:
 
 | What | How | Moment |
 |---|---|---|
-| a marker, billboarded | `world_billboard`, its half sizes in metres from min/max size at its distance | `WORLD_FINISHED` |
+| a marker, billboarded | `world_quad`, corners from `Camera::billboardQuad` at the size min/max size allow under the moment's camera | `WORLD_FINISHED` |
 | a marker with `rotate` | `world_quad`, corners from the same transform the editor's gizmo uses | `WORLD_FINISHED` |
-| a trail | `world_quad` strips; `animspeed` scrolls the uvs | `WORLD_FINISHED` |
+| a trail | `world_quad`, one per quad of `viewer/ribbon.*`'s strip; `animspeed` scrolls the uvs | `WORLD_FINISHED` |
 | info text, the interact icon, tooltips, the compass | `draw_list` | `BEFORE_WINDOWS` |
 | the minimap and the full map | `draw_list`, projected from MumbleLink's map fields | `BEFORE_WINDOWS` |
+
+**Billboards do not use `world_billboard`.** Blish's billboard faces the ray to its own centre,
+not the camera's plane, and its size is clamped on its projected corners; GoodRender's call
+takes a centre and half sizes and faces it its own way. Building the corners ourselves keeps
+both sinks drawing the one shape `itemCorners` in `scene.*` gives them.
 
 `BEFORE_WINDOWS` is the point of all of it: over the game's HUD and nameplates, under its
 windows and tooltips. `world_quad` does the occlusion: each pixel is hidden behind what the
@@ -124,9 +129,14 @@ the one thing that would take us off `world_quad`; it is a late milestone, and o
 approximation shows.
 
 **Without the service**, the same scene goes through `render/overlay.*` at
-`ERenderType_Render`, projected with `camera.*`, over everything the way the editor draws
-today. That is also how the addon starts: the GoodRender sink is added beside a fallback
-that already works.
+`ERenderType_Render`, projected with `camera.*`, over everything the way the editor draws.
+Only on a frame no moment drew: every moment of a frame comes before its Present, so the
+moment sets a flag and the Nexus render takes it (`good_render_sink::takeDrawn`). A loading
+screen, the full map, or no service at all, and the overlay draws.
+
+**A marker without its icon is not drawn**, as Pathing draws nothing without a texture —
+including while the icon waits for its turn in the load budget. The editor draws a dot
+instead, so that a missing icon can be found.
 
 **Picking comes from the sink.** The sink projects each marker once, for min/max size, and
 keeps those screen rectangles for the frame; hit tests read them. The editor's rule — what
@@ -213,6 +223,14 @@ the viewer hears it is open too.
 - **A pack from the catalog is never edited in place**: the next update would overwrite the
   edits. Edit offers a personal copy instead.
 
+## Packs across packs
+
+The category tree is merged across packs; **attributes are not**. A marker inherits only from
+its own pack's declarations of its categories, where Pathing inherits from every pack's,
+since all of them land in one `PathingCategory`. No pack in the corpus has been seen relying on
+it. If one does, the bake has to resolve against the merged tree instead, which means the
+bake moves after the merge.
+
 ## The editor inside
 
 - **A setting, "Enable pack editing", off by default.** It starts on for an install that
@@ -232,6 +250,10 @@ the viewer hears it is open too.
 - **Scripts of the pack being edited are paused** by default. A script that moves markers
   would fight the gizmo; a toggle in the editor turns them back on.
 - **Save** writes the zip as today, and the pack goes back to the registry as a normal one.
+- **Before the Edit button**, the editor reports the pack it has open through
+  `viewer::setEditedPack` every frame. The viewer drops that pack and closes its file — the
+  save's rename needs it closed — and reads it again once the editor lets go, if it was one of
+  the installed packs. Meanwhile the editor draws it with its own renderer.
 
 A gizmo drag is a revision every frame, and baking a 55k-marker pack every frame would hitch.
 The live bake starts with the current map only; the undo records already name what each edit

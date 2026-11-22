@@ -13,6 +13,7 @@ Settings load(const std::filesystem::path& folder) {
 
     if (const std::optional<nlohmann::json> parsed = json_file::readObject(folder / FILE_NAME)) {
         settings.enable_editing = json_file::readBool(*parsed, "enable_editing", settings.enable_editing);
+        settings.read_blish_folder = json_file::readBool(*parsed, "read_blish_folder", settings.read_blish_folder);
     }
     return settings;
 }
@@ -22,6 +23,7 @@ bool save(const std::filesystem::path& folder, const Settings& settings) {
 
     nlohmann::json out;
     out["enable_editing"] = settings.enable_editing;
+    out["read_blish_folder"] = settings.read_blish_folder;
     return json_file::write(folder / FILE_NAME, out);
 }
 

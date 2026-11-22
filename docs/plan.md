@@ -46,7 +46,7 @@ it, save it back, and the edited markers show correctly in Blish HUD.**
 | Settings | the Settings toggles, gizmo mode, which windows are open and where the browsers start, kept in `settings.json` |
 | Create pack | `New Pack...` builds an empty pack in memory; Save As writes the first zip |
 | Write | serializes the owned document; comments, order, spelling, BOM, CRLF and the file split survive. 947/947 files stable on rewrite |
-| Tests | `mpe_test`, 44 cases over the real pack corpus, the selection rules and the trail editing layer; `mpe_viewer_test`, 32 over the camera, the draw-list quad path, the texture cache and the viewer's settings; and a check that nothing in `src/viewer/` includes the editor. All run by `ctest` |
+| Tests | `mpe_test`, 44 cases over the real pack corpus, the selection rules and the trail editing layer; `mpe_viewer_test`, 66 over the camera, the quad path, textures, settings, the bake, the registry, the ribbon, the scene and the GoodRender sink; and a check that nothing in `src/viewer/` includes the editor. All run by `ctest` |
 
 A pack can be edited end to end, grown new branches, and started from nothing. The test
 row's claims are measured against the corpus in [testing.md](testing.md).
@@ -159,16 +159,27 @@ options page show "Enable pack editing" ticked above the editor's window checkbo
 the editor open, draw and save a pack as 1.6 did? Then untick, reload the addon, and check
 the editor's windows, keybinds and Quick Access entry are all gone.
 
-### 1. Packs drawn, no scripts
+### 1. Packs drawn, no scripts — done offline
 
-- The registry: both pack folders, loading on a worker, the merged category tree.
-- The bake and the live map; the scene; the GoodRender sink beside the overlay fallback.
-- Markers (billboard, rotated, min/max size, the fades as per-quad alpha) and trails
-  (strips, `animspeed`).
-- A category menu with toggles, persisted.
-- **Done when** the bake tests pass over the corpus, and in one pull Hero's pack and
-  `gw2-markers` draw under an open window, hidden behind a wall, matching Pathing in Blish
-  HUD at the same spot.
+Built: the registry (our `packs` folder and Blish HUD's, discovered as Pathing does, loaded on
+a worker, categories merged); the bake, the live map and the scene; the GoodRender sink beside
+the overlay fallback; billboards, rotated markers, min/max size, fades as per-quad alpha;
+trails as Pathing's strip with `animspeed`; the Markers window with toggles kept in
+`categories.json`. The editor hands the pack it has open over and gets it back through
+`viewer::setEditedPack`. The bake is checked over the whole corpus, and the scene through a
+recording moment.
+
+**Left: one pull in game**, deciding these in advance:
+- With GoodRender loaded: do Hero's pack and `gw2-markers` draw under an open window and
+  hidden behind a wall, matching Blish HUD at the same spot — size, tint, fade, and an arrowed
+  trail pointing the same way?
+- Without it: do they draw over everything, the editor's way?
+- With editing on: open a pack from the Blish HUD folder, save it, close it — does the save
+  succeed, and does the pack come back in the viewer?
+
+Not in it, and not needed for the pull: Pathing's view distance, marker scale, max opacity and
+combat fade settings, which come with the rest of Pathing's settings in milestone 4. Nor
+inheritance across packs — see [viewer.md](viewer.md#packs-across-packs).
 
 ### 2. Lua
 
@@ -216,7 +227,8 @@ the editor's windows, keybinds and Quick Access entry are all gone.
 - **How the viewer hears the interact key.** Nexus's game binds can press a bind and say
   whether it is bound, not which key it is.
 - **Whether `world_quad` samples with wrap.** A trail texture repeats along its length; with
-  clamping, every repeat has to be its own quad.
+  clamping, every repeat has to be its own quad. The ribbon keeps each quad's v near zero
+  either way, and one look at a long trail segment in the pull answers it.
 - **Whether the full map counts as a window** at `BEFORE_WINDOWS`, i.e. whether markers drawn
   there land over it or under it. One pull answers it.
 - **Texture memory with every pack loaded.** Nexus never releases a texture, which was fine

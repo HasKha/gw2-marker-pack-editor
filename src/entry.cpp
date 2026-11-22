@@ -50,7 +50,7 @@ void AddonLoad(AddonAPI* aApi) {
     // viewer::fromMumble.
     Mumble::Data* mumble_link = (Mumble::Data*)aApi->DataLink.Get("DL_MUMBLE_LINK");
 
-    viewer::load(aApi);
+    viewer::load(aApi, mumble_link);
 
     // Off means inert: with editing disabled the editor registers nothing at all.
     if (viewer::editingEnabled()) {

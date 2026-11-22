@@ -172,4 +172,15 @@ void drawTexturedQuad(
     list->PopTextureID();
 }
 
+void drawScene(ImDrawList* list, const Camera& camera, const Scene& scene) {
+    for (const SceneItem& item : scene.items) {
+        glm::vec3 corners[4];
+        const ImVec2* uv = nullptr;
+        ClippedQuad quad;
+        if (itemCorners(camera, item, corners, &uv) && clipAndProject(camera, corners, &quad)) {
+            drawTexturedQuad(list, camera, item.texture, quad, uv, item.colour);
+        }
+    }
+}
+
 } // namespace viewer::overlay

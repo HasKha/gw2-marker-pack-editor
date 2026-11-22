@@ -6,6 +6,7 @@
 #include <glm/vec3.hpp>
 
 #include "viewer/camera.h"
+#include "viewer/scene.h"
 
 // World-space quads drawn into an ImGui draw list: the sink used when GoodRender is not
 // served, and how the editor draws the world.
@@ -53,5 +54,10 @@ void drawTexturedQuad(
     const ClippedQuad& quad,
     const ImVec2 uv[4],
     ImU32 colour);
+
+// Draws `scene` into `list`, projected with `camera`, in the scene's order: the sink used when
+// no GoodRender service draws the frame. Over everything, the game's windows included, and
+// hidden behind nothing — a draw list has no depth.
+void drawScene(ImDrawList* list, const Camera& camera, const Scene& scene);
 
 } // namespace viewer::overlay

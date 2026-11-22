@@ -936,6 +936,8 @@ void render() {
 
     resources::beginFrame();
     undo::beginFrame();
+    // The viewer lets go of the pack open here, so it is drawn once and a save can replace it.
+    viewer::setEditedPack(open_pack_path);
     // Compares and writes only when something moved, so this is free on almost every frame.
     settings::update(state.settings, last_folder, last_image_folder);
 

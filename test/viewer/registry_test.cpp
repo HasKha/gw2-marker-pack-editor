@@ -119,7 +119,8 @@ TEST_CASE("the loader hands over every pack it was given", "[registry]") {
     writeFile(temp / "two" / "b.xml", R"(<OverlayData><MarkerCategory name="b"/></OverlayData>)");
 
     viewer::registry::Loader loader;
-    loader.start({temp / "one", temp / "two", temp / "missing"});
+    loader.add({temp / "one", temp / "two"});
+    loader.add({temp / "missing"});
 
     std::vector<std::unique_ptr<viewer::registry::LoadedPack>> taken;
     for (int waited_ms = 0; loader.busy() && waited_ms < 5000; waited_ms += 5) {
@@ -133,4 +134,24 @@ TEST_CASE("the loader hands over every pack it was given", "[registry]") {
     CHECK(taken[1]->categories.size() == 1);
     CHECK_FALSE(taken[2]->error.empty());
     CHECK_FALSE(loader.busy());
+}
+
+TEST_CASE("a stopped loader drops what it had and takes more", "[registry]") {
+    const corpus::TempDir temp("registry_loader_stop");
+    writeFile(temp / "one" / "a.xml", R"(<OverlayData><MarkerCategory name="a"/></OverlayData>)");
+
+    viewer::registry::Loader loader;
+    loader.add({temp / "one", temp / "one", temp / "one"});
+    loader.stop();
+    CHECK_FALSE(loader.busy());
+    CHECK(loader.take() == nullptr);
+
+    loader.add({temp / "one"});
+    std::unique_ptr<viewer::registry::LoadedPack> taken;
+    for (int waited_ms = 0; !taken && waited_ms < 5000; waited_ms += 5) {
+        taken = loader.take();
+        if (!taken) std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    REQUIRE(taken != nullptr);
+    CHECK(taken->error.empty());
 }

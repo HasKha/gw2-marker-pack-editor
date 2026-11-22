@@ -75,8 +75,10 @@ reader.
 
 `mpe_viewer_test`, from `test/viewer/`, links `mpe_viewer` and nothing of the editor; ctest runs it with
 the rest. A viewer test that needs an editor header does not compile, which is the point. Nothing in it
-needs a device: the quad path draws into a real `ImDrawList` made from a bare ImGui context, and the
-texture cache runs against an `AddonAPI` whose one texture function is a fake. `test/viewer/test_camera.h`
+needs a device: the quad path draws into a real `ImDrawList` made from a bare ImGui context, the texture
+cache runs against an `AddonAPI` whose one texture function is a fake, and the GoodRender sink submits to
+a moment whose `world_quad` records what it is handed. Rules get a small pack written to a temp folder;
+the pipeline as a whole gets `haskha_markers.zip`, loaded through the registry and built into a scene. `test/viewer/test_camera.h`
 is the camera whose projections can be written by hand, for any test that projects.
 
 ## Above the pack layer

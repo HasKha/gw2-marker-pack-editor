@@ -49,6 +49,13 @@ std::vector<std::filesystem::path> discoverPacks(const std::filesystem::path& fo
     return archives;
 }
 
+bool samePack(const std::filesystem::path& a, const std::filesystem::path& b) {
+    if (a.empty() || b.empty()) return false;
+    std::error_code ec;
+    // equivalent() needs both to exist; a pack deleted from disk is still the same path.
+    return std::filesystem::equivalent(a, b, ec) || a.lexically_normal() == b.lexically_normal();
+}
+
 LoadedPack loadPack(const std::filesystem::path& path) {
     LoadedPack loaded;
     loaded.path = path;
@@ -126,28 +133,46 @@ Loader::~Loader() {
     stop();
 }
 
-void Loader::start(std::vector<std::filesystem::path> paths) {
-    stop();
-    stopping_ = false;
-    remaining_ = paths.size();
+void Loader::add(std::vector<std::filesystem::path> paths) {
+    {
+        const std::lock_guard<std::mutex> lock(mutex_);
+        for (std::filesystem::path& path : paths) queued_.push_back(std::move(path));
+        stopping_ = false;
+    }
+    wake_.notify_one();
 
-    worker_ = std::thread([this, paths = std::move(paths)] {
-        for (const std::filesystem::path& path : paths) {
-            if (stopping_) break;
+    if (worker_.joinable()) return;
+    worker_ = std::thread([this] {
+        std::unique_lock<std::mutex> lock(mutex_);
+        while (true) {
+            wake_.wait(lock, [this] { return stopping_ || !queued_.empty(); });
+            if (stopping_) return;
+
+            const std::filesystem::path path = std::move(queued_.front());
+            queued_.pop_front();
+            ++loading_;
+
+            // Unlocked while it reads, which is seconds for a large pack: take() and add()
+            // are called every frame and must not wait for it.
+            lock.unlock();
             auto loaded = std::make_unique<LoadedPack>(loadPack(path));
-            const std::lock_guard<std::mutex> lock(mutex_);
-            done_.push_back(std::move(loaded));
+            lock.lock();
+
+            --loading_;
+            if (!stopping_) done_.push_back(std::move(loaded));
         }
     });
 }
 
 void Loader::stop() {
-    stopping_ = true;
+    {
+        const std::lock_guard<std::mutex> lock(mutex_);
+        stopping_ = true;
+        queued_.clear();
+        done_.clear();
+    }
+    wake_.notify_one();
     if (worker_.joinable()) worker_.join();
-
-    const std::lock_guard<std::mutex> lock(mutex_);
-    done_.clear();
-    remaining_ = 0;
 }
 
 std::unique_ptr<LoadedPack> Loader::take() {
@@ -156,12 +181,12 @@ std::unique_ptr<LoadedPack> Loader::take() {
 
     std::unique_ptr<LoadedPack> next = std::move(done_.front());
     done_.pop_front();
-    --remaining_;
     return next;
 }
 
 bool Loader::busy() const {
-    return remaining_ > 0;
+    const std::lock_guard<std::mutex> lock(mutex_);
+    return !queued_.empty() || loading_ > 0 || !done_.empty();
 }
 
 } // namespace viewer::registry

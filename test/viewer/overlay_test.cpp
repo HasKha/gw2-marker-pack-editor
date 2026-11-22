@@ -8,8 +8,8 @@
 
 #include <cmath>
 
-#include "viewer/test_camera.h"
 #include "viewer/render/overlay.h"
+#include "viewer/test_camera.h"
 
 namespace {
 

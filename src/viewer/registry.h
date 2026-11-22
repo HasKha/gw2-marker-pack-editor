@@ -1,6 +1,6 @@
 #pragma once
 
-#include <atomic>
+#include <condition_variable>
 #include <deque>
 #include <filesystem>
 #include <memory>
@@ -28,6 +28,10 @@ std::filesystem::path blishMarkersFolder();
 // pack with nothing in it. Sorted, so packs load — and override one another's category
 // names — in the same order every time.
 std::vector<std::filesystem::path> discoverPacks(const std::filesystem::path& folder);
+
+// Whether two paths name the same pack: the same file or folder however spelled, or — when
+// one is gone from disk — the same path once normalized. Never for an empty path.
+bool samePack(const std::filesystem::path& a, const std::filesystem::path& b);
 
 // One pack, read and baked, with its XML dropped: everything the viewer needs and none of
 // the parsed documents, which for a large pack are most of its memory.
@@ -89,25 +93,28 @@ public:
     Loader(const Loader&) = delete;
     Loader& operator=(const Loader&) = delete;
 
-    // Starts loading `paths`, in order. A load still running is stopped first.
-    void start(std::vector<std::filesystem::path> paths);
+    // Queues `paths` behind whatever is queued already, starting the worker if it is not
+    // running.
+    void add(std::vector<std::filesystem::path> paths);
 
-    // Stops after the pack being read and waits for it. Called from unload, so a large pack
-    // mid-read is the longest this can block.
+    // Drops everything queued or finished and not taken, stops after the pack being read, and
+    // waits for it. A large pack mid-read is the longest this blocks.
     void stop();
 
     // A finished pack, or nothing. Poll once a frame.
     std::unique_ptr<LoadedPack> take();
 
-    // True until every pack handed to start() has been read and taken.
+    // True until every pack handed to add() has been read and taken.
     bool busy() const;
 
 private:
     std::thread worker_;
-    std::atomic<bool> stopping_{false};
-    std::atomic<size_t> remaining_{0};
 
     mutable std::mutex mutex_;
+    std::condition_variable wake_;
+    bool stopping_ = false;
+    std::deque<std::filesystem::path> queued_;
+    size_t loading_ = 0;
     std::deque<std::unique_ptr<LoadedPack>> done_;
 };
 

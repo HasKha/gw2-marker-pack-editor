@@ -18,6 +18,13 @@ the pack is a zip again.
 
 ## Using it
 
+Every pack in `<Guild Wars 2>/addons/MarkerPackEditor/packs/` is drawn in the world, and so is
+every pack in Blish HUD's markers folder unless **Read Blish HUD's packs** is turned off in
+the addon's options — turn it off while Blish HUD is running, or every marker shows twice.
+**Markers**, in the Nexus menu or on a keybind you set, turns categories on and off. With
+[GoodRender](https://github.com/HasKha/gw2-good-render) loaded, markers draw under the game's
+windows and hide behind walls; without it they draw over everything.
+
 Editing is off on a fresh install. Turn on **Enable pack editing** in the addon's options in
 Nexus, then reload the addon; an install that already had the editor keeps it on.
 

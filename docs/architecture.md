@@ -34,6 +34,9 @@ The invariants every change keeps. The sections below are why.
   [Saving serializes](#saving-serializes-it-does-not-diff).
 - **Every edit is an `undo::Step`** with the matching capture inside, or it is the one edit
   Ctrl+Z cannot take back. See [Undo](#undo-records-images-not-inverses).
+- **The editor reports its open pack to the viewer every frame**, through
+  `viewer::setEditedPack` in `marker_editor::render`. The viewer would otherwise keep the zip
+  open, and a save renames over it.
 - **Nothing is erased from `Pack::categories` or `Pack::pathables`**, and nothing is inserted
   into their middle: delete tombstones, add appends. Every index into them stays valid. A new
   category also grows the per-category indexes, through `State::categoryAdded` alone.

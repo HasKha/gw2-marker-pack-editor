@@ -15,6 +15,11 @@ struct Settings {
     // Whether the editor loads at all. Off, it is inert: no windows, keybinds, Quick Access
     // entry or WndProc handling.
     bool enable_editing = false;
+
+    // Whether Blish HUD's markers folder is read as well as our own. On, so a player coming
+    // over from Blish HUD keeps their packs without copying anything; off for one still
+    // running Blish HUD, who would otherwise see every marker twice.
+    bool read_blish_folder = true;
 };
 
 // Reads the settings in `folder`. Anything missing keeps its default — except

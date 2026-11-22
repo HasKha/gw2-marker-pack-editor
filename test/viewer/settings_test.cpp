@@ -54,6 +54,16 @@ TEST_CASE("a broken settings file leaves the defaults standing", "[viewer][setti
     CHECK(viewer::settings::load(temp.path()).enable_editing);
 }
 
+TEST_CASE("the Blish HUD folder is read unless it was turned off", "[viewer][settings]") {
+    const corpus::TempDir temp("settings_blish");
+    CHECK(viewer::settings::load(temp.path()).read_blish_folder);
+
+    viewer::settings::Settings settings;
+    settings.read_blish_folder = false;
+    REQUIRE(viewer::settings::save(temp.path(), settings));
+    CHECK_FALSE(viewer::settings::load(temp.path()).read_blish_folder);
+}
+
 TEST_CASE("no folder means nothing is read and nothing is written", "[viewer][settings]") {
     CHECK_FALSE(viewer::settings::load({}).enable_editing);
     CHECK_FALSE(viewer::settings::save({}, viewer::settings::Settings{true}));
