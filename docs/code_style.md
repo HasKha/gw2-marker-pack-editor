@@ -20,7 +20,7 @@ touch. It is not on PATH; it ships with Visual Studio at
 
 **`""` for this repo's headers, `<>` for everything else** — the standard library, Windows, and every
 dependency, imgui and Nexus included. Ours is written from `src/`, never relative to the file:
-`"pack/model.h"`, `"editor/world/camera.h"`.
+`"pack/model.h"`, `"viewer/camera.h"`.
 
 **Name a function for what it does**: the operation and its subject, `countByType()`, not `judgeTypes()`. No
 `judge`, `evaluate`, `process`, `handle`, `manage` — they name a category, not an action. A name that will
@@ -33,7 +33,7 @@ is narrating.
 
 **A fact lives beside what it is about.** A field's meaning, how a number was found, what was seen in game
 or in a pack, why the obvious way does not work: a comment on the thing itself, however long it takes —
-as `cmake/imguizmo.cmake` explains why ImGuizmo is built from one file, and `world::fromMumble` why it never
+as `cmake/imguizmo.cmake` explains why ImGuizmo is built from one file, and `viewer::fromMumble` why it never
 takes Nexus's width and height. `docs/` holds processes and how-tos, and points here rather than repeating.
 **A comment on a number says where it came from and what bounds it, never the figures that follow from
 it**, so tuning the number never leaves the comment wrong.
@@ -50,7 +50,7 @@ block under a comment saying what it does.
 - **A number used in one place is named there**: a `constexpr` local in that block, under the comment
   that says what it means, edited in place — never a bare literal, never a header constant. What one
   file's functions share goes at the top of the .cpp; what another file needs goes in the header, as
-  the subdivision cap is in `editor/world/camera.h`.
+  the subdivision cap is in `viewer/camera.h`.
 - **Positive conditions**: `if (x) {…} else {…}`, not `if (!x) {…} else {…}`; `if (const T* p = find())`
   rather than a null check that returns.
 - **No early returns where a branch does the job**, and the same for `continue` in a loop. Keep one only

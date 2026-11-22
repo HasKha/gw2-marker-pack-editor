@@ -2,10 +2,10 @@
 
 #include <nlohmann/json.hpp>
 
-#include <fstream>
-
-#include "editor/marker_editor.h"
 #include "editor/ui/windows.h"
+#include "viewer/json_file.h"
+#include "viewer/settings.h"
+#include "viewer/viewer.h"
 
 namespace settings {
 
@@ -33,24 +33,6 @@ Snapshot written;
 
 ui::windows::Id windowId(size_t index) {
     return static_cast<ui::windows::Id>(index);
-}
-
-// nlohmann's value() throws when the key is there with the wrong type, and settings.json is
-// exactly the kind of file that gets hand-edited or half-written. A bad value should leave
-// the default standing, not take the addon down from inside the render callback.
-bool readBool(const nlohmann::json& object, const char* key, bool fallback) {
-    const auto it = object.find(key);
-    return it != object.end() && it->is_boolean() ? it->get<bool>() : fallback;
-}
-
-int readInt(const nlohmann::json& object, const char* key, int fallback) {
-    const auto it = object.find(key);
-    return it != object.end() && it->is_number_integer() ? it->get<int>() : fallback;
-}
-
-std::string readString(const nlohmann::json& object, const char* key) {
-    const auto it = object.find(key);
-    return it != object.end() && it->is_string() ? it->get<std::string>() : std::string();
 }
 
 Snapshot capture(const editor::Settings& editor, const std::filesystem::path& last_folder, const std::filesystem::path& last_image_folder) {
@@ -86,25 +68,21 @@ void init(AddonAPI* api) {
     if (!api) return;
 
     // Nexus makes the directory; the file is ours.
-    const char* directory = api->Paths.GetAddonDirectory(marker_editor::SETTINGS_FOLDER);
-    if (directory) file = std::filesystem::path(directory) / "settings.json";
+    const char* directory = api->Paths.GetAddonDirectory(viewer::ADDON_FOLDER);
+    if (directory) file = std::filesystem::path(directory) / viewer::settings::EDITOR_FILE_NAME;
 }
 
 void load(editor::Settings* editor, std::filesystem::path* last_folder, std::filesystem::path* last_image_folder) {
-    if (file.empty() || !editor || !last_folder || !last_image_folder) return;
+    if (!editor || !last_folder || !last_image_folder) return;
 
-    std::ifstream input(file);
-    if (!input) return;
+    const std::optional<nlohmann::json> read = viewer::json_file::readObject(file);
+    if (!read) return;
+    const nlohmann::json& parsed = *read;
 
-    // A settings file that will not parse is not worth stopping for, and not worth
-    // repairing either: the defaults are all reasonable and the next write replaces it.
-    const nlohmann::json parsed = nlohmann::json::parse(input, nullptr, false);
-    if (parsed.is_discarded() || !parsed.is_object()) return;
+    editor->highlight_3d = viewer::json_file::readBool(parsed, "highlight_3d", editor->highlight_3d);
+    editor->select_in_viewport = viewer::json_file::readBool(parsed, "select_in_viewport", editor->select_in_viewport);
 
-    editor->highlight_3d = readBool(parsed, "highlight_3d", editor->highlight_3d);
-    editor->select_in_viewport = readBool(parsed, "select_in_viewport", editor->select_in_viewport);
-
-    const int gizmo = readInt(parsed, "gizmo", static_cast<int>(editor->gizmo));
+    const int gizmo = viewer::json_file::readInt(parsed, "gizmo", static_cast<int>(editor->gizmo));
     if (gizmo >= 0 && gizmo <= static_cast<int>(editor::GizmoMode::TranslateRotate)) {
         editor->gizmo = static_cast<editor::GizmoMode>(gizmo);
     }
@@ -113,12 +91,12 @@ void load(editor::Settings* editor, std::filesystem::path* last_folder, std::fil
     if (windows != parsed.end() && windows->is_object()) {
         for (size_t i = 0; i < kWindowCount; ++i) {
             bool& shown = ui::windows::visible(windowId(i));
-            shown = readBool(*windows, ui::windows::key(windowId(i)), shown);
+            shown = viewer::json_file::readBool(*windows, ui::windows::key(windowId(i)), shown);
         }
     }
 
-    *last_folder = readString(parsed, "last_folder");
-    *last_image_folder = readString(parsed, "last_image_folder");
+    *last_folder = viewer::json_file::readString(parsed, "last_folder");
+    *last_image_folder = viewer::json_file::readString(parsed, "last_image_folder");
 
     written = capture(*editor, *last_folder, *last_image_folder);
 }
@@ -134,15 +112,7 @@ void update(const editor::Settings& editor, const std::filesystem::path& last_fo
     out["last_folder"] = last_folder.string();
     out["last_image_folder"] = last_image_folder.string();
 
-    std::error_code ec;
-    std::filesystem::create_directories(file.parent_path(), ec);
-
-    std::ofstream output(file, std::ios::trunc);
-    if (!output) return;
-    output << out.dump(2) << "\n";
-    if (!output) return;
-
-    written = capture(editor, last_folder, last_image_folder);
+    if (viewer::json_file::write(file, out)) written = capture(editor, last_folder, last_image_folder);
 }
 
 } // namespace settings

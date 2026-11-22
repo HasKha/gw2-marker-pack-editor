@@ -10,32 +10,17 @@
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtc/matrix_transform.hpp>
 
-#include "editor/world/camera.h"
+#include "viewer/test_camera.h"
+#include "viewer/camera.h"
 
 using Catch::Approx;
 
 namespace {
 
-constexpr float kFov = 1.222f; // ~70 degrees vertical, the value GW2 reports by default
-constexpr float kWidth = 1920.0f;
-constexpr float kHeight = 1080.0f;
-
-// A camera at the origin looking down +Z with no roll and no pitch, so view space and
-// world space coincide and the expected values below can be written by hand.
-world::Camera axisCamera() {
-    world::Camera camera;
-    camera.position = glm::vec3(0.0f);
-    camera.front = glm::vec3(0.0f, 0.0f, 1.0f);
-    camera.up = glm::vec3(0.0f, 1.0f, 0.0f);
-    camera.viewport = glm::vec2(kWidth, kHeight);
-    camera.aspect = kWidth / kHeight;
-    camera.fov = kFov;
-    camera.view = glm::lookAtLH(camera.position, camera.position + camera.front, camera.up);
-    camera.projection = glm::perspectiveLH(camera.fov, camera.aspect, camera.near_plane, 10000.0f);
-    camera.view_projection = camera.projection * camera.view;
-    camera.valid = true;
-    return camera;
-}
+using test_camera::axisCamera;
+using test_camera::kFov;
+using test_camera::kHeight;
+using test_camera::kWidth;
 
 // Pixels per world unit at one unit of *depth*: half the viewport spans tan(fov/2) at unit
 // distance along the view axis.
@@ -43,17 +28,17 @@ float pixelsPerUnitAtUnitDepth() {
     return (kHeight * 0.5f) / std::tan(kFov * 0.5f);
 }
 
-float billboardHeight(const world::Camera& camera, const glm::vec3& position, float size) {
+float billboardHeight(const viewer::Camera& camera, const glm::vec3& position, float size) {
     glm::vec2 corners[4];
     REQUIRE(camera.billboardCorners(position, size, corners));
-    return world::quadPixelHeight(corners);
+    return viewer::quadPixelHeight(corners);
 }
 
 // How far a texture feature is misplaced by spreading an edge's content evenly over its two
 // projected ends: where the middle of the edge really lands, against where the halfway
 // point between the ends is. This is exactly the error a 2D draw list makes, since it has
 // no w to divide by.
-float affineEdgeError(const world::Camera& camera, const glm::vec3& a, const glm::vec3& b) {
+float affineEdgeError(const viewer::Camera& camera, const glm::vec3& a, const glm::vec3& b) {
     glm::vec2 screen_a(0.0f), screen_b(0.0f), screen_middle(0.0f);
     REQUIRE(camera.project(a, &screen_a));
     REQUIRE(camera.project(b, &screen_b));
@@ -64,7 +49,7 @@ float affineEdgeError(const world::Camera& camera, const glm::vec3& a, const glm
 } // namespace
 
 TEST_CASE("a billboard on the optical axis is size over distance", "[camera]") {
-    const world::Camera camera = axisCamera();
+    const viewer::Camera camera = axisCamera();
 
     // Straight ahead, depth and radial distance are the same thing, so this is the one
     // case where the naive formula is also right.
@@ -74,7 +59,7 @@ TEST_CASE("a billboard on the optical axis is size over distance", "[camera]") {
 }
 
 TEST_CASE("a billboard off to the side is sized by depth, not radial distance", "[camera][regression]") {
-    const world::Camera camera = axisCamera();
+    const viewer::Camera camera = axisCamera();
 
     // 40 degrees off-axis horizontally, which at this FOV is still on screen. The quad
     // faces the camera, so its up axis stays vertical and its projected height is
@@ -100,7 +85,7 @@ TEST_CASE("a billboard off to the side is sized by depth, not radial distance", 
 }
 
 TEST_CASE("a billboard above the axis tilts towards the camera and grows", "[camera][regression]") {
-    const world::Camera camera = axisCamera();
+    const viewer::Camera camera = axisCamera();
 
     // Offset vertically instead, and the billboard's up axis tilts to face the camera.
     // The quad subtends size/r radians and lands on the image plane magnified by
@@ -118,7 +103,7 @@ TEST_CASE("a billboard above the axis tilts towards the camera and grows", "[cam
 }
 
 TEST_CASE("billboard height scales linearly with size and inversely with depth", "[camera]") {
-    const world::Camera camera = axisCamera();
+    const viewer::Camera camera = axisCamera();
 
     const float base = billboardHeight(camera, glm::vec3(0.0f, 0.0f, 50.0f), 2.0f);
 
@@ -127,7 +112,7 @@ TEST_CASE("billboard height scales linearly with size and inversely with depth",
 }
 
 TEST_CASE("a billboard straddling the camera plane fails to project", "[camera]") {
-    const world::Camera camera = axisCamera();
+    const viewer::Camera camera = axisCamera();
 
     // In the camera's face: Blish draws it clipped and enormous, and the maxSize clamp is
     // what bounds it. The renderer needs to be told there is no quad to speak of.
@@ -140,7 +125,7 @@ TEST_CASE("a billboard straddling the camera plane fails to project", "[camera]"
 }
 
 TEST_CASE("a billboard is square and upright on the optical axis", "[camera][orientation]") {
-    const world::Camera camera = axisCamera();
+    const viewer::Camera camera = axisCamera();
 
     glm::vec2 corners[4];
     REQUIRE(camera.billboardCorners(glm::vec3(0.0f, 0.0f, 100.0f), 2.0f, corners));
@@ -161,7 +146,7 @@ TEST_CASE("a billboard is square and upright on the optical axis", "[camera][ori
 }
 
 TEST_CASE("a billboard off the axis is tilted, not axis-aligned", "[camera][orientation]") {
-    const world::Camera camera = axisCamera();
+    const viewer::Camera camera = axisCamera();
 
     // Up and to the side, which is where drawing an axis-aligned square visibly parted
     // company with Blish. The billboard turns to face the camera, so its top and bottom
@@ -183,7 +168,7 @@ TEST_CASE("a billboard off the axis is tilted, not axis-aligned", "[camera][orie
 }
 
 TEST_CASE("billboardQuad is billboardCorners before the projection", "[camera]") {
-    const world::Camera camera = axisCamera();
+    const viewer::Camera camera = axisCamera();
 
     glm::vec3 world[4];
     glm::vec2 corners[4];
@@ -199,7 +184,7 @@ TEST_CASE("billboardQuad is billboardCorners before the projection", "[camera]")
 }
 
 TEST_CASE("a quad square on to the camera needs no subdividing", "[camera]") {
-    const world::Camera camera = axisCamera();
+    const viewer::Camera camera = axisCamera();
 
     // Dead ahead the billboard is parallel to the camera plane, so all four corners come
     // back at the same depth and interpolating affinely across them is already exact.
@@ -210,11 +195,11 @@ TEST_CASE("a quad square on to the camera needs no subdividing", "[camera]") {
     for (int i = 0; i < 4; ++i) REQUIRE(camera.project(world[i], &screen[i], &depth[i]));
 
     CHECK(depth[0] == Approx(depth[2]));
-    CHECK(world::affineQuadSubdivisions(screen, depth, 4, 0.5f) == 1);
+    CHECK(viewer::affineQuadSubdivisions(screen, depth, 4, 0.5f) == 1);
 }
 
 TEST_CASE("a large off-axis billboard is subdivided until affine is invisible", "[camera][regression]") {
-    const world::Camera camera = axisCamera();
+    const viewer::Camera camera = axisCamera();
 
     // Big and well off the optical axis, which is where the corners land at very different
     // depths. Drawn as two affine triangles the icon bends along the diagonal instead of
@@ -235,10 +220,10 @@ TEST_CASE("a large off-axis billboard is subdivided until affine is invisible", 
     const float whole = affineEdgeError(camera, world[0], world[1]);
     CHECK(whole > 10.0f);
 
-    const int steps = world::affineQuadSubdivisions(screen, depth, 4, 0.5f);
+    const int steps = viewer::affineQuadSubdivisions(screen, depth, 4, 0.5f);
     CAPTURE(steps, whole);
     REQUIRE(steps > 1);
-    REQUIRE(steps < world::kMaxQuadSubdivisions); // or the cap, not the formula, is on trial
+    REQUIRE(steps < viewer::kMaxQuadSubdivisions); // or the cap, not the formula, is on trial
 
     // Split that far, no cell is off by more than the pixel or so that was asked for. The
     // near end is the worst of them, which is why the depth spread is measured there.
@@ -255,14 +240,14 @@ TEST_CASE("a large off-axis billboard is subdivided until affine is invisible", 
 }
 
 TEST_CASE("subdividing is skipped for a quad with a corner behind the camera", "[camera]") {
-    const world::Camera camera = axisCamera();
+    const viewer::Camera camera = axisCamera();
 
     // The renderer draws these as a screen-space square, so there is no world quad to grid
     // and the depths are meaningless. Asking for a grid anyway would be asking to build one
     // out of positions that are not on screen.
     const glm::vec2 screen[4] = {{0.0f, 0.0f}, {800.0f, 0.0f}, {800.0f, 800.0f}, {0.0f, 800.0f}};
     const float behind[4] = {-5.0f, 10.0f, 10.0f, -5.0f};
-    CHECK(world::affineQuadSubdivisions(screen, behind, 4, 0.5f) == 1);
+    CHECK(viewer::affineQuadSubdivisions(screen, behind, 4, 0.5f) == 1);
 }
 
 TEST_CASE("clipping a quad's parameter space against the near plane", "[camera]") {
@@ -272,7 +257,7 @@ TEST_CASE("clipping a quad's parameter space against the near plane", "[camera]"
 
     SECTION("all of it in front is the whole quad, corners in order") {
         const float depth[4] = {1.0f, 2.0f, 3.0f, 2.0f};
-        REQUIRE(world::clipQuadRegion(depth, low, high, clipped) == 4);
+        REQUIRE(viewer::clipQuadRegion(depth, low, high, clipped) == 4);
         for (int i = 0; i < 4; ++i) {
             CHECK(clipped[i].x == Approx(i == 1 || i == 2 ? 1.0f : 0.0f));
             CHECK(clipped[i].y == Approx(i == 2 || i == 3 ? 1.0f : 0.0f));
@@ -281,35 +266,35 @@ TEST_CASE("clipping a quad's parameter space against the near plane", "[camera]"
 
     SECTION("all of it behind is nothing at all") {
         const float depth[4] = {-1.0f, -2.0f, -3.0f, -2.0f};
-        CHECK(world::clipQuadRegion(depth, low, high, clipped) == 0);
+        CHECK(viewer::clipQuadRegion(depth, low, high, clipped) == 0);
     }
 
     SECTION("one corner behind cuts it into a pentagon") {
         const float depth[4] = {-1.0f, 10.0f, 20.0f, 10.0f};
-        REQUIRE(world::clipQuadRegion(depth, low, high, clipped) == 5);
-        for (int i = 0; i < 5; ++i) CHECK(world::bilinearValue(depth, clipped[i]) >= -0.0001f);
+        REQUIRE(viewer::clipQuadRegion(depth, low, high, clipped) == 5);
+        for (int i = 0; i < 5; ++i) CHECK(viewer::bilinearValue(depth, clipped[i]) >= -0.0001f);
     }
 
     SECTION("three corners behind leaves a triangle") {
         const float depth[4] = {10.0f, -10.0f, -20.0f, -10.0f};
-        REQUIRE(world::clipQuadRegion(depth, low, high, clipped) == 3);
-        for (int i = 0; i < 3; ++i) CHECK(world::bilinearValue(depth, clipped[i]) >= -0.0001f);
+        REQUIRE(viewer::clipQuadRegion(depth, low, high, clipped) == 3);
+        for (int i = 0; i < 3; ++i) CHECK(viewer::bilinearValue(depth, clipped[i]) >= -0.0001f);
     }
 
     SECTION("a subdivision cell is clipped against the same corner depths") {
         // The renderer grids the whole quad and re-clips each cell, so the region asked
         // about is a sub-rectangle rather than the unit square.
         const float depth[4] = {-4.0f, -4.0f, 4.0f, 4.0f}; // the cut runs across at v = 0.5
-        CHECK(world::clipQuadRegion(depth, glm::vec2(0.0f, 0.0f), glm::vec2(0.5f, 0.25f), clipped) == 0);
-        CHECK(world::clipQuadRegion(depth, glm::vec2(0.0f, 0.75f), glm::vec2(0.5f, 1.0f), clipped) == 4);
+        CHECK(viewer::clipQuadRegion(depth, glm::vec2(0.0f, 0.0f), glm::vec2(0.5f, 0.25f), clipped) == 0);
+        CHECK(viewer::clipQuadRegion(depth, glm::vec2(0.0f, 0.75f), glm::vec2(0.5f, 1.0f), clipped) == 4);
 
-        REQUIRE(world::clipQuadRegion(depth, glm::vec2(0.0f, 0.25f), glm::vec2(0.5f, 0.75f), clipped) == 4);
+        REQUIRE(viewer::clipQuadRegion(depth, glm::vec2(0.0f, 0.25f), glm::vec2(0.5f, 0.75f), clipped) == 4);
         for (int i = 0; i < 4; ++i) CHECK(clipped[i].y >= 0.5f - 0.0001f);
     }
 }
 
 TEST_CASE("a quad the camera stands inside keeps the part still in front", "[camera][regression]") {
-    const world::Camera camera = axisCamera();
+    const viewer::Camera camera = axisCamera();
 
     // The floor you are standing on: a big flat quad whose centre is behind the camera and
     // which reaches well past it. Testing the marker's centre — which is what used to
@@ -324,14 +309,14 @@ TEST_CASE("a quad the camera stands inside keeps the part still in front", "[cam
     CHECK(depth[2] > 0.0f);
 
     glm::vec2 clipped[5];
-    const int count = world::clipQuadRegion(depth, glm::vec2(0.0f), glm::vec2(1.0f), clipped);
+    const int count = viewer::clipQuadRegion(depth, glm::vec2(0.0f), glm::vec2(1.0f), clipped);
     REQUIRE(count == 4);
 
     for (int i = 0; i < count; ++i) {
         // Everything that survived is in front of the near plane and therefore projects.
-        CHECK(world::bilinearValue(depth, clipped[i]) >= -0.0001f);
+        CHECK(viewer::bilinearValue(depth, clipped[i]) >= -0.0001f);
         glm::vec2 screen(0.0f);
-        CHECK(camera.project(world::bilinearPoint(world, clipped[i]), &screen));
+        CHECK(camera.project(viewer::bilinearPoint(world, clipped[i]), &screen));
     }
 
     // And it is a slice of the quad, not the whole of it: the far edge is untouched and the
@@ -343,7 +328,7 @@ TEST_CASE("a quad the camera stands inside keeps the part still in front", "[cam
 }
 
 TEST_CASE("a large billboard centred behind the camera is still partly visible", "[camera][regression]") {
-    const world::Camera camera = axisCamera();
+    const viewer::Camera camera = axisCamera();
 
     // A billboard faces the ray to its own centre, so one centred behind the camera *and*
     // off to the side swings a corner back into view. Scaled up enough, that is most of it.
@@ -354,11 +339,11 @@ TEST_CASE("a large billboard centred behind the camera is still partly visible",
     camera.quadNearDepths(world, depth);
 
     glm::vec2 clipped[5];
-    CHECK(world::clipQuadRegion(depth, glm::vec2(0.0f), glm::vec2(1.0f), clipped) >= 3);
+    CHECK(viewer::clipQuadRegion(depth, glm::vec2(0.0f), glm::vec2(1.0f), clipped) >= 3);
 }
 
 TEST_CASE("project puts the view axis in the middle of the viewport", "[camera]") {
-    const world::Camera camera = axisCamera();
+    const viewer::Camera camera = axisCamera();
 
     glm::vec2 screen;
     REQUIRE(camera.project(glm::vec3(0.0f, 0.0f, 10.0f), &screen));
@@ -370,7 +355,7 @@ TEST_CASE("project puts the view axis in the middle of the viewport", "[camera]"
 }
 
 TEST_CASE("project reports the depth it divided by", "[camera]") {
-    const world::Camera camera = axisCamera();
+    const viewer::Camera camera = axisCamera();
 
     // Looking down +Z with a left-handed projection, clip w is the view-space depth
     // outright. Everything interpolating across a projected quad needs it, because the

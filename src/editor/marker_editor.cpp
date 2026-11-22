@@ -22,12 +22,13 @@
 #include "editor/ui/tree_window.h"
 #include "editor/ui/windows.h"
 #include "editor/undo.h"
-#include "editor/world/camera.h"
 #include "editor/world/gizmo.h"
 #include "editor/world/renderer.h"
 #include "pack/source.h"
 #include "pack/writer.h"
 #include "pack/xml_reader.h"
+#include "viewer/camera.h"
+#include "viewer/viewer.h"
 
 namespace marker_editor {
 
@@ -52,7 +53,7 @@ editor::State state;
 
 // This frame's camera, kept so the menu bar can reach the player position and map id
 // without every window that draws the bar having to be handed a camera.
-world::Camera frame_camera;
+viewer::Camera frame_camera;
 
 // A world click picked this pathable; the render thread consumes it. Written from the
 // game's message thread — see onWndProc for why the click cannot come from ImGui.
@@ -102,7 +103,7 @@ char new_pack_display[96] = "My Pack";
 char new_pack_file[64] = "markers.xml";
 
 void log(ELogLevel level, const std::string& message) {
-    api->Log(level, ADDON_NAME, message.c_str());
+    api->Log(level, viewer::ADDON_NAME, message.c_str());
 }
 
 // <Documents>/Guild Wars 2/addons/blishhud/markers — where Blish HUD's Pathing module
@@ -957,7 +958,7 @@ void render() {
     // ImGui's display size, not NexusLinkData's — see fromMumble. Everything below draws
     // into an ImGui draw list, so that is the space the projection has to land in.
     const ImVec2 display = ImGui::GetIO().DisplaySize;
-    const world::Camera camera = world::fromMumble(mumble_link, glm::vec2(display.x, display.y));
+    const viewer::Camera camera = viewer::fromMumble(mumble_link, glm::vec2(display.x, display.y));
     frame_camera = camera;
     world::renderer::draw(state, camera);
 
@@ -997,14 +998,6 @@ void render() {
     applyPendingAction();
 }
 
-void drawOptions() {
-    // The way back once a window's close button has been used, short of the keybind or the
-    // quick access menu — neither of which is bound by default.
-    ImGui::TextDisabled("Windows");
-    ui::windows::drawOptions();
-    ImGui::TextDisabled("The keybind and the Nexus menu item hide and restore all of them at once.");
-}
-
 void drawQuickAccess() {
     if (ImGui::MenuItem("Marker Pack Editor")) ui::windows::toggleAll();
 }
@@ -1029,6 +1022,14 @@ void onEditKeybind(const char* aIdentifier, bool aIsRelease) {
 
 } // namespace
 
+void drawOptions() {
+    // The way back once a window's close button has been used, short of the keybind or the
+    // quick access menu — neither of which is bound by default.
+    ImGui::Text("Editor windows");
+    ui::windows::drawOptions();
+    ImGui::Text("The keybind and the Nexus menu item hide and restore all of them at once.");
+}
+
 void load(AddonAPI* _api, Mumble::Data* _mumble_link) {
     api = _api;
     mumble_link = _mumble_link;
@@ -1042,7 +1043,6 @@ void load(AddonAPI* _api, Mumble::Data* _mumble_link) {
     settings::load(&state.settings, &last_folder, &last_image_folder);
 
     api->Renderer.Register(ERenderType_Render, render);
-    api->Renderer.Register(ERenderType_OptionsRender, drawOptions);
     // nullptr target -> appended to the Nexus main menu.
     api->QuickAccess.AddContextMenu(QUICKACCESS_ID, nullptr, drawQuickAccess);
     // "(null)" -> registered without a default bind; the user sets it in Nexus settings.
@@ -1059,7 +1059,6 @@ void load(AddonAPI* _api, Mumble::Data* _mumble_link) {
 
 void unload() {
     api->Renderer.Deregister(render);
-    api->Renderer.Deregister(drawOptions);
     api->QuickAccess.RemoveContextMenu(QUICKACCESS_ID);
     api->InputBinds.Deregister(KEYBIND_TOGGLE_ID);
     api->InputBinds.Deregister(KEYBIND_UNDO_ID);

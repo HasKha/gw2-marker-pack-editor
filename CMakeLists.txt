@@ -55,6 +55,29 @@ target_link_libraries(mpe_pack PUBLIC
     miniz
 )
 
+# ── mpe_viewer ────────────────────────────────────────────────────────────────
+# What every player runs: the camera, textures, drawing packs into the frame. It links
+# the format and never the editor — the dependency points one way, editor -> viewer, so a
+# player who never turns editing on runs none of the editor's code. The ctest case
+# viewer_includes_no_editor below holds the line at the source level.
+add_library(mpe_viewer STATIC)
+
+file(GLOB_RECURSE VIEWER_SOURCES
+    "src/viewer/*.h"
+    "src/viewer/*.cpp"
+)
+target_sources(mpe_viewer PRIVATE ${VIEWER_SOURCES})
+source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" PREFIX "" FILES ${VIEWER_SOURCES})
+
+target_include_directories(mpe_viewer PUBLIC "src/")
+target_link_libraries(mpe_viewer PUBLIC
+    mpe_pack
+    imgui
+    mumble
+    nexus
+    nlohmann_json::nlohmann_json
+)
+
 # ── mpe_editor ────────────────────────────────────────────────────────────────
 # The editor on top of the format: selection, undo, creating and deleting, the asset
 # cache, the windows and the world view. A library rather than part of the DLL so the
@@ -71,6 +94,7 @@ source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" PREFIX "" FILES ${EDITOR_SOURCES
 target_include_directories(mpe_editor PUBLIC "src/")
 target_link_libraries(mpe_editor PUBLIC
     mpe_pack
+    mpe_viewer
     imgui
     imguizmo
     mumble
@@ -144,3 +168,24 @@ target_link_libraries(mpe_test PRIVATE
 
 include(Catch)
 catch_discover_tests(mpe_test)
+
+# ── mpe_viewer_test ───────────────────────────────────────────────────────────
+# The viewer's assertions, in a binary that links mpe_viewer and not mpe_editor: that it
+# links at all is the proof the viewer stands without the editor, and the case below is the
+# proof nothing in its source reaches for one.
+add_executable(mpe_viewer_test)
+
+file(GLOB VIEWER_TEST_SOURCES "test/viewer/*_test.cpp" "test/viewer/*.h")
+target_sources(mpe_viewer_test PRIVATE ${VIEWER_TEST_SOURCES})
+source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" PREFIX "" FILES ${VIEWER_TEST_SOURCES})
+
+target_link_libraries(mpe_viewer_test PRIVATE
+    mpe_viewer
+    mpe_corpus
+    Catch2::Catch2WithMain
+)
+
+catch_discover_tests(mpe_viewer_test)
+
+add_test(NAME viewer_includes_no_editor
+    COMMAND ${CMAKE_COMMAND} "-DVIEWER_DIR=${PROJECT_SOURCE_DIR}/src/viewer" -P "${PROJECT_SOURCE_DIR}/cmake/check_viewer_includes.cmake")

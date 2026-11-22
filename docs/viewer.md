@@ -1,7 +1,7 @@
 # The viewer
 
-How the viewer half of the addon is built, and why. **Planned: none of it exists yet.** The
-order it is built in is [plan.md](plan.md#the-viewer); the editor half is
+How the viewer half of the addon is built, and why. Most of it is still planned; what exists
+so far, and the order the rest is built in, is [plan.md](plan.md#the-viewer); the editor half is
 [architecture.md](architecture.md); what attributes mean is [format.md](format.md).
 
 ## What it is
@@ -39,8 +39,7 @@ renderer natively anyway, while keeping Blish HUD and a fork of an 18k-line modu
 
 ## Layout
 
-What `src/` becomes. `pack/` and `editor/` are already their own libraries; milestone 0
-adds `viewer/` and moves the shared parts into it, with no behaviour change.
+What `src/` becomes; [plan.md](plan.md#the-viewer) says which parts exist.
 [architecture.md](architecture.md#module-layout)'s layout goes on describing `editor/`.
 
 ```
@@ -48,6 +47,9 @@ src/
   entry.cpp        AddonDefinition; loads the viewer, and the editor when the setting is on
   pack/            mpe_pack — unchanged. The format, nothing else
   viewer/          mpe_viewer, links mpe_pack
+    viewer.*       lifecycle, the addon's name and folder, its options page, EditorHooks
+    settings.*     viewer.json: "Enable pack editing"
+    json_file.*    lenient reads and writes of small JSON files, the editor's too
     registry.*     installed packs: discovery, enable/disable, loading on a worker, the merged tree
     bake.*         pack::Pack -> the runtime model: resolved attributes, grouped by map id
     runtime.*      the live map: visibility, fade state, behaviors' state, markers scripts made
@@ -56,24 +58,27 @@ src/
     scene.*        this frame's world quads, billboards and screen items, built from runtime
     render/        the sinks: good_render.* (moments) and overlay.* (Nexus render, draw list)
     map.*          the minimap and full map projection (Pathing's Entity/MapProjection.cs)
-    camera.*       MumbleLink -> view/projection — from editor/world/camera.*
-    textures.*     budgeted texture decoding — the texture half of editor/resources.*
+    camera.*       MumbleLink -> view/projection
+    textures.*     budgeted texture decoding: LoadBudget, TextureCache
     catalog.*      the public pack catalog: list, download, update
     store.*        what outlives a session: category toggles, behavior state, script Storage
     ui/            the category menu, pack manager, settings, script console
-  editor/          mpe_editor, links mpe_pack and mpe_viewer — today's src/editor/ minus what moved
+  editor/          mpe_editor, links mpe_pack and mpe_viewer
 ```
 
 **The dependency only points one way.** `editor/` includes `viewer/`; `viewer/` never
-includes `editor/`. Where the viewer has to reach the editor — the Edit button, the editor's
+includes `editor/`, and two things hold it: `mpe_viewer_test` links `mpe_viewer` without
+`mpe_editor`, and the ctest case `viewer_includes_no_editor` fails on any `editor/` include
+under `src/viewer/`. Where the viewer has to reach the editor — the Edit button, the editor's
 overlays — it calls a hook `entry.cpp` connects, null while editing is off. So the viewer
 builds and tests without the editor, and an editor change cannot reach a player who never
 turned editing on.
 
-The editor's `editor/world/renderer.*` splits along the same line. Its quad path — world-space
-subdivision and near-plane clipping, the reason a draw-list quad is perspective-correct at
-all — becomes `render/overlay.*`. What only an editor draws stays in `editor/`: the selection
-outline, the open trail's point handles, the gizmo.
+The editor's `editor/world/renderer.*` is split along the same line. Its quad path —
+world-space subdivision and near-plane clipping, the reason a draw-list quad is
+perspective-correct at all — is `render/overlay.*`. What only an editor draws stays in
+`editor/`: the selection outline, the open trail's point handles, the gizmo. What to draw and
+how it fades is still the editor renderer's until the scene exists.
 
 ## Threading and the frame
 
@@ -212,9 +217,13 @@ the viewer hears it is open too.
 
 - **A setting, "Enable pack editing", off by default.** It starts on for an install that
   already has the editor's `settings.json`, so an existing editor user does not lose it in the
-  update.
-- **Off means inert.** `editor::load()` never runs: no windows, keybinds, Quick Access entry or
-  `WndProc` handling are registered.
+  update. It lives in the viewer's own `viewer.json`, beside the editor's file rather than in
+  it: the editor rewrites its file whole, and "the file exists" is what the rule reads.
+- **Off means inert.** `marker_editor::load()` never runs: no windows, keybinds, Quick Access
+  entry or `WndProc` handling are registered.
+- **It applies at the next load.** Nexus holds its render mutex across every callback, so the
+  options page cannot register the editor's callbacks from inside one, and unloading it there
+  would drop unsaved edits. The page says so when the box and the session disagree.
 - **Edit, on a pack in the pack manager**, closes that pack's source in the registry — the save
   later renames over the zip, which Windows refuses while it is open — and hands its path to
   the editor. From then on the viewer draws that pack from the editor's live model, baked again

@@ -19,6 +19,7 @@ pack-layer work by launching the game, or by hand.
 | Target | Answers | Does |
 |---|---|---|
 | `mpe_test` | *is it broken?* | asserts, under Catch2, and fails a build |
+| `mpe_viewer_test` | *is the viewer broken?* | the same, for `src/viewer/`, linked without the editor |
 | `mpe_probe` | *what does this pack look like?* | prints and lints: what it found, what it could not parse, what a save would change |
 
 Both are worth having. The probe's lint, its byte-offset anchoring report and its round-trip diffs are how a
@@ -67,6 +68,14 @@ Plus one pack as an **unzipped folder**, which must produce the same model as th
 zip is built by the test rather than taken from the corpus: a checkout and a shipped archive of "the same"
 pack drift the moment either is edited, and the test would then be reporting the drift instead of the
 reader.
+
+## The viewer
+
+`mpe_viewer_test`, from `test/viewer/`, links `mpe_viewer` and nothing of the editor; ctest runs it with
+the rest. A viewer test that needs an editor header does not compile, which is the point. Nothing in it
+needs a device: the quad path draws into a real `ImDrawList` made from a bare ImGui context, and the
+texture cache runs against an `AddonAPI` whose one texture function is a fake. `test/viewer/test_camera.h`
+is the camera whose projections can be written by hand, for any test that projects.
 
 ## Above the pack layer
 

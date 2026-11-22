@@ -5,9 +5,10 @@ for what is done and what is next see [plan.md](plan.md); for how code is writte
 [code_style.md](code_style.md).
 
 The addon is becoming two halves in one DLL: a viewer that every player runs, and this
-editor behind a setting. The viewer, and the `viewer/` library that will sit between
-`pack/` and `editor/` with the dependency running one way, are [viewer.md](viewer.md). Until
-it lands, what follows describes the addon as it is.
+editor behind a setting. The viewer, and the `viewer/` library that sits between `pack/` and
+`editor/` with the dependency running one way, are [viewer.md](viewer.md). The editor reaches
+into `viewer/` for the camera, textures and the draw-list quad path; nothing in `viewer/`
+reaches back. What follows describes the editor.
 
 ## Rules
 
@@ -41,8 +42,8 @@ The invariants every change keeps. The sections below are why.
 - **Each module is a `snake_case` namespace** with a matching `.h`/`.cpp` pair, and its header
   exposes only what other modules need.
 - **`src/entry.cpp` stays minimal**: it fills in the `AddonDefinition`, resolves the DataLink
-  pointers and hands them to `marker_editor::load()`. No feature logic, no globals beyond
-  `AddonDef` and `hSelf`. **Its flags never include `EAddonFlags_IsVolatile`**, which is for
+  pointers, loads the viewer, and loads the editor only when `viewer::editingEnabled()` says
+  so, connecting its hooks. No feature logic, no globals beyond `AddonDef` and `hSelf`. **Its flags never include `EAddonFlags_IsVolatile`**, which is for
   addons that hook the game: Nexus refuses to load a volatile addon once the game build is
   more than 350 past the one it last recorded, until the player re-enables it by hand
   (`IsVolatileDisabled` in Nexus's `Host/Addons/Addon.cpp`).
@@ -81,15 +82,17 @@ New for this project:
 
 ## Build targets
 
-Six, because the code worth testing outside the game is most of it:
+Eight, because the code worth testing outside the game is most of it:
 
 | Target | Kind | Contents |
 |---|---|---|
 | `mpe_pack` | static lib | `src/pack/**` — the format. Links only pugixml, miniz, glm. **Knows nothing about Nexus, imgui or the game.** |
-| `mpe_editor` | static lib | `src/editor/**` — the editor. Links `mpe_pack` plus imgui, ImGuizmo, Nexus, Mumble, NFD |
+| `mpe_viewer` | static lib | `src/viewer/**` — the viewer. Links `mpe_pack` plus imgui, Nexus, Mumble, nlohmann_json. **Never the editor** |
+| `mpe_editor` | static lib | `src/editor/**` — the editor. Links `mpe_viewer` plus ImGuizmo, NFD |
 | `MarkerPackEditor` | shared lib | `src/entry.cpp` and nothing else. Links `mpe_editor` |
-| `mpe_corpus` | static lib | `test/corpus.*` — where the real packs are. Shared by the two below so they cannot disagree about it |
-| `mpe_test` | console exe | `test/*_test.cpp` — the assertions, under Catch2. Links `mpe_editor` |
+| `mpe_corpus` | static lib | `test/corpus.*` — where the real packs are. Shared by the test targets so they cannot disagree about it |
+| `mpe_test` | console exe | `test/*_test.cpp` — the pack's and the editor's assertions, under Catch2. Links `mpe_editor` |
+| `mpe_viewer_test` | console exe | `test/viewer/*_test.cpp` — the viewer's. Links `mpe_viewer` and not the editor, which is the proof it can |
 | `mpe_probe` | console exe | `test/pack_probe.cpp` — the harness that prints. Links `mpe_pack` |
 
 **One directory under `src/` per library**, so a file's folder says which one it is in and
@@ -108,7 +111,7 @@ Why there are two test targets, and what they are pointed at, is [testing.md](te
 ```
 src/
   entry.cpp            — MarkerPackEditor.dll
-                       Nexus entry, AddonDefinition, hands DataLinks to marker_editor
+                       Nexus entry, AddonDefinition, loads the viewer and, when enabled, the editor
   pack/                — mpe_pack, no Nexus/imgui dependency
     source.*           DataSource: a pack is a zip OR a folder. Path normalization.
     zip.*              DataSource over a .zip/.taco, via miniz
@@ -117,15 +120,18 @@ src/
     xml_reader.*       pugixml -> model; the document is kept and owned by the Pack
     writer.*           serializes the document back out, rebuilds the zip (format.md)
     trl.*              .trl read/write, byte-exact
+  viewer/              — mpe_viewer; see viewer.md for what it grows into
   editor/              — mpe_editor
-    marker_editor.*    lifecycle, the windows and the shared menu bar, save/open, WndProc
+    marker_editor.*    lifecycle, the windows and the shared menu bar, save/open, WndProc,
+                       the editor's part of the options page
     pathable_edit.*    creating and deleting markers and categories
     undo.*             the undo/redo stack: before/after images of what changed
     trail_edit.*       the open trail's working copy, shared by its window and the gizmo
     editor_state.*     State: the open Pack, the two selections and the rules over them,
                        per-node visibility, settings
     file_dialog.*      NFD on a worker thread (never block the render thread)
-    resources.*        icons + .trl pulled from the pack source on demand, budgeted
+    resources.*        icons + .trl pulled from the pack source on demand, budgeted;
+                       the images through viewer::TextureCache
     settings.*         the few things that outlive a session, as settings.json
     ui/
       windows.*        the window registry: titles, visibility, View menu, options page
@@ -134,13 +140,14 @@ src/
       resource_window.* the pack's images, what references them, add / remove
       trail_editor.*   the open trail: map id, point list, the Trail menu, shape tools
     world/
-      camera.*         MumbleLink -> view/projection, world->screen
-      renderer.*       billboards + trail ribbons into an ImGui draw list, hit testing
+      renderer.*       billboards + trail ribbons into an ImGui draw list, through
+                       viewer/render/overlay; hit testing, the selection outline, point handles
       gizmo.*          ImGuizmo translate/rotate over the selection, writes to attributes
 test/
   corpus.*             where the real packs are
   pack_probe.cpp       the harness that prints
   *_test.cpp           the assertions, over mpe_editor and mpe_pack
+  viewer/*_test.cpp    the assertions over mpe_viewer alone
 ```
 
 ## Things that are easy to get wrong
@@ -247,7 +254,9 @@ no module at all), so a shared virtual would either widen every signature or kee
 channels that motivated it.
 
 The Nexus options page carries a checkbox per window, because a window closed with its X
-would otherwise only come back through a keybind that is unbound by default.
+would otherwise only come back through a keybind that is unbound by default. The page itself
+is the viewer's — Nexus shows one options callback per addon — and the editor's part is
+`marker_editor::drawOptions`, drawn under it through `viewer::EditorHooks`.
 
 ## One trail, one working copy
 
@@ -621,6 +630,11 @@ than being dropped, so a broken `type` is visible instead of silent.
 
 ## Rendering
 
+Half of this is the viewer's code, used by the editor: the camera is `viewer/camera.*`, and
+clipping, subdividing and emitting a textured quad is `viewer/render/overlay.*`. What to draw,
+the picking and everything only an editor draws — the outline, the point handles, the gizmo —
+is `editor/world/`.
+
 Nexus hands us `AddonAPI::SwapChain` and, via `Textures.GetOrCreateFromMemory`, an
 `ID3D11ShaderResourceView*` per image — directly usable as an `ImTextureID`. So no
 custom DX11 pipeline is needed:
@@ -668,7 +682,7 @@ along the quad's diagonal instead of foreshortening — on a large marker that r
 saddle, and on a trail as the pattern sliding rather than compressing into the distance. So
 every textured quad is split in **world** space and each vertex projected on its own; the
 corners are coplanar, so a bilinear blend of them stays on the real surface.
-`world::affineQuadSubdivisions` sizes the grid from the error it is removing and returns 1 —
+`viewer::affineQuadSubdivisions` sizes the grid from the error it is removing and returns 1 —
 one `AddImageQuad`, exactly as before — whenever there is nothing to correct, which is the
 common case. Blish gets all of this from the GPU for free.
 

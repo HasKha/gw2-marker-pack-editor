@@ -316,7 +316,7 @@ void drawRemovePopup(editor::State& state) {
 }
 
 void drawPreview() {
-    const resources::Image preview = resources::image(selected);
+    const viewer::Image preview = resources::image(selected);
     if (!preview.texture) {
         ImGui::TextDisabled("(no preview)");
         return;

@@ -1,7 +1,7 @@
 #pragma once
 
 #include "editor/editor_state.h"
-#include "editor/world/camera.h"
+#include "viewer/camera.h"
 
 namespace world::gizmo {
 
@@ -12,6 +12,6 @@ namespace world::gizmo {
 //
 // Returns true while the gizmo is hovered or being dragged, so the caller can stop a click
 // from also selecting whatever is behind it.
-bool draw(editor::State& state, const Camera& camera);
+bool draw(editor::State& state, const viewer::Camera& camera);
 
 } // namespace world::gizmo

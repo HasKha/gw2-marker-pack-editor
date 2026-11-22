@@ -18,6 +18,9 @@ the pack is a zip again.
 
 ## Using it
 
+Editing is off on a fresh install. Turn on **Enable pack editing** in the addon's options in
+Nexus, then reload the addon; an install that already had the editor keeps it on.
+
 **File → Open Pack...** takes a `.zip`/`.taco`, **Open Folder...** takes an unzipped one,
 and **New Pack...** starts an empty pack from nothing. One pack is open at a time.
 

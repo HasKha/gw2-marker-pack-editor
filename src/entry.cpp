@@ -5,6 +5,7 @@
 #include <imgui.h>
 
 #include "editor/marker_editor.h"
+#include "viewer/viewer.h"
 
 void AddonLoad(AddonAPI* aApi);
 void AddonUnload();
@@ -25,7 +26,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
 extern "C" __declspec(dllexport) AddonDefinition* GetAddonDef() {
     AddonDef.Signature = -668341; // random unused negative integer
     AddonDef.APIVersion = NEXUS_API_VERSION;
-    AddonDef.Name = marker_editor::ADDON_NAME;
+    AddonDef.Name = viewer::ADDON_NAME;
     AddonDef.Version.Major = VERSION_MAJOR;
     AddonDef.Version.Minor = VERSION_MINOR;
     AddonDef.Version.Build = VERSION_BUILD;
@@ -46,12 +47,21 @@ void AddonLoad(AddonAPI* aApi) {
 
     // No DL_NEXUS_LINK: its Width/Height are the swap chain's and can go stale, and the
     // world is drawn into an ImGui draw list, whose size ImGui itself reports. See
-    // world::fromMumble.
+    // viewer::fromMumble.
     Mumble::Data* mumble_link = (Mumble::Data*)aApi->DataLink.Get("DL_MUMBLE_LINK");
 
-    marker_editor::load(aApi, mumble_link);
+    viewer::load(aApi);
+
+    // Off means inert: with editing disabled the editor registers nothing at all.
+    if (viewer::editingEnabled()) {
+        marker_editor::load(aApi, mumble_link);
+        viewer::connectEditor(viewer::EditorHooks{marker_editor::drawOptions});
+    }
 }
 
 void AddonUnload() {
-    marker_editor::unload();
+    // editingEnabled() is what this session loaded with, so this undoes exactly what
+    // AddonLoad did, whatever the setting says now.
+    if (viewer::editingEnabled()) marker_editor::unload();
+    viewer::unload();
 }

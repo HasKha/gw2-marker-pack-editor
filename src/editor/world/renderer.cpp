@@ -10,6 +10,7 @@
 
 #include "editor/resources.h"
 #include "editor/trail_edit.h"
+#include "viewer/render/overlay.h"
 
 namespace world::renderer {
 
@@ -17,7 +18,7 @@ namespace {
 
 // Blish HUD's StandardTrail.World.cs: TRAIL_WIDTH = 20 * 0.0254f, used as the half-width
 // offset either side of the path, scaled by trailScale.
-constexpr float kTrailHalfWidth = 20.0f * kMetresPerInch;
+constexpr float kTrailHalfWidth = 20.0f * viewer::kMetresPerInch;
 
 // What minSize and maxSize multiply up to, in real pixels.
 //
@@ -105,188 +106,6 @@ size_t hover_highlight = pack::kNoIndex;
 // because a coordinate has nothing to click otherwise.
 std::atomic<size_t> hovered_trail_point{pack::kNoIndex};
 size_t hover_point_highlight = pack::kNoIndex;
-
-// ImGui has no w to divide by. AddImageQuad rasterizes two triangles and interpolates the
-// UVs affinely across them, which is only correct when all four corners sit at the same
-// depth — and they never do. A billboard is perpendicular to the ray to its own centre, so
-// the further off-axis it sits the more its corners differ in view-space depth, and a
-// marker carrying `rotate` is tilted by construction. What comes out is a texture bent
-// along the quad's diagonal rather than foreshortened: on a large marker, a saddle.
-//
-// The fix is to subdivide in *world* space and project every vertex. All four corners of
-// every quad drawn here are coplanar, so a bilinear blend of them stays on the real
-// surface, and each cell ends up small enough that affine is invisible. Blish gets this
-// from the GPU for free; a 2D draw list has to pay for it. How far to split is
-// affineQuadSubdivisions, which lives with the projection because that is what it is about.
-constexpr float kQuadPixelTolerance = 0.5f;
-
-// What is left of a quad once the near plane has had it, ready to draw and to click.
-//
-// A quad only ever gets *drawn* through this, because a marker large enough to matter is
-// routinely one you are standing inside: its centre goes behind you while most of it is
-// still on screen. Dropping a quad because a corner — or the centre — is behind the camera
-// is a marker that vanishes as you walk up to it, which is the one thing an editor must not
-// do. Blish never faces the question; the GPU clips for it.
-struct VisibleQuad {
-    int count = 0; // 0 when the whole quad is behind the near plane, else 3..5
-    glm::vec2 screen[5];
-    float depth[5];
-};
-
-// The quad's corner depths come back too: every cell of the subdivision below re-clips
-// against them, so they are worth computing once.
-bool clipAndProject(const Camera& camera, const glm::vec3 world[4], float out_corner_depth[4], VisibleQuad* out) {
-    camera.quadNearDepths(world, out_corner_depth);
-
-    glm::vec2 parameter[5]; // where each surviving corner sits in the quad's own (u,v)
-    out->count = clipQuadRegion(out_corner_depth, glm::vec2(0.0f), glm::vec2(1.0f), parameter);
-    if (out->count < 3) return false;
-
-    for (int i = 0; i < out->count; ++i) {
-        // Everything here is at or past the near plane, so the projection cannot fail.
-        if (!camera.project(bilinearPoint(world, parameter[i]), &out->screen[i], &out->depth[i])) return false;
-    }
-    return true;
-}
-
-void toScreen(const glm::vec2* points, int count, ImVec2* out) {
-    for (int i = 0; i < count; ++i) out[i] = ImVec2(points[i].x, points[i].y);
-}
-
-// One corner of a subdivision cell, blended out of the quad it belongs to.
-struct GridVertex {
-    ImVec2 position;
-    ImVec2 coord;
-    float depth = 0.0f;
-};
-
-GridVertex quadVertex(const Camera& camera, const glm::vec3 world[4], const ImVec2 uv[4], const float corner_depth[4], glm::vec2 at) {
-    float weight[4];
-    bilinearWeights(at, weight);
-
-    GridVertex vertex;
-    glm::vec3 position(0.0f);
-    ImVec2 coord(0.0f, 0.0f);
-    for (int i = 0; i < 4; ++i) {
-        position += world[i] * weight[i];
-        coord.x += uv[i].x * weight[i];
-        coord.y += uv[i].y * weight[i];
-        vertex.depth += corner_depth[i] * weight[i];
-    }
-
-    // Projected unconditionally rather than only when the depth says it is in front. A
-    // vertex the clip put exactly *on* the near plane can come back a hair negative, and
-    // skipping it would leave a corner sitting at the screen origin — a stray triangle
-    // across the whole viewport. Only vertices already known to be in front are read, so a
-    // failure here never reaches the buffer.
-    glm::vec2 projected(0.0f);
-    camera.project(position, &projected);
-    vertex.position = ImVec2(projected.x, projected.y);
-    vertex.coord = coord;
-    return vertex;
-}
-
-// Draws the visible part of one textured quad, subdividing as far as the perspective across
-// it needs and clipping each cell that straddles the near plane.
-void drawTexturedQuad(
-    const Camera& camera,
-    ImDrawList* list,
-    ImTextureID texture,
-    const glm::vec3 world[4],
-    const float corner_depth[4],
-    const VisibleQuad& visible,
-    const ImVec2 uv[4],
-    ImU32 colour) {
-    if ((colour & IM_COL32_A_MASK) == 0) return; // what AddImageQuad checks for us below
-    if (visible.count < 3) return;
-
-    const bool whole =
-        visible.count == 4 && corner_depth[0] >= 0.0f && corner_depth[1] >= 0.0f && corner_depth[2] >= 0.0f && corner_depth[3] >= 0.0f;
-    const int steps = affineQuadSubdivisions(visible.screen, visible.depth, visible.count, kQuadPixelTolerance);
-
-    if (whole && steps <= 1) {
-        ImVec2 corners[4];
-        toScreen(visible.screen, 4, corners);
-        list->AddImageQuad(texture, corners[0], corners[1], corners[2], corners[3], uv[0], uv[1], uv[2], uv[3], colour);
-        return;
-    }
-
-    // The grid covers the whole quad, not just the visible part, so that its cells tile:
-    // cells wholly behind the near plane are skipped and the few it cuts are clipped. A
-    // straddling quad always lands on the step cap, since a corner sitting on the near
-    // plane makes the depth spread enormous — which is exactly where the cells need to be
-    // smallest anyway.
-    constexpr int kMaxStride = kMaxQuadSubdivisions + 1;
-    GridVertex grid[kMaxStride * kMaxStride];
-    const int stride = steps + 1;
-    const float span = 1.0f / static_cast<float>(steps);
-
-    for (int row = 0; row <= steps; ++row) {
-        for (int column = 0; column <= steps; ++column) {
-            grid[row * stride + column] = quadVertex(camera, world, uv, corner_depth, glm::vec2(column * span, row * span));
-        }
-    }
-
-    // One draw command for the whole grid: AddImageQuad per cell would push and pop the
-    // texture id each time, and that is a command each. A clipped cell can come out a
-    // pentagon, so a quad the plane cuts reserves the worst case and hands the rest back;
-    // one it does not is exact, which is the common case by a long way.
-    const int reserved_vertices = steps * steps * (whole ? 4 : 5);
-    const int reserved_indices = steps * steps * (whole ? 6 : 9);
-    int used_vertices = 0;
-    int used_indices = 0;
-
-    list->PushTextureID(texture);
-    list->PrimReserve(reserved_indices, reserved_vertices);
-
-    for (int row = 0; row < steps; ++row) {
-        for (int column = 0; column < steps; ++column) {
-            const int corner[4] = {
-                row * stride + column,
-                row * stride + column + 1,
-                (row + 1) * stride + column + 1,
-                (row + 1) * stride + column};
-
-            int behind = 0;
-            for (int i = 0; i < 4; ++i) behind += grid[corner[i]].depth < 0.0f ? 1 : 0;
-            if (behind == 4) continue;
-
-            if (behind == 0) {
-                const GridVertex& a = grid[corner[0]];
-                const GridVertex& b = grid[corner[1]];
-                const GridVertex& c = grid[corner[2]];
-                const GridVertex& d = grid[corner[3]];
-                list->PrimQuadUV(a.position, b.position, c.position, d.position, a.coord, b.coord, c.coord, d.coord, colour);
-                used_vertices += 4;
-                used_indices += 6;
-                continue;
-            }
-
-            glm::vec2 clipped[5];
-            const glm::vec2 low(column * span, row * span);
-            const int clipped_count = clipQuadRegion(corner_depth, low, low + glm::vec2(span), clipped);
-            if (clipped_count < 3) continue;
-
-            // A fan from the first corner: the cell is convex, and one plane cannot make it
-            // otherwise.
-            const unsigned int base = list->_VtxCurrentIdx;
-            for (int i = 0; i < clipped_count; ++i) {
-                const GridVertex vertex = quadVertex(camera, world, uv, corner_depth, clipped[i]);
-                list->PrimWriteVtx(vertex.position, vertex.coord, colour);
-            }
-            for (int i = 2; i < clipped_count; ++i) {
-                list->PrimWriteIdx(static_cast<ImDrawIdx>(base));
-                list->PrimWriteIdx(static_cast<ImDrawIdx>(base + i - 1));
-                list->PrimWriteIdx(static_cast<ImDrawIdx>(base + i));
-            }
-            used_vertices += clipped_count;
-            used_indices += (clipped_count - 2) * 3;
-        }
-    }
-
-    list->PrimUnreserve(reserved_indices - used_indices, reserved_vertices - used_vertices);
-    list->PopTextureID();
-}
 
 bool pointInPolygon(const ImVec2& p, const ImVec2* polygon, int count) {
     // Sign of the cross product against each edge; consistent sign means inside. Works
@@ -486,7 +305,7 @@ void rotatedMarkerQuad(const MarkerDraw& marker, glm::vec3 out[4]) {
     const float cz = std::cos(marker.rotation.z), sz = std::sin(marker.rotation.z);
 
     for (int i = 0; i < 4; ++i) {
-        glm::vec3 p(kQuadCorners[i].x * half, kQuadCorners[i].y * half, 0.0f);
+        glm::vec3 p(viewer::kQuadCorners[i].x * half, viewer::kQuadCorners[i].y * half, 0.0f);
 
         // X, then Y, then Z, matching the reference's matrix order.
         p = glm::vec3(p.x, p.y * cx - p.z * sx, p.y * sx + p.z * cx);
@@ -528,7 +347,7 @@ void markerQuadOverlay(ImDrawList* list, const ImVec2* corners, int count, size_
     }
 }
 
-void drawMarkers(editor::State& state, const Camera& camera, ImDrawList* list, std::vector<Sorted>& order) {
+void drawMarkers(editor::State& state, const viewer::Camera& camera, ImDrawList* list, std::vector<Sorted>& order) {
     for (const Sorted& entry : order) {
         if (entry.is_trail) continue;
 
@@ -545,7 +364,7 @@ void drawMarkers(editor::State& state, const Camera& camera, ImDrawList* list, s
         // walked past its middle, with most of it still on screen.
         if (glm::dot(marker.position - camera.position, camera.front) < -world_size) continue;
 
-        const float opacity = marker.alpha * fadeFactor(metresToInches(entry.distance), marker.fade_near, marker.fade_far);
+        const float opacity = marker.alpha * fadeFactor(viewer::metresToInches(entry.distance), marker.fade_near, marker.fade_far);
         if (opacity <= 0.003f) continue;
 
         const bool selected =
@@ -554,8 +373,7 @@ void drawMarkers(editor::State& state, const Camera& camera, ImDrawList* list, s
         ImTextureID texture = resources::texture(marker.icon);
 
         glm::vec3 world_quad[4];
-        float corner_depth[4];
-        VisibleQuad visible;
+        viewer::overlay::ClippedQuad visible;
         ImVec2 corners[5];
 
         if (marker.has_rotation) {
@@ -563,11 +381,11 @@ void drawMarkers(editor::State& state, const Camera& camera, ImDrawList* list, s
             // maxSize do not apply: those clamp a billboard's screen size, and clamping a
             // world-locked quad would detach it from the surface it is placed on.
             rotatedMarkerQuad(marker, world_quad);
-            if (!clipAndProject(camera, world_quad, corner_depth, &visible)) continue;
-            toScreen(visible.screen, visible.count, corners);
+            if (!viewer::overlay::clipAndProject(camera, world_quad, &visible)) continue;
+            viewer::overlay::screenCorners(visible, corners);
 
             if (texture) {
-                drawTexturedQuad(camera, list, texture, world_quad, corner_depth, visible, kRotatedUv, colour);
+                viewer::overlay::drawTexturedQuad(list, camera, texture, visible, kRotatedUv, colour);
             } else {
                 list->AddConvexPolyFilled(corners, visible.count, colour);
             }
@@ -593,7 +411,7 @@ void drawMarkers(editor::State& state, const Camera& camera, ImDrawList* list, s
         for (int i = 0; i < 4 && measurable; ++i) measurable = camera.project(world_quad[i], &unclipped[i]);
 
         if (measurable) {
-            const float measured = quadPixelHeight(unclipped);
+            const float measured = viewer::quadPixelHeight(unclipped);
             const float pixels = std::clamp(measured, marker.min_size * kBlishSizeLimit, marker.max_size * kBlishSizeLimit);
             if (pixels < 1.0f) continue;
 
@@ -602,17 +420,17 @@ void drawMarkers(editor::State& state, const Camera& camera, ImDrawList* list, s
             }
         }
 
-        if (!clipAndProject(camera, world_quad, corner_depth, &visible)) continue;
-        toScreen(visible.screen, visible.count, corners);
+        if (!viewer::overlay::clipAndProject(camera, world_quad, &visible)) continue;
+        viewer::overlay::screenCorners(visible, corners);
 
         glm::vec2 centre;
         if (texture) {
-            drawTexturedQuad(camera, list, texture, world_quad, corner_depth, visible, kBillboardUv, colour);
+            viewer::overlay::drawTexturedQuad(list, camera, texture, visible, kBillboardUv, colour);
         } else if (camera.project(marker.position, &centre)) {
             // No icon, or it failed to load: a dot still shows the marker is there. A dot
             // and not the whole quad, deliberately — an icon-less marker scaled up should
             // not blanket the screen with a solid colour.
-            const float radius = std::max(2.0f, quadPixelHeight(visible.screen, visible.count) * 0.175f);
+            const float radius = std::max(2.0f, viewer::quadPixelHeight(visible.screen, visible.count) * 0.175f);
             list->AddCircleFilled(ImVec2(centre.x, centre.y), radius, applyOpacity(marker.tint, opacity * 0.7f));
         }
 
@@ -624,7 +442,7 @@ void drawMarkers(editor::State& state, const Camera& camera, ImDrawList* list, s
 // width is perspective-correct. Mirrors how Blish builds its vertex buffer, minus the
 // resolution resampling.
 void drawTrailSection(
-    const Camera& camera,
+    const viewer::Camera& camera,
     ImDrawList* list,
     const pack::trl::Segment& segment,
     const TrailDraw& trail,
@@ -660,9 +478,8 @@ void drawTrailSection(
         // your feet straddling the near plane, and dropping it leaves a gap in the ribbon
         // exactly where you are looking.
         const glm::vec3 world_quad[4] = {a - offset, a + offset, b + offset, b - offset};
-        float corner_depth[4];
-        VisibleQuad visible;
-        if (!clipAndProject(camera, world_quad, corner_depth, &visible)) {
+        viewer::overlay::ClippedQuad visible;
+        if (!viewer::overlay::clipAndProject(camera, world_quad, &visible)) {
             travelled += length;
             continue;
         }
@@ -670,7 +487,7 @@ void drawTrailSection(
         // Fade is measured from the player, not the camera — same as markers, and same as
         // Blish's DistanceToPlayer.
         const float distance = glm::length((a + b) * 0.5f - camera.player);
-        const float opacity = trail.alpha * fadeFactor(metresToInches(distance), trail.fade_near, trail.fade_far);
+        const float opacity = trail.alpha * fadeFactor(viewer::metresToInches(distance), trail.fade_near, trail.fade_far);
         if (opacity <= 0.003f) {
             travelled += length;
             continue;
@@ -681,14 +498,14 @@ void drawTrailSection(
         const float v1 = (travelled + length) / repeat;
 
         ImVec2 corners[5];
-        toScreen(visible.screen, visible.count, corners);
+        viewer::overlay::screenCorners(visible, corners);
 
         if (texture) {
             // A segment running away from the camera has its two ends at very different
             // depths, which is the case the subdivision above exists for: without it the
             // texture slides along the ribbon instead of compressing into the distance.
             const ImVec2 uv[4] = {ImVec2(1.0f, v0), ImVec2(0.0f, v0), ImVec2(0.0f, v1), ImVec2(1.0f, v1)};
-            drawTexturedQuad(camera, list, texture, world_quad, corner_depth, visible, uv, colour);
+            viewer::overlay::drawTexturedQuad(list, camera, texture, visible, uv, colour);
         } else {
             list->AddConvexPolyFilled(corners, visible.count, colour);
         }
@@ -699,7 +516,7 @@ void drawTrailSection(
 
 // No editor::State: a ribbon is drawn from its cached attributes and nothing else. Which
 // trails are in `order` at all is decided in draw(), selection included.
-void drawTrails(const Camera& camera, ImDrawList* list, std::vector<Sorted>& order) {
+void drawTrails(const viewer::Camera& camera, ImDrawList* list, std::vector<Sorted>& order) {
     for (const Sorted& entry : order) {
         if (!entry.is_trail) continue;
 
@@ -722,7 +539,7 @@ void drawTrails(const Camera& camera, ImDrawList* list, std::vector<Sorted>& ord
 // Handles for the trail open in the editor, drawn over the ribbon: one small dot per
 // point, so a point can be aimed at and dragged the way a marker can. Only the open trail
 // gets them — every trail at once would be an unreadable field of dots.
-void drawTrailPoints(editor::State& state, const Camera& camera, ImDrawList* list, int map_id) {
+void drawTrailPoints(editor::State& state, const viewer::Camera& camera, ImDrawList* list, int map_id) {
     constexpr float kHandleRadius = 4.0f;
     constexpr float kPickRadius = 9.0f; // px; a dot is small, so pick with some slack
 
@@ -777,7 +594,7 @@ size_t hoveredTrailPoint() {
     return hovered_trail_point.load();
 }
 
-void draw(editor::State& state, const Camera& camera) {
+void draw(editor::State& state, const viewer::Camera& camera) {
     hover_highlight = state.settings.select_in_viewport ? hovered_pathable.load() : pack::kNoIndex;
     hovered_pathable.store(pack::kNoIndex);
     hover_point_highlight = state.settings.select_in_viewport ? hovered_trail_point.load() : pack::kNoIndex;
@@ -806,7 +623,7 @@ void draw(editor::State& state, const Camera& camera) {
 
         const float distance = glm::length(marker.position - camera.player);
         // Cheap reject before any projection work.
-        if (marker.fade_far > 0.0f && metresToInches(distance) > marker.fade_far) continue;
+        if (marker.fade_far > 0.0f && viewer::metresToInches(distance) > marker.fade_far) continue;
 
         order.push_back(Sorted{distance, i, false});
     }

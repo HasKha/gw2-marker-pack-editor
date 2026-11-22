@@ -5,7 +5,7 @@
 #include <glm/vec2.hpp>
 #include <glm/vec3.hpp>
 
-namespace world {
+namespace viewer {
 
 // Metres per inch. Marker positions are in metres; fadeNear, fadeFar, triggerRange and
 // friends are in inches. Pathing's marker.hlsl divides by exactly this before comparing.
@@ -169,4 +169,4 @@ int affineQuadSubdivisions(const glm::vec2* screen, const float* depth, int coun
 // come out squashed and the gizmo's circles come out as ellipses.
 Camera fromMumble(const Mumble::Data* mumble, const glm::vec2& viewport);
 
-} // namespace world
+} // namespace viewer

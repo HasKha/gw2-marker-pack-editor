@@ -9,6 +9,7 @@
 #include "pack/model.h"
 #include "pack/source.h"
 #include "pack/trl.h"
+#include "viewer/textures.h"
 
 // Images and trail data pulled out of the open pack on demand.
 //
@@ -20,11 +21,8 @@ namespace resources {
 void init(AddonAPI* api);
 void shutdown();
 
-// Resets the per-frame decode budget. Call once at the top of the render callback.
-//
-// Decoding is synchronous, so arriving on a map with hundreds of unseen markers would
-// otherwise decode all of them in one frame and visibly hitch. Instead a few are admitted
-// per frame and the rest appear over the next handful of frames.
+// Resets the per-frame load budget, which images and trails share — see viewer::LoadBudget.
+// Call once at the top of the render callback.
 void beginFrame();
 
 // Takes ownership of the pack's source and drops every cached asset. The source has to
@@ -42,16 +40,8 @@ void setPendingAssets(const pack::Pack* pack);
 // replaced or withdrawn — because a cache hit would otherwise keep the old image forever.
 void forget(const std::string& path);
 
-// A decoded image and the pixel size Nexus reports for it. `texture` is nullptr until the
-// image is available, or if it does not exist / fails to decode.
-struct Image {
-    ImTextureID texture = nullptr;
-    int width = 0;
-    int height = 0;
-};
-
 // Paths are resolved through pack::normalizePath, so any spelling a pack uses works.
-Image image(const std::string& path);
+viewer::Image image(const std::string& path);
 ImTextureID texture(const std::string& path);
 
 // nullptr if the file is missing or unparseable. The returned Trail is owned by the

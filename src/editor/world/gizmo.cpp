@@ -159,7 +159,7 @@ void writeRotation(editor::State& state, size_t pathable_index, const glm::vec3&
 
 } // namespace
 
-bool draw(editor::State& state, const Camera& camera) {
+bool draw(editor::State& state, const viewer::Camera& camera) {
     if (!state.loaded || !camera.valid || camera.map_open) return false;
     if (state.settings.gizmo == editor::GizmoMode::Disabled) return false;
 

@@ -1,4 +1,4 @@
-#include "editor/world/camera.h"
+#include "viewer/camera.h"
 
 #include <nlohmann/json.hpp>
 
@@ -9,7 +9,7 @@
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtc/matrix_transform.hpp>
 
-namespace world {
+namespace viewer {
 
 namespace {
 
@@ -222,4 +222,4 @@ Camera fromMumble(const Mumble::Data* mumble, const glm::vec2& viewport) {
     return camera;
 }
 
-} // namespace world
+} // namespace viewer

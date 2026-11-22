@@ -46,7 +46,7 @@ it, save it back, and the edited markers show correctly in Blish HUD.**
 | Settings | the Settings toggles, gizmo mode, which windows are open and where the browsers start, kept in `settings.json` |
 | Create pack | `New Pack...` builds an empty pack in memory; Save As writes the first zip |
 | Write | serializes the owned document; comments, order, spelling, BOM, CRLF and the file split survive. 947/947 files stable on rewrite |
-| Tests | `mpe_test`, 60 cases over the real pack corpus, the selection rules and the trail editing layer, run by `ctest` |
+| Tests | `mpe_test`, 44 cases over the real pack corpus, the selection rules and the trail editing layer; `mpe_viewer_test`, 32 over the camera, the draw-list quad path, the texture cache and the viewer's settings; and a check that nothing in `src/viewer/` includes the editor. All run by `ctest` |
 
 A pack can be edited end to end, grown new branches, and started from nothing. The test
 row's claims are measured against the corpus in [testing.md](testing.md).
@@ -128,7 +128,7 @@ editor, and undo/redo. What is left is not doubt about whether it works, but the
 - **Perspective-correct texturing is capped at 16 subdivisions a side.** That covers every
   marker anyone would author; a quad both enormous and right in the camera's face still
   carries a little of the affine bend near the corner closest to you. Raising the cap is a
-  constant in `editor/world/camera.h`, paid for in vertices.
+  constant in `viewer/camera.h`, paid for in vertices.
 - **Quads are clipped against the near plane only, not the sides of the frustum.** A marker
   you are standing inside can project a corner tens of thousands of pixels off screen, and
   those cells are subdivided and emitted like any other before ImGui's scissor throws them
@@ -136,22 +136,22 @@ editor, and undo/redo. What is left is not doubt about whether it works, but the
 
 ## The viewer
 
-Nothing built yet. Each milestone ends in something that works and can ship; none leaves
-the editor broken in between. How each part works is [viewer.md](viewer.md).
+Each milestone ends in something that works and can ship; none leaves the editor broken in
+between. How each part works is [viewer.md](viewer.md).
 
-### 0. Split, with no change in behaviour
+### 0. Split, with no change in behaviour — done offline
 
-`src/pack/` and `src/editor/` are already their own libraries, `mpe_pack` and `mpe_editor`,
-with `entry.cpp` alone in the DLL. What is left:
+`mpe_viewer` exists in `src/viewer/`: the camera, `LoadBudget` and `TextureCache`, the
+draw-list quad path as `render/overlay.*`, and the lifecycle that owns the addon's options
+page. `entry.cpp` loads the editor only when "Enable pack editing" is on, which it is for an
+install that already has `settings.json`. Every case that passed before still passes,
+`mpe_viewer_test` links without `mpe_editor`, and `viewer_includes_no_editor` holds the
+include rule.
 
-- A third library, `mpe_viewer`, in `src/viewer/` as in [viewer.md](viewer.md#layout).
-  `editor/world/camera.*`, the texture half of `editor/resources.*` and the draw-list quad
-  path out of `editor/world/renderer.cpp` move into it; nothing else does yet.
-- `entry.cpp` gates the editor on the "Enable pack editing" setting, on for an install that
-  already has `settings.json`.
-- **Done when** `mpe_test` passes unchanged, `mpe_viewer` links without `mpe_editor`, nothing
-  under `src/viewer/` includes an `editor/` header, and the editor is the same in game as
-  before.
+**Left: one pull in game**, to answer one question: with an existing `settings.json`, does the
+options page show "Enable pack editing" ticked above the editor's window checkboxes, and does
+the editor open, draw and save a pack as 1.6 did? Then untick, reload the addon, and check
+the editor's windows, keybinds and Quick Access entry are all gone.
 
 ### 1. Packs drawn, no scripts
 

@@ -51,7 +51,7 @@ void selectPoint(editor::State& state, size_t index) {
     });
 }
 
-void drawHeader(editor::State& state, const world::Camera& camera) {
+void drawHeader(editor::State& state, const viewer::Camera& camera) {
     int map_id = trail_edit::mapId();
 
     ImGui::PushItemWidth(120.0f);
@@ -106,7 +106,7 @@ void drawPointList(editor::State& state) {
 // Adds a point where the character is standing: after the selected one, or at the end of
 // the trail when nothing is selected. Walking the route and dropping points is how these
 // are authored, and a point can be dragged afterwards like any other.
-void drawAddPoint(editor::State& state, const world::Camera& camera, size_t selected) {
+void drawAddPoint(editor::State& state, const viewer::Camera& camera, size_t selected) {
     if (!ImGui::Button("Add point")) {
         if (ImGui::IsItemHovered()) {
             ImGui::SetTooltip(
@@ -122,7 +122,7 @@ void drawAddPoint(editor::State& state, const world::Camera& camera, size_t sele
     if (added != pack::kNoIndex) state.points.indices.set(added);
 }
 
-void drawSelectedPoint(editor::State& state, const world::Camera& camera) {
+void drawSelectedPoint(editor::State& state, const viewer::Camera& camera) {
     // The last point clicked, which is the one the user is looking at. No bounds check:
     // trail_edit prunes the selection whenever the trail changes shape.
     const size_t index = state.points.indices.primary();
@@ -156,7 +156,7 @@ void drawSelectedPoint(editor::State& state, const world::Camera& camera) {
     ImGui::TextDisabled("%zu selected", selected.size());
 }
 
-void drawCirclePopup(editor::State& state, const world::Camera& camera) {
+void drawCirclePopup(editor::State& state, const viewer::Camera& camera) {
     constexpr const char* kTitle = "Add circle";
 
     if (open_circle_popup) {
@@ -192,7 +192,7 @@ void drawCirclePopup(editor::State& state, const world::Camera& camera) {
 
 } // namespace
 
-Request drawMenu(editor::State& state, const world::Camera& camera) {
+Request drawMenu(editor::State& state, const viewer::Camera& camera) {
     Request request = Request::None;
     if (!ImGui::BeginMenu("Trail")) return request;
 
@@ -216,7 +216,7 @@ Request drawMenu(editor::State& state, const world::Camera& camera) {
     return request;
 }
 
-void draw(editor::State& state, const world::Camera& camera) {
+void draw(editor::State& state, const viewer::Camera& camera) {
     if (!state.loaded) {
         ImGui::TextDisabled("No pack open.");
         return;

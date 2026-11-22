@@ -1,7 +1,7 @@
 #pragma once
 
 #include "editor/editor_state.h"
-#include "editor/world/camera.h"
+#include "viewer/camera.h"
 
 namespace world::renderer {
 
@@ -32,7 +32,7 @@ bool markerTransform(const pack::Pack& pack, const pack::Pathable& pathable, Mar
 //
 // What gets drawn is controlled per node by the visibility toggles in the tree, not by
 // global switches.
-void draw(editor::State& state, const Camera& camera);
+void draw(editor::State& state, const viewer::Camera& camera);
 
 // Index into Pack::pathables of whatever is under the mouse, or pack::kNoIndex.
 //
