@@ -1,11 +1,11 @@
-#include "settings.h"
+#include "editor/settings.h"
 
 #include <nlohmann/json.hpp>
 
 #include <fstream>
 
-#include "marker_editor.h"
-#include "ui/windows.h"
+#include "editor/marker_editor.h"
+#include "editor/ui/windows.h"
 
 namespace settings {
 

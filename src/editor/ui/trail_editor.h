@@ -3,8 +3,8 @@
 #include <filesystem>
 #include <string>
 
-#include "editor_state.h"
-#include "world/camera.h"
+#include "editor/editor_state.h"
+#include "editor/world/camera.h"
 
 namespace ui::trail_editor {
 

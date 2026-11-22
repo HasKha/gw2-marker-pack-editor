@@ -1,4 +1,4 @@
-#include "world/camera.h"
+#include "editor/world/camera.h"
 
 #include <nlohmann/json.hpp>
 

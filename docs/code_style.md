@@ -20,7 +20,7 @@ touch. It is not on PATH; it ships with Visual Studio at
 
 **`""` for this repo's headers, `<>` for everything else** — the standard library, Windows, and every
 dependency, imgui and Nexus included. Ours is written from `src/`, never relative to the file:
-`"pack/model.h"`, `"world/camera.h"`.
+`"pack/model.h"`, `"editor/world/camera.h"`.
 
 **Name a function for what it does**: the operation and its subject, `countByType()`, not `judgeTypes()`. No
 `judge`, `evaluate`, `process`, `handle`, `manage` — they name a category, not an action. A name that will
@@ -50,7 +50,7 @@ block under a comment saying what it does.
 - **A number used in one place is named there**: a `constexpr` local in that block, under the comment
   that says what it means, edited in place — never a bare literal, never a header constant. What one
   file's functions share goes at the top of the .cpp; what another file needs goes in the header, as
-  the subdivision cap is in `world/camera.h`.
+  the subdivision cap is in `editor/world/camera.h`.
 - **Positive conditions**: `if (x) {…} else {…}`, not `if (!x) {…} else {…}`; `if (const T* p = find())`
   rather than a null check that returns.
 - **No early returns where a branch does the job**, and the same for `continue` in a loop. Keep one only
@@ -67,5 +67,5 @@ block under a comment saying what it does.
 - **UI text is `ImGui::Text`.** `TextDisabled` only for what is really off — a control that cannot be
   used, a pack that is not loaded — never to make a heading or a hint quieter. `TextWrapped` only for
   long or variable text, such as an error.
-- **An icon is drawn with `ImDrawList` primitives**, as `eyeButton` in `ui/tree_window.cpp` is. An icon
+- **An icon is drawn with `ImDrawList` primitives**, as `eyeButton` in `editor/ui/tree_window.cpp` is. An icon
   font cannot reach Nexus's atlas; the comment there says why.

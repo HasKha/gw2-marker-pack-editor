@@ -1,4 +1,4 @@
-#include "ui/trail_editor.h"
+#include "editor/ui/trail_editor.h"
 
 #include <imgui.h>
 
@@ -7,7 +7,7 @@
 #include <string>
 #include <vector>
 
-#include "trail_edit.h"
+#include "editor/trail_edit.h"
 
 namespace ui::trail_editor {
 
@@ -25,6 +25,14 @@ struct CircleParams {
 
 CircleParams circle;
 bool open_circle_popup = false;
+
+const pack::Pathable* selectedTrail(const editor::State& state) {
+    const editor::NodeRef node = state.selection.primary();
+    if (node.kind != editor::NodeKind::Pathable || node.index >= state.pack.pathables.size()) return nullptr;
+
+    const pack::Pathable& pathable = state.pack.pathables[node.index];
+    return pathable.type == pack::PathableType::Trail ? &pathable : nullptr;
+}
 
 // Same modifiers as the tree, over a flat list: the range is just an index span, so it
 // needs none of the tree's level bookkeeping.
@@ -217,6 +225,18 @@ void draw(editor::State& state, const world::Camera& camera) {
     // Not followSelection: that runs from marker_editor every frame, because this body does
     // not when the window is collapsed.
     if (!trail_edit::isOpen()) {
+        // trail_edit closes rather than keeping the last trail up when a .trl cannot be
+        // read, so a trail selected with nothing open is one whose data is missing. Saying
+        // "select a trail" there would make a broken traildata look like an empty trail.
+        if (const pack::Pathable* trail = selectedTrail(state)) {
+            const std::string* data = state.pack.effectiveValue(*trail, "traildata");
+            ImGui::TextDisabled("%s", data ? data->c_str() : "(no traildata)");
+            ImGui::TextWrapped(
+                "This trail's data file is not in the pack, or could not be read. Its points cannot be edited until "
+                "traildata points at a file the pack has.");
+            return;
+        }
+
         ImGui::TextDisabled("Select a trail to edit it.");
         ImGui::TextWrapped("A trail's points live in its .trl file, which is loaded on demand - give it a frame after selecting.");
         return;

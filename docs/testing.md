@@ -70,7 +70,10 @@ reader.
 
 ## Above the pack layer
 
-`editor_state.cpp` compiles into `mpe_test`, and `test/selection_test.cpp` covers the click rules, pruning
-and the two selections. The rest of the editor is plain functions over `editor::State` where it can be,
-which is what makes it testable the same way. The windows and the world drawing are not: each change to
-them is checked in game once, with what to look for decided before loading in.
+`mpe_test` links `mpe_editor`, so anything in the editor a test reaches is linked in, and what touches
+Nexus goes through an `AddonAPI*` left null ([architecture.md](architecture.md#build-targets)).
+`selection_test.cpp` covers the click rules, pruning and the two selections; `trail_test.cpp` covers
+creating trails, following the selection and renaming `traildata`. The rest of the editor is plain
+functions over `editor::State` where it can be, which is what makes it testable the same way. The windows
+and the world drawing are not: each change to them is checked in game once, with what to look for decided
+before loading in.

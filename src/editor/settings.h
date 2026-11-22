@@ -4,7 +4,7 @@
 
 #include <filesystem>
 
-#include "editor_state.h"
+#include "editor/editor_state.h"
 
 // The handful of things that should survive a game restart, in
 // `<addons>/MarkerPackEditor/settings.json`.

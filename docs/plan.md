@@ -34,18 +34,19 @@ it, save it back, and the edited markers show correctly in Blish HUD.**
 | Read | zip and folder sources, XML, attribute inheritance, `.trl`. 937/937 files across 9 test packs |
 | UI | five independent windows — Tree, Details, Toolbar, Trail editor, Resources — with a View menu and a Nexus options checkbox each |
 | Resources | the pack's images as a folder tree, with reference counts, a preview, and add / remove pending until a save |
-| Trail editor | map id, the point list, drag fields, point handles in the world, and a Trail menu: reload, export, add circle |
+| Trail editor | map id, the point list, drag fields, point handles in the world, and a Trail menu: reload, export, add circle. A trail whose `.trl` the pack does not have says so and names the file |
 | Tree + properties | category tree with visibility toggles; attribute form generated from the attribute table, per-element attribute sets traced to Pathing, inheritance shown for categories as well as pathables |
 | World | billboards, trail ribbons, rotation, click-to-pick for markers and trail points; nothing drawn while the map is open. Selection is shown by an outline on a marker and by the point handles on a trail — a selected ribbon is left untinted on purpose, so what the pack actually looks like stays readable |
 | Selection | two independent selections — nodes and trail points — sharing one click rule. ctrl+click in the tree and the world, shift+click ranges in the tree and the point list, world picks reveal the node in the tree. Cleared by a click that hits nothing — blank space in the tree, empty world in the viewport — where a miss lets go of the points first and keeps the trail |
 | 3D edit | ImGuizmo translate/rotate on the selection — markers and trail points alike — anchored on the first node selected; a group rotation orbits the rest about it |
+| Rename | a trail is named by its `traildata` path, and editing that in the details window moves the `.trl` with it, unless the new path already names data — that is a re-point, and nothing is written over |
 | Create | Add POI, Trail and Category from the toolbar, placed by the selection. A POI copies the selected marker's attributes; a trail comes with an empty `.trl`. Both get the current `MapID`, unless an ancestor category already supplies it. Add Category prompts for a dotted id (defaulted to the selection's own, so editing its last segment makes a sibling and appending one makes a child), a required display name, an optional description, and whether to copy the selection's attributes |
 | Delete | a marker, or a category and its whole subtree, from the details window. Tombstoned, never erased |
 | Undo / redo | Ctrl+Z / Ctrl+Y and an Edit menu, over every edit there is: attributes, add, delete, images, trails |
 | Settings | the Settings toggles, gizmo mode, which windows are open and where the browsers start, kept in `settings.json` |
 | Create pack | `New Pack...` builds an empty pack in memory; Save As writes the first zip |
 | Write | serializes the owned document; comments, order, spelling, BOM, CRLF and the file split survive. 947/947 files stable on rewrite |
-| Tests | `mpe_test`, 52 cases over the real pack corpus and the selection rules, run by `ctest` |
+| Tests | `mpe_test`, 60 cases over the real pack corpus, the selection rules and the trail editing layer, run by `ctest` |
 
 A pack can be edited end to end, grown new branches, and started from nothing. The test
 row's claims are measured against the corpus in [testing.md](testing.md).
@@ -59,6 +60,9 @@ Roughly in order.
 ### 1. Whatever is still thin
 
 - Reorder a trail's points. Adding and deleting them already work.
+- **A rename field in the trail editor.** Renaming a trail means editing `traildata` in the
+  details window, while the trail editor is where that path is on screen. A field there
+  calling `pathable_edit::attributeRenamed` is the obvious next step.
 - More shape tools beside the circle: a straight line between two points is the obvious
   next one. `gw2-markers/scripts/shared.py` remains the spec.
 - **Enum value lists** from the gw2pathing.com attribute pages, so `ValueKind::Enum` gets a
@@ -74,10 +78,10 @@ Roughly in order.
 - **`animspeed`** — parsed and stored, but trail textures do not scroll.
 - **Move pack loading off the render thread** if a large pack starts to stutter. 56k
   markers has not been slow enough to need it.
-- **Tests above the pack layer.** Selection is done — `editor_state.cpp` compiles into
-  `mpe_test` and `test/selection_test.cpp` covers the click rules, pruning and the two
-  selections. Undo and the editor's own indexes are still covered by hand; both are plain
-  functions over `editor::State` and could go the same way. The windows cannot.
+- **Tests above the pack layer.** `mpe_test` links `mpe_editor`, so anything there is
+  reachable: `selection_test.cpp` covers the click rules and `trail_test.cpp` covers
+  creating trails, following the selection and renaming traildata. Undo itself and the
+  editor's indexes are still covered by hand and could go the same way. The windows cannot.
 - **Screenshots in the README.** The rest of the release prep is done.
 - **CI.** A Windows job that configures and builds would catch a break from a clean clone,
   which is the one thing a local build cannot. The suite skips itself without a corpus, so
@@ -107,7 +111,7 @@ editor, and undo/redo. What is left is not doubt about whether it works, but the
 - Window positions are whatever ImGui's `imgui.ini` remembers. Visibility is ours and is
   persisted; position is not, deliberately.
 - Only the tree has an `update()` so far. If a second and third window grow one, drive the
-  calls from the `ui/windows.*` table instead of by hand — see [A window that is not
+  calls from the `editor/ui/windows.*` table instead of by hand — see [A window that is not
   drawing](architecture.md#a-window-that-is-not-drawing).
 - `saveToDirectory`'s asset half — writing added images into a folder pack and deleting
   removed ones from disk — is the one write path the tests do not exercise, because the
@@ -124,7 +128,7 @@ editor, and undo/redo. What is left is not doubt about whether it works, but the
 - **Perspective-correct texturing is capped at 16 subdivisions a side.** That covers every
   marker anyone would author; a quad both enormous and right in the camera's face still
   carries a little of the affine bend near the corner closest to you. Raising the cap is a
-  constant in `world/camera.h`, paid for in vertices.
+  constant in `editor/world/camera.h`, paid for in vertices.
 - **Quads are clipped against the near plane only, not the sides of the frustum.** A marker
   you are standing inside can project a corner tens of thousands of pixels off screen, and
   those cells are subdivided and emitted like any other before ImGui's scissor throws them
@@ -137,13 +141,17 @@ the editor broken in between. How each part works is [viewer.md](viewer.md).
 
 ### 0. Split, with no change in behaviour
 
-- `src/` into `pack/`, `viewer/` and `editor/` as in [viewer.md](viewer.md#layout): three
-  static libraries and the DLL. `camera.*`, the texture half of `resources.*` and the
-  draw-list quad path move to `viewer/`; nothing else does yet.
+`src/pack/` and `src/editor/` are already their own libraries, `mpe_pack` and `mpe_editor`,
+with `entry.cpp` alone in the DLL. What is left:
+
+- A third library, `mpe_viewer`, in `src/viewer/` as in [viewer.md](viewer.md#layout).
+  `editor/world/camera.*`, the texture half of `editor/resources.*` and the draw-list quad
+  path out of `editor/world/renderer.cpp` move into it; nothing else does yet.
 - `entry.cpp` gates the editor on the "Enable pack editing" setting, on for an install that
   already has `settings.json`.
-- **Done when** `mpe_test` passes unchanged, `viewer/` builds without `editor/` in its include
-  path, and the editor is the same in game as before.
+- **Done when** `mpe_test` passes unchanged, `mpe_viewer` links without `mpe_editor`, nothing
+  under `src/viewer/` includes an `editor/` header, and the editor is the same in game as
+  before.
 
 ### 1. Packs drawn, no scripts
 

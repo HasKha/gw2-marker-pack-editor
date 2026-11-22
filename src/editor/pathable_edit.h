@@ -2,7 +2,7 @@
 
 #include <glm/vec3.hpp>
 
-#include "editor_state.h"
+#include "editor/editor_state.h"
 
 // Creating and deleting markers. The pack layer does the document surgery; this decides
 // what a new marker should be and where it belongs, which is an editor question.
@@ -39,6 +39,19 @@ size_t addTrail(editor::State& state, int32_t map_id);
 // Returns true when it wrote something. Shared with the trail editor, which has to hold a
 // trail's `.trl` header and its attribute to the same value.
 bool setMapId(const editor::State& state, pack::AttributeCollection* attributes, size_t category, int32_t map_id);
+
+// Side effects of an attribute edit beyond the value itself. `previous` is what the
+// attribute held before the edit; call it once the value has settled, not per keystroke,
+// and inside the caller's undo::Step.
+//
+// One attribute needs this: `traildata` is a trail's only name — the tree labels it with
+// that path and the trail editor shows it — so renaming it is how a trail gets named, and
+// the `.trl` has to move too or the points are left behind under the old path. A new path
+// that already names data is a re-point, not a rename: nothing is written over. The old
+// file is dropped only when the editor added it and no other trail resolves to it.
+//
+// A no-op for everything else.
+void attributeRenamed(editor::State& state, editor::NodeRef node, const std::string& key, const std::string& previous);
 
 // Adds a category at the dotted id `name` — e.g. "root.foo.bar" — nested under whatever
 // already exists at "root.foo". No dot at all makes a root category. This is also how

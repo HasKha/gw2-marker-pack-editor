@@ -51,7 +51,7 @@ different map here than it does in Blish. It cannot be resolved with the rest of
 attributes, though: reading a `.trl` goes through the per-frame load budget, so
 `TrailDraw::map_id` starts unknown and the draw loop fills it in on the first frame the file
 is there — until then the trail is on no map, exactly as it already was while its geometry
-was still loading. See `world/renderer.cpp`.
+was still loading. See `editor/world/renderer.cpp`.
 
 The attribute is still worth writing, and the editor writes it on a trail it creates: it is
 how a reader tells which map a `<Trail>` is for without opening its `.trl`, which is why every
@@ -115,6 +115,12 @@ Only three groups are genuinely not category-settable: the position and identity
 pathable (`xpos`/`ypos`/`zpos`, `guid`, `type`), which inherit in Pathing but only
 pathologically; the category's own structural attributes, which mean nothing on a pathable;
 and `trailData`, for the reason below.
+
+#### A category may hold as many trails as it likes
+
+Nothing pairs a category with one trail. `PackReader.TryLoadPois` walks every child of every
+`<POIs>` block and builds each into its own pathable; `type` only files it, and
+`Trail.Preprocess` loads that trail's own `traildata`.
 
 #### trailData is the exception
 

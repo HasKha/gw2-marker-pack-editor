@@ -56,6 +56,10 @@ ImTextureID texture(const std::string& path);
 
 // nullptr if the file is missing or unparseable. The returned Trail is owned by the
 // cache and stays valid until setSource or shutdown.
-const pack::trl::Trail* trail(const std::string& path);
+//
+// `deferred` tells the two kinds of nullptr apart: true means the frame's budget was spent
+// before the read was attempted, so next frame will do better; false means it was tried and
+// the miss is cached, so no later frame will.
+const pack::trl::Trail* trail(const std::string& path, bool* deferred = nullptr);
 
 } // namespace resources

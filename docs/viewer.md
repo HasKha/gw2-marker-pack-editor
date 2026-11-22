@@ -39,8 +39,9 @@ renderer natively anyway, while keeping Blish HUD and a fork of an 18k-line modu
 
 ## Layout
 
-What `src/` becomes. Milestone 0 is the move, with no behaviour change; after it,
-[architecture.md](architecture.md#module-layout)'s layout describes `editor/`.
+What `src/` becomes. `pack/` and `editor/` are already their own libraries; milestone 0
+adds `viewer/` and moves the shared parts into it, with no behaviour change.
+[architecture.md](architecture.md#module-layout)'s layout goes on describing `editor/`.
 
 ```
 src/
@@ -55,12 +56,12 @@ src/
     scene.*        this frame's world quads, billboards and screen items, built from runtime
     render/        the sinks: good_render.* (moments) and overlay.* (Nexus render, draw list)
     map.*          the minimap and full map projection (Pathing's Entity/MapProjection.cs)
-    camera.*       MumbleLink -> view/projection — moved here from the editor's world/
-    textures.*     the editor's resources.* texture half, budgeted decoding, moved here
+    camera.*       MumbleLink -> view/projection — from editor/world/camera.*
+    textures.*     budgeted texture decoding — the texture half of editor/resources.*
     catalog.*      the public pack catalog: list, download, update
     store.*        what outlives a session: category toggles, behavior state, script Storage
     ui/            the category menu, pack manager, settings, script console
-  editor/          mpe_editor, links mpe_pack and mpe_viewer — today's src/ minus what moved
+  editor/          mpe_editor, links mpe_pack and mpe_viewer — today's src/editor/ minus what moved
 ```
 
 **The dependency only points one way.** `editor/` includes `viewer/`; `viewer/` never
@@ -69,7 +70,7 @@ overlays — it calls a hook `entry.cpp` connects, null while editing is off. So
 builds and tests without the editor, and an editor change cannot reach a player who never
 turned editing on.
 
-The editor's `world/renderer.*` splits along the same line. Its quad path — world-space
+The editor's `editor/world/renderer.*` splits along the same line. Its quad path — world-space
 subdivision and near-plane clipping, the reason a draw-list quad is perspective-correct at
 all — becomes `render/overlay.*`. What only an editor draws stays in `editor/`: the selection
 outline, the open trail's point handles, the gizmo.

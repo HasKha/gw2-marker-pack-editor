@@ -1,4 +1,4 @@
-#include "ui/property_panel.h"
+#include "editor/ui/property_panel.h"
 
 #include <imgui.h>
 
@@ -9,8 +9,8 @@
 #include <string>
 #include <vector>
 
-#include "pathable_edit.h"
-#include "undo.h"
+#include "editor/pathable_edit.h"
+#include "editor/undo.h"
 
 namespace ui::property_panel {
 
@@ -157,6 +157,9 @@ bool editValue(const char* id, pack::ValueKind kind, const std::string& current,
 
 bool open_delete_popup = false;
 
+// What the active field held when it was clicked into. One field is active at a time.
+std::string edit_started_value;
+
 // A category takes its whole subtree with it, which is more than a single click should do
 // without saying so. Ctrl+Z takes it back — the delete is one undo step, subtree included.
 void drawDeletePopup(editor::State& state, editor::NodeRef node) {
@@ -283,16 +286,42 @@ void drawExplicit(editor::State& state, editor::NodeRef node) {
             ImGui::TableNextColumn();
             std::string updated;
             const pack::ValueKind kind = def ? def->kind : pack::ValueKind::String;
+            const std::string merge_key =
+                "attr:" + std::to_string(static_cast<int>(node.kind)) + ":" + std::to_string(node.index) + ":" + attribute.key;
+
+            // Keyed on the field: dragging one number is one step, but moving to the next
+            // attribute starts another.
             if (editValue(attribute.key.c_str(), kind, attribute.value, &updated)) {
-                // Keyed on the field: dragging one number is one step, but moving to the
-                // next attribute starts another.
-                undo::Step step(
-                    state,
-                    "Edit " + attribute.name,
-                    "attr:" + std::to_string(static_cast<int>(node.kind)) + ":" + std::to_string(node.index) + ":" + attribute.key);
+                undo::Step step(state, "Edit " + attribute.name, merge_key);
                 undo::attributes(state, node);
                 attributes->set(attribute.name, updated);
                 state.touch();
+            }
+
+            // `rows` is this frame's copy, so on the frame the field is clicked into it
+            // still holds the value being edited away from.
+            if (ImGui::IsItemActivated()) edit_started_value = attribute.value;
+
+            // On commit, not per keystroke: attributeRenamed moves a file, and typing
+            // "route-one.trl" is eighteen intermediate paths. Escape reverts the field
+            // first, so an abandoned edit arrives here as previous == current and no-ops.
+            if (ImGui::IsItemDeactivatedAfterEdit() && !edit_started_value.empty()) {
+                const pack::Attribute* settled = attributes->find(attribute.key);
+                const std::string settled_value = settled ? settled->value : std::string();
+
+                undo::Step step(state, "Edit " + attribute.name, merge_key);
+
+                // Typing with a pause in it does not merge with this frame, so the move
+                // would land in a step with no value to undo alongside it. undo::attributes
+                // keeps the first image it is given: restoring the old value for an instant
+                // is ignored when the steps did merge, and is the right before-image when
+                // they did not.
+                attributes->set(attribute.name, edit_started_value);
+                undo::attributes(state, node);
+                attributes->set(attribute.name, settled_value);
+
+                pathable_edit::attributeRenamed(state, node, attribute.key, edit_started_value);
+                edit_started_value.clear();
             }
 
             ImGui::TableNextColumn();
@@ -524,6 +553,8 @@ void drawMultiSelection(editor::State& state) {
                     pack::AttributeCollection* attributes = attributesOf(state, node);
                     if (!attributes) continue;
                     undo::attributes(state, node);
+                    // No attributeRenamed: several nodes onto one path is a re-point, and
+                    // there is no single file to move.
                     const pack::Attribute* existing = attributes->find(key);
                     attributes->set(existing ? existing->name : key, updated);
                 }
@@ -538,19 +569,8 @@ void drawMultiSelection(editor::State& state) {
     drawAddAttribute(state, nodes);
 }
 
-} // namespace
-
-void draw(editor::State& state) {
-    if (!state.loaded) {
-        ImGui::TextDisabled("No pack open.");
-        return;
-    }
-
-    if (state.selection.empty()) {
-        ImGui::TextDisabled("Select something in the tree.");
-        return;
-    }
-
+// Drawn under an id scope that follows the selection — see draw().
+void drawSelection(editor::State& state) {
     if (state.selection.size() > 1) {
         drawMultiSelection(state);
         return;
@@ -579,6 +599,33 @@ void draw(editor::State& state) {
     drawAddAttribute(state, state.selection.items());
 
     drawInherited(state, node);
+}
+
+} // namespace
+
+void draw(editor::State& state) {
+    if (!state.loaded) {
+        ImGui::TextDisabled("No pack open.");
+        return;
+    }
+
+    if (state.selection.empty()) {
+        ImGui::TextDisabled("Select something in the tree.");
+        return;
+    }
+
+    // Fields below are identified by attribute name alone, which is the same name on every
+    // node, so to imgui one node's `xpos` box and the next node's are one widget — and an
+    // edit still active when the selection changes commits onto whatever is now selected.
+    // Scoping by the selection changes every id with it, which drops the edit instead.
+    const editor::NodeRef primary = state.selection.primary();
+    ImGui::PushID(static_cast<int>(primary.kind));
+    ImGui::PushID(static_cast<int>(primary.index));
+
+    drawSelection(state);
+
+    ImGui::PopID();
+    ImGui::PopID();
 }
 
 } // namespace ui::property_panel

@@ -19,6 +19,11 @@ struct Filter {
 //
 // Only one request may be in flight; further requests are ignored while one is pending.
 // NFD does not expose a dialog title on Windows, so there is nothing to pass for one.
+//
+// `default_folder` has to be a folder that exists. NFD ignores one that does not, and
+// Windows then reopens wherever it last was — a location shared with every other addon,
+// and possibly an Explorer search result rather than a folder. A folder that does exist
+// wins, but only because of NFD_OVERRIDE_RECENT_WITH_DEFAULT; see cmake/nfd.cmake.
 void requestOpenFile(const std::filesystem::path& default_folder, std::vector<Filter> filters);
 void requestOpenFolder(const std::filesystem::path& default_folder);
 void requestSaveFile(const std::filesystem::path& default_folder, std::string_view default_name, std::vector<Filter> filters);

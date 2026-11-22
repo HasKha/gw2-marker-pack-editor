@@ -1,4 +1,4 @@
-#include "ui/resource_window.h"
+#include "editor/ui/resource_window.h"
 
 #include <imgui.h>
 
@@ -10,11 +10,11 @@
 #include <unordered_map>
 #include <vector>
 
+#include "editor/resources.h"
+#include "editor/ui/tree_window.h"
+#include "editor/undo.h"
 #include "pack/attributes.h"
 #include "pack/source.h"
-#include "resources.h"
-#include "ui/tree_window.h"
-#include "undo.h"
 
 namespace ui::resource_window {
 
