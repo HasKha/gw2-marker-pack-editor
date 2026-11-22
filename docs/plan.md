@@ -75,7 +75,6 @@ Roughly in order.
   so reads as an unknown attribute. Adding it means also adding a `deprecated` flag to keep
   it out of the "add attribute" picker. No pack in the corpus uses it; see
   [format.md](format.md).
-- **`animspeed`** — parsed and stored, but trail textures do not scroll.
 - **Move pack loading off the render thread** if a large pack starts to stutter. 56k
   markers has not been slow enough to need it.
 - **Tests above the pack layer.** `mpe_test` links `mpe_editor`, so anything there is
@@ -92,6 +91,13 @@ move-only nodes, an `undo::Step` around every edit, and new categories through
 `State::categoryAdded`.
 
 ### Known rough edges
+
+- **Trail ribbons were rebuilt to Pathing's strip** (`viewer/ribbon.*`): joined at the bends,
+  with the texture's left and right and its direction along the path worked out from
+  `StandardTrail.World.cs` rather than taken from the old per-segment quads, which had flat
+  trails mirrored and every trail's texture running backwards. Worked through by hand and
+  pinned by `ribbon_test.cpp`; the next pull in game should look at an arrowed trail beside
+  Blish HUD to confirm it.
 
 Everything built so far has now been driven in game: the tree and the property form, the
 world view, selection and the gizmo, save, add and delete, the resources window, the trail

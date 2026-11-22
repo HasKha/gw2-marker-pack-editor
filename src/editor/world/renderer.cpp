@@ -12,6 +12,7 @@
 #include "editor/trail_edit.h"
 #include "viewer/bake.h"
 #include "viewer/render/overlay.h"
+#include "viewer/ribbon.h"
 
 namespace world::renderer {
 
@@ -151,79 +152,48 @@ void drawMarkers(editor::State& state, const viewer::Camera& camera, ImDrawList*
     }
 }
 
-// One ribbon quad per segment, built in world space and projected corner by corner so the
-// width is perspective-correct. Mirrors how Blish builds its vertex buffer, minus the
-// resolution resampling.
-void drawTrailSection(
+// One run of a trail's points as the ribbon Pathing draws, each quad built in world space and
+// projected corner by corner so the width is perspective-correct.
+void drawTrailRun(
     const viewer::Camera& camera,
     ImDrawList* list,
     const pack::trl::Segment& segment,
     const viewer::BakedTrail& trail,
     ImTextureID texture) {
-    if (segment.points.size() < 2) return;
+    // Kept between calls: a frame draws many runs, and the quads of each are only needed
+    // until it is drawn.
+    static std::vector<viewer::RibbonQuad> quads;
+    quads.clear();
+    const float scroll = static_cast<float>(ImGui::GetTime()) * trail.anim_speed;
+    viewer::appendRibbon(segment.points, viewer::kTrailHalfWidth * trail.scale, trail.is_wall, scroll, &quads);
 
-    const float half_width = viewer::kTrailHalfWidth * trail.scale;
-    const glm::vec3 down(0.0f, -1.0f, 0.0f);
-
-    // Texture repeats once per (half_width * 2) of path length, matching Blish's UVs.
-    const float repeat = std::max(viewer::kTrailHalfWidth * 2.0f, 0.0001f);
-    float travelled = 0.0f;
-
-    for (size_t i = 0; i + 1 < segment.points.size(); ++i) {
-        const glm::vec3& a = segment.points[i];
-        const glm::vec3& b = segment.points[i + 1];
-
-        const glm::vec3 direction = b - a;
-        const float length = glm::length(direction);
-        if (length < 0.0001f) continue;
-
-        // Flat: perpendicular to the path in the horizontal plane.
-        // Wall:  perpendicular to the path and vertical.
-        glm::vec3 offset = trail.is_wall ? glm::cross(direction, glm::cross(direction, down)) : glm::cross(direction, down);
-        const float offset_length = glm::length(offset);
-        if (offset_length < 0.0001f) {
-            travelled += length;
-            continue;
-        }
-        offset = offset / offset_length * half_width;
-
-        // Clipped rather than skipped: a trail you are standing on has the segment under
-        // your feet straddling the near plane, and dropping it leaves a gap in the ribbon
-        // exactly where you are looking.
-        const glm::vec3 world_quad[4] = {a - offset, a + offset, b + offset, b - offset};
+    for (const viewer::RibbonQuad& quad : quads) {
+        // Clipped rather than skipped: a trail you are standing on has the quad under your
+        // feet straddling the near plane, and dropping it leaves a gap in the ribbon exactly
+        // where you are looking.
         viewer::overlay::ClippedQuad visible;
-        if (!viewer::overlay::clipAndProject(camera, world_quad, &visible)) {
-            travelled += length;
-            continue;
-        }
+        if (!viewer::overlay::clipAndProject(camera, quad.corners, &visible)) continue;
 
         // Fade is measured from the player, not the camera — same as markers, and same as
         // Blish's DistanceToPlayer.
-        const float distance = glm::length((a + b) * 0.5f - camera.player);
+        const glm::vec3 middle = (quad.corners[0] + quad.corners[1] + quad.corners[2] + quad.corners[3]) * 0.25f;
+        const float distance = glm::length(middle - camera.player);
         const float opacity = trail.alpha * viewer::fadeFactor(viewer::metresToInches(distance), trail.fade_near, trail.fade_far);
-        if (opacity <= 0.003f) {
-            travelled += length;
-            continue;
-        }
-
+        if (opacity <= 0.003f) continue;
         const ImU32 colour = viewer::applyOpacity(trail.tint, opacity);
-        const float v0 = travelled / repeat;
-        const float v1 = (travelled + length) / repeat;
-
-        ImVec2 corners[5];
-        viewer::overlay::screenCorners(visible, corners);
 
         if (texture) {
-            // A segment running away from the camera has its two ends at very different
-            // depths, which is the case the subdivision above exists for: without it the
-            // texture slides along the ribbon instead of compressing into the distance.
-            const ImVec2 uv[4] = {ImVec2(1.0f, v0), ImVec2(0.0f, v0), ImVec2(0.0f, v1), ImVec2(1.0f, v1)};
-            viewer::overlay::drawTexturedQuad(list, camera, texture, visible, uv, colour);
+            // A quad running away from the camera has its two ends at very different depths,
+            // which is the case the subdivision exists for: without it the texture slides
+            // along the ribbon instead of compressing into the distance.
+            viewer::overlay::drawTexturedQuad(list, camera, texture, visible, quad.uv, colour);
         } else {
+            // Pathing draws nothing for a trail without a texture; the editor shows where it
+            // runs, so that it can be fixed.
+            ImVec2 corners[5];
+            viewer::overlay::screenCorners(visible, corners);
             list->AddConvexPolyFilled(corners, visible.count, colour);
         }
-
-        travelled += length;
     }
 }
 
@@ -244,7 +214,7 @@ void drawTrails(const viewer::Camera& camera, ImDrawList* list, std::vector<Sort
         // thing you selected it to look at — its texture, its tint, where it fades. The point
         // handles in drawTrailPoints are the selection feedback.
         for (const pack::trl::Segment& segment : data->segments) {
-            drawTrailSection(camera, list, segment, trail, texture);
+            drawTrailRun(camera, list, segment, trail, texture);
         }
     }
 }
