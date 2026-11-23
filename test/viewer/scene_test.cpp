@@ -153,6 +153,25 @@ TEST_CASE("the live map holds the current map's pathables from every pack", "[ru
     CHECK(installed.packs[0]->node_of == installed.packs[1]->node_of);
 }
 
+TEST_CASE("an installed pack's images are decoded through the API the packs were given", "[runtime]") {
+    // Nexus's half: any bytes make a texture.
+    static Texture made{16, 16, reinterpret_cast<void*>(uintptr_t{0x1234})};
+    AddonAPI api{};
+    api.Textures.GetOrCreateFromMemory = [](const char*, void*, size_t) { return &made; };
+
+    viewer::runtime::Installed installed;
+    installed.api = &api;
+    viewer::runtime::install(&installed, loadedPack("pack", {}));
+
+    viewer::LoadBudget budget{1};
+    const auto read = [](const std::string&, std::vector<uint8_t>* bytes) {
+        *bytes = {1, 2, 3};
+        return true;
+    };
+    // Without the API, the world had no image for any installed pack, and drew nothing.
+    CHECK(installed.packs[0]->textures.get("icon.png", budget, read).texture == made.Resource);
+}
+
 TEST_CASE("taking a pack away merges the tree again from the others", "[runtime]") {
     viewer::runtime::Installed installed;
     viewer::runtime::install(&installed, loadedPack("first", {}));

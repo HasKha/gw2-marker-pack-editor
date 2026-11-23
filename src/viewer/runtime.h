@@ -35,6 +35,10 @@ struct Installed {
     // derive it again.
     uint64_t revision = 0;
 
+    // What every pack's images are decoded through. Without it a pack's TextureCache hands back
+    // no image at all, and the world draws nothing without one. Null in tests that draw nothing.
+    AddonAPI* api = nullptr;
+
     // Every install gets its own texture prefix, never reused. A pack reinstalled after the
     // editor saved it has new bytes under old paths, and Nexus would hand back the old
     // textures for the old identifiers.

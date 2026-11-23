@@ -840,6 +840,7 @@ void load(AddonAPI* aApi, Mumble::Data* aMumbleLink) {
     host.show_message = [](const std::string& text) {
         if (api) api->UI.SendAlert(text.c_str());
     };
+    installed.api = api;
     scripts = std::make_unique<script::Engine>(host);
     scripts_stale = true;
 
