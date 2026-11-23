@@ -165,35 +165,42 @@ Loader::~Loader() {
     stop();
 }
 
+size_t Loader::workerCount() {
+    const unsigned cores = std::thread::hardware_concurrency();
+    return std::clamp<size_t>(cores / 2, 1, 4);
+}
+
 void Loader::add(std::vector<std::filesystem::path> paths) {
     {
         const std::lock_guard<std::mutex> lock(mutex_);
-        for (std::filesystem::path& path : paths) queued_.push_back(std::move(path));
+        for (std::filesystem::path& path : paths) queued_.emplace_back(next_added_++, std::move(path));
         stopping_ = false;
     }
-    wake_.notify_one();
+    wake_.notify_all();
 
-    if (worker_.joinable()) return;
-    worker_ = std::thread([this] {
-        std::unique_lock<std::mutex> lock(mutex_);
-        while (true) {
-            wake_.wait(lock, [this] { return stopping_ || !queued_.empty(); });
-            if (stopping_) return;
+    if (!workers_.empty()) return;
+    for (size_t i = 0; i < workerCount(); ++i) workers_.emplace_back([this] { work(); });
+}
 
-            const std::filesystem::path path = std::move(queued_.front());
-            queued_.pop_front();
-            ++loading_;
+void Loader::work() {
+    std::unique_lock<std::mutex> lock(mutex_);
+    while (true) {
+        wake_.wait(lock, [this] { return stopping_ || !queued_.empty(); });
+        if (stopping_) return;
 
-            // Unlocked while it reads, which is seconds for a large pack: take() and add()
-            // are called every frame and must not wait for it.
-            lock.unlock();
-            auto loaded = std::make_unique<LoadedPack>(loadPack(path));
-            lock.lock();
+        const auto [order, path] = std::move(queued_.front());
+        queued_.pop_front();
+        ++loading_;
 
-            --loading_;
-            if (!stopping_) done_.push_back(std::move(loaded));
-        }
-    });
+        // Unlocked while it reads, which is seconds for a large pack: take() and add() are
+        // called every frame and must not wait for it.
+        lock.unlock();
+        auto loaded = std::make_unique<LoadedPack>(loadPack(path));
+        lock.lock();
+
+        --loading_;
+        if (!stopping_) done_.emplace(order, std::move(loaded));
+    }
 }
 
 void Loader::stop() {
@@ -202,18 +209,21 @@ void Loader::stop() {
         stopping_ = true;
         queued_.clear();
         done_.clear();
+        next_taken_ = next_added_;
     }
-    wake_.notify_one();
-    if (worker_.joinable()) worker_.join();
+    wake_.notify_all();
+    for (std::thread& worker : workers_) worker.join();
+    workers_.clear();
 }
 
 std::unique_ptr<LoadedPack> Loader::take() {
     const std::lock_guard<std::mutex> lock(mutex_);
-    if (done_.empty()) return nullptr;
-
-    std::unique_ptr<LoadedPack> next = std::move(done_.front());
-    done_.pop_front();
-    return next;
+    const auto next = done_.find(next_taken_);
+    if (next == done_.end()) return nullptr;
+    std::unique_ptr<LoadedPack> taken = std::move(next->second);
+    done_.erase(next);
+    ++next_taken_;
+    return taken;
 }
 
 bool Loader::busy() const {

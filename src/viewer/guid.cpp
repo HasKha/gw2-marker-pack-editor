@@ -75,8 +75,8 @@ Guid xorGuid(const Guid& a, const Guid& b) {
 }
 
 Guid newGuid() {
-    static std::random_device device;
-    static std::mt19937_64 engine(device());
+    // Per thread: packs are baked on several at once.
+    thread_local std::mt19937_64 engine(std::random_device{}());
     Guid guid;
     for (size_t i = 0; i < guid.bytes.size(); i += 8) {
         const uint64_t bits = engine();

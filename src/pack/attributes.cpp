@@ -194,8 +194,14 @@ uint8_t settableOn(const AttributeDef& def) {
 }
 
 const AttributeDef* findAttribute(std::string_view name) {
-    const std::string key = attributeKey(name);
-    auto it = index().find(std::string_view(key));
+    // A name already a key, which is how code names one, is looked up as it is: baking asks for
+    // a default several times per marker, and the copy was most of what that cost.
+    std::string owned;
+    if (!isAttributeKey(name)) {
+        owned = attributeKey(name);
+        name = owned;
+    }
+    auto it = index().find(name);
     return it == index().end() ? nullptr : it->second;
 }
 
@@ -342,9 +348,10 @@ std::string guidToBase64(const std::array<uint8_t, 16>& guid) {
 }
 
 std::string generateGuid() {
-    // Seeded once. A per-call random_device would be slower and no more random, and a
-    // per-call default seed would hand out the same GUID to every marker added.
-    static std::mt19937 engine(std::random_device{}());
+    // Seeded once per thread. A per-call random_device would be slower and no more random, and
+    // a per-call default seed would hand out the same GUID to every marker added. Per thread
+    // because packs are read on several at once.
+    thread_local std::mt19937 engine(std::random_device{}());
     std::uniform_int_distribution<unsigned int> byte(0, 255);
 
     std::array<uint8_t, 16> guid{};

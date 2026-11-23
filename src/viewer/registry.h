@@ -1,8 +1,10 @@
 #pragma once
 
 #include <condition_variable>
+#include <cstdint>
 #include <deque>
 #include <filesystem>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -110,29 +112,39 @@ public:
     Loader(const Loader&) = delete;
     Loader& operator=(const Loader&) = delete;
 
-    // Queues `paths` behind whatever is queued already, starting the worker if it is not
+    // Queues `paths` behind whatever is queued already, starting the workers if they are not
     // running.
     void add(std::vector<std::filesystem::path> paths);
 
-    // Drops everything queued or finished and not taken, stops after the pack being read, and
-    // waits for it. A large pack mid-read is the longest this blocks.
+    // Drops everything queued or finished and not taken, stops after the packs being read, and
+    // waits for them. A large pack mid-read is the longest this blocks.
     void stop();
 
-    // A finished pack, or nothing. Poll once a frame.
+    // The next pack in the order they were added, once it is read, or nothing. Poll once a
+    // frame. In order, whichever finishes first: the order packs are installed in is the order
+    // of their categories in the menu.
     std::unique_ptr<LoadedPack> take();
 
     // True until every pack handed to add() has been read and taken.
     bool busy() const;
 
+    // How many packs are read at once: a pack is read on one thread, and the largest take most
+    // of a second each, so a few at once is most of the gain while leaving the game its cores.
+    static size_t workerCount();
+
 private:
-    std::thread worker_;
+    void work();
+
+    std::vector<std::thread> workers_;
 
     mutable std::mutex mutex_;
     std::condition_variable wake_;
     bool stopping_ = false;
-    std::deque<std::filesystem::path> queued_;
+    std::deque<std::pair<uint64_t, std::filesystem::path>> queued_; // by when it was added
     size_t loading_ = 0;
-    std::deque<std::unique_ptr<LoadedPack>> done_;
+    std::map<uint64_t, std::unique_ptr<LoadedPack>> done_;
+    uint64_t next_added_ = 0;
+    uint64_t next_taken_ = 0;
 };
 
 } // namespace viewer::registry

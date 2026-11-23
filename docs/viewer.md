@@ -31,7 +31,7 @@ renderer natively anyway, while keeping Blish HUD and a fork of an 18k-line modu
 | Separation | three static libraries, linked one way | see [Layout](#layout); the build enforces what a convention would only ask |
 | GoodRender | **optional**: used when `served()`, a draw-list fallback otherwise | the addon still works without the service; the fallback is the quad path the editor's renderer was built on |
 | Frame split | everything is decided at Present; a moment callback only draws | the moment runs inside the game's frame, so anything slow there stalls the game |
-| Packs in memory | parsed once, on a worker; a map change only switches which part is live | faster than Pathing's reread per map, and 55k markers baked is a few megabytes |
+| Packs in memory | parsed once, a few packs at a time on workers of their own; a map change only switches which part is live | faster than Pathing's reread per map, and 55k markers baked is a few megabytes |
 | Category tree | **merged across packs** by namespace | Pathing's `SharedPackCollection` does it, and packs that extend another pack's categories rely on it |
 | Lua | Lua 5.4 through sol2 | 5.4's integer subtype is what NeoLua imitates; sol2 is header-only and fetched like the rest |
 | Lua state | **one for all packs, reset on every map change** | what Pathing does (`ScriptEngine.Reset()` at the top of `LoadMapFromEachPack`), and scripts are written against it |
@@ -50,7 +50,7 @@ src/
     viewer.*       lifecycle, the addon's name and folder, its options page, EditorHooks: start, render, WndProc
     settings.*     viewer.json: the menu's places, and Pathing's settings by its names
     json_file.*    lenient reads and writes of small JSON files, the editor's too
-    registry.*     installed packs: discovery, enable/disable, loading on a worker, the merged tree
+    registry.*     installed packs: discovery, enable/disable, loading on workers, the merged tree
     blish_import.* what Blish HUD's Pathing has — packs, category choices, Storage, timers
     bake.*         pack::Pack -> the runtime model: resolved attributes, grouped by map id
     runtime.*      the live map: visibility, fade state, behaviors' state, markers scripts made
@@ -107,7 +107,7 @@ a dot where an icon is missing, the gizmo.
 
 | Where | Runs |
 |---|---|
-| worker | parsing and baking packs; the catalog's list and each download; festivals; maps |
+| worker | parsing and baking packs, up to four at once and handed over in order; the catalog's list and each download; festivals; maps |
 | `ERenderType_PreRender` | MumbleLink, map changes, behaviors, Lua `OnTick`, building the scenes, publishing them |
 | `ERenderType_Render` | the viewer's and the editor's windows, the map's tooltip; the overlay sink for a scene no moment drew; the editor's overlay over the world |
 | GoodRender moments | the latest published scenes, submitted. Nothing else |

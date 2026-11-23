@@ -364,7 +364,13 @@ Asked for after milestone 7, before its pull in game. Each step is a commit of i
    main one, which closing ends the session, asking first when there is unsaved work; none of
    them in the addon's options. It draws its pack itself, and the viewer goes on drawing every
    installed pack, the edited one included.
-6. **Loading packs faster.**
+6. **Loading packs faster** — done offline. Measured over the corpus's ten packs: 1.6 s one after
+   another in Release, the two largest most of it, parsing and baking each about a third.
+   Debug takes 25 s for the same: an addon built Debug and put in the game is that slow. Packs
+   are now read a few at once, handed over in order, which brings it to the largest alone,
+   0.8 s, and a default is no longer looked up through a copy of its key. Baking stays the
+   largest part: per marker it walks the category chain once per attribute, and caching
+   that per category is the next step if it is still felt.
 7. **Font Awesome icons**, as gw2-community-challenge-mode has them.
 
 ### 9. Later
