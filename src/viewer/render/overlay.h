@@ -55,9 +55,10 @@ void drawTexturedQuad(
     const ImVec2 uv[4],
     ImU32 colour);
 
-// Draws `scene` into `list`, projected with `camera`, in the scene's order: the sink used when
-// no GoodRender service draws the frame. Over everything, the game's windows included, and
-// hidden behind nothing — a draw list has no depth.
-void drawScene(ImDrawList* list, const Camera& camera, const Scene& scene);
+// Draws `scene` into `list`, projected with `camera`, in the scene's order: the items behind the
+// terrain when `terrain`, the others when `over`. Hidden behind nothing, as a draw list has no
+// depth. The sink when no GoodRender service draws the frame, over everything, and GoodRender's
+// own for what goes over the world.
+void drawScene(ImDrawList* list, const Camera& camera, const Scene& scene, bool terrain = true, bool over = true);
 
 } // namespace viewer::overlay

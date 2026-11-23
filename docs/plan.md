@@ -357,7 +357,7 @@ Asked for after milestone 7, before its pull in game. Each step is a commit of i
    that shows it. No separator of ours in Nexus's menu. The menu's own bind goes, as far as
    Nexus allows: the icon's left click needs one. A new bind, unset, turns All Markers on or off.
 3. **Minimap and full map** — done offline. They are separate sections of the options.
-4. **Markers over the terrain.** With GoodRender, markers and trails draw over the world and
+4. **Markers over the terrain** — done offline. With GoodRender, markers and trails draw over the world and
    under the game's windows by default; behind the terrain is a setting, and an attribute of
    ours lets a pack choose per category or marker.
 5. **The editor on its own.** "Open Editor..." in the menu; the editor's windows belong to its

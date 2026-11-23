@@ -310,6 +310,36 @@ TEST_CASE("Pathing's world settings scale, fade, cap and hide what the scene dra
     }
 }
 
+TEST_CASE("behind the terrain is the pack's choice, or the player's where it makes none", "[scene]") {
+    Built built;
+    viewer::BakedPathables pathables;
+    pathables.markers = {marker({0, 0, 5}, 0), marker({0, 0, 6}, 0), marker({0, 0, 7}, 0)};
+    pathables.markers[1].render_layer = viewer::RenderLayer::Terrain;
+    pathables.markers[2].render_layer = viewer::RenderLayer::Windows;
+    viewer::runtime::install(&built.installed, loadedPack("pack", pathables));
+    const viewer::Camera camera = test_camera::axisCamera();
+
+    const auto behind = [&](float z) {
+        for (const viewer::SceneItem& item : built.scene.items) {
+            if (item.centre.z == Approx(z)) return item.behind_terrain;
+        }
+        FAIL("no item at " << z);
+        return false;
+    };
+
+    built.build(camera);
+    REQUIRE(built.scene.items.size() == 3);
+    CHECK_FALSE(behind(5.0f));
+    CHECK(behind(6.0f));
+    CHECK_FALSE(behind(7.0f));
+
+    built.options.behind_terrain = true;
+    built.build(camera);
+    CHECK(behind(5.0f));
+    CHECK(behind(6.0f));
+    CHECK_FALSE(behind(7.0f));
+}
+
 TEST_CASE("the scene is back to front, billboards and quads together", "[scene]") {
     Built built;
     viewer::BakedPathables pathables;
@@ -371,6 +401,7 @@ TEST_CASE("the GoodRender sink submits what the overlay would draw", "[good_rend
     viewer::Scene scene;
     viewer::SceneItem billboard;
     billboard.texture = fakeTexture();
+    billboard.behind_terrain = true;
     billboard.kind = viewer::SceneItem::Kind::Billboard;
     billboard.centre = {0, 0, 40};
     billboard.size = 2.0f;
@@ -387,6 +418,7 @@ TEST_CASE("the GoodRender sink submits what the overlay would draw", "[good_rend
 
     viewer::SceneItem quad;
     quad.texture = fakeTexture();
+    quad.behind_terrain = true;
     quad.corners[0] = {0, 0, 1};
     quad.corners[1] = {1, 0, 1};
     quad.corners[2] = {1, 1, 1};
@@ -397,6 +429,11 @@ TEST_CASE("the GoodRender sink submits what the overlay would draw", "[good_rend
     viewer::SceneItem imageless = quad;
     imageless.texture = nullptr;
     scene.items.push_back(imageless);
+
+    // Over the terrain: drawn at BEFORE_WINDOWS, into the draw list, and not here.
+    viewer::SceneItem over = quad;
+    over.behind_terrain = false;
+    scene.items.push_back(over);
 
     const good_render::Camera moment_camera = momentCamera(camera);
     good_render::Moment moment{};
@@ -422,6 +459,36 @@ TEST_CASE("the GoodRender sink submits what the overlay would draw", "[good_rend
     CHECK(std::abs(bottom.y - top.y) == Approx(40.0f).epsilon(0.01));
 
     CHECK(submitted[2][1] == quad.corners[1]);
+}
+
+TEST_CASE("over the terrain goes into BEFORE_WINDOWS's draw list, and only that", "[good_render]") {
+    const viewer::Camera camera = test_camera::axisCamera();
+    viewer::Scene scene;
+    viewer::SceneItem quad;
+    quad.texture = fakeTexture();
+    quad.behind_terrain = true;
+    quad.corners[0] = {0, 0, 1};
+    quad.corners[1] = {1, 0, 1};
+    quad.corners[2] = {1, 1, 1};
+    quad.corners[3] = {0, 1, 1};
+    scene.items.push_back(quad);
+
+    viewer::test::DrawListFixture fixture;
+    const good_render::Camera moment_camera = momentCamera(camera);
+    good_render::Moment moment{};
+    moment.moment = good_render::MOMENT_BEFORE_WINDOWS;
+    moment.width = static_cast<uint32_t>(test_camera::kWidth);
+    moment.height = static_cast<uint32_t>(test_camera::kHeight);
+    moment.pixels_per_window_pixel = 1.0f;
+    moment.camera = &moment_camera;
+    moment.draw_list = &fixture.list();
+
+    viewer::good_render_sink::drawOver(moment, scene);
+    CHECK(fixture.list().VtxBuffer.Size == 0);
+
+    scene.items[0].behind_terrain = false;
+    viewer::good_render_sink::drawOver(moment, scene);
+    CHECK(fixture.list().VtxBuffer.Size == 4);
 }
 
 TEST_CASE("a real pack draws on its own map, and only there", "[scene][corpus]") {

@@ -23,6 +23,7 @@ constexpr Field<bool> kBools[] = {
     {"allow_auto_hide", &Settings::allow_auto_hide},
     {"allow_animation", &Settings::allow_animation},
     {"smart_categories", &Settings::smart_categories},
+    {"behind_terrain", &Settings::behind_terrain},
     {"show_interact_prompt", &Settings::show_interact_prompt},
     {"menu_in_nexus", &Settings::menu_in_nexus},
     {"menu_icon", &Settings::menu_icon},

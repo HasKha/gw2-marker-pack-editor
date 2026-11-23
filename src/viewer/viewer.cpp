@@ -706,6 +706,7 @@ WorldOptions worldOptions() {
     options.combat_fade = persisted.combat_fade;
     options.in_combat = mumble_state.is_in_combat;
     options.show_hidden = show_hidden;
+    options.behind_terrain = persisted.behind_terrain;
     return options;
 }
 
@@ -831,12 +832,15 @@ void render() {
     const Camera camera = fromMumble(mumble_link, glm::vec2(display.x, display.y));
     const std::shared_ptr<const Scene> scene = published();
 
-    // The overlay only on a frame GoodRender did not reach: no service, a loading screen.
-    // Behind our own windows and the editor's, but over the game.
-    if (!good_render_sink::takeDrawn() && scene && camera.valid) overlay::drawScene(ImGui::GetBackgroundDrawList(), camera, *scene);
+    // The overlay draws what GoodRender did not reach: everything with no service, or a loading
+    // screen. Behind our own windows and the editor's, but over the game.
+    const good_render_sink::Drawn drawn = good_render_sink::takeDrawn();
+    if (scene && camera.valid && !(drawn.terrain && drawn.over)) {
+        overlay::drawScene(ImGui::GetBackgroundDrawList(), camera, *scene, !drawn.terrain, !drawn.over);
+    }
     // Over the world however it was drawn: the editor's outlines, handles and missing images.
     if (editor.draw_overlay && scene && camera.valid && !camera.map_open) editor.draw_overlay(camera, *scene);
-    if (!good_render_sink::takeMapDrawn()) {
+    if (!drawn.map) {
         map_scene::drawPublished(ImGui::GetBackgroundDrawList(), mumble_link, glm::vec2(display.x, display.y));
     }
     drawMapMenu();

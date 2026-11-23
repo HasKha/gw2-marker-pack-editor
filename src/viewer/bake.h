@@ -7,6 +7,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "pack/model.h"
@@ -44,6 +45,17 @@ struct MarkerTransform {
 // invisible anchors, and Pathing drops them too.
 bool markerTransform(const pack::Pack& pack, const pack::Pathable& pathable, MarkerTransform* out);
 
+// Where a marker or trail is drawn with GoodRender: `render-layer`, our own attribute. Default
+// leaves it to the player's setting (WorldOptions::behind_terrain).
+enum class RenderLayer : uint8_t {
+    Default,
+    Windows, // "windows": over the world, under the game's windows
+    Terrain, // "terrain": behind whatever of the world is in front of it
+};
+
+// `render-layer`'s value, in any case; Default for anything else.
+RenderLayer parseRenderLayer(std::string_view value);
+
 struct BakedMarker {
     size_t pathable = pack::kNoIndex; // into Pack::pathables
     size_t category = pack::kNoIndex; // into Pack::categories; kNoIndex for a dangling type
@@ -67,6 +79,7 @@ struct BakedMarker {
     bool in_game_visibility = true;
     bool map_visibility = true;
     bool minimap_visibility = true;
+    RenderLayer render_layer = RenderLayer::Default;
     float map_display_size = 20.0f; // across, in Blish HUD's pixels at MapScale 1 — see map_scene.*
     bool scale_on_map_with_zoom = true;
     float trigger_range = 2.0f; // triggerrange, or inforange standing in for it (StandardMarker_Focus.cs)
@@ -114,6 +127,7 @@ struct BakedTrail {
     bool in_game_visibility = true;
     bool map_visibility = true;
     bool minimap_visibility = true;
+    RenderLayer render_layer = RenderLayer::Default;
 
     std::shared_ptr<const behaviors::Behaviors> behaviors; // filters and script only; null for none
 

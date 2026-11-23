@@ -352,6 +352,22 @@ they are the defaults a pack author writes against.
 Note trails default to *enabled* fade (700/900 inches ≈ 18/23 m) while markers default
 to disabled. Easy to get wrong.
 
+### render-layer (ours)
+
+Not Pathing's, nor anyone else's: an attribute of this addon's, which every other reader
+ignores as unknown. It says where a marker or trail is drawn when GoodRender is loaded, and is
+inherited from categories like any other.
+
+| Value | Drawn |
+|---|---|
+| `windows` | over the world, under the game's windows: what Blish HUD does with every marker |
+| `terrain` | behind what of the world is in front of it: walls, hills, characters |
+| absent, or anything else | as the player's **Hide markers behind terrain** says, over the world unless it is on |
+
+Case does not matter. Without GoodRender every marker draws over everything and the attribute
+changes nothing. Not to be confused with Pathing's `occlude`, which is about markers hiding
+other markers and nothing to do with the game's world.
+
 ## Documented attribute set
 
 From gw2pathing.com's attribute reference — grouped pages, so several cover multiple

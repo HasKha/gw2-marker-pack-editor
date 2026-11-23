@@ -142,6 +142,15 @@ const std::vector<AttributeDef>& table() {
         {"script-once", "script-once", kStr, kAppliesPathable, true, "", "Lua run once on load."},
         {"script-tick", "script-tick", kStr, kAppliesPathable, true, "", "Lua run every tick."},
         {"script-trigger", "script-trigger", kStr, kAppliesPathable, true, "", "Lua run on trigger."},
+        // ── Ours ──────────────────────────────────────────────────────────────
+        // Where GoodRender draws it; Pathing has no such choice and ignores it. See format.md.
+        {"render-layer",
+         "render-layer",
+         kEnum,
+         kAppliesPathable,
+         true,
+         "",
+         "With GoodRender: terrain hides it behind the world, windows draws it over."},
         // Ours and other editors', not Blish's: Pathing has a populate for it on both
         // pathable types and calls neither. Free on anything, so it stays kAppliesAll.
         {"edittag", "editTag", kStr, kAppliesAll, true, "", "Free-form tag used by editors to group markers."},

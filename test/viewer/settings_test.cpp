@@ -41,6 +41,7 @@ TEST_CASE("behavior settings start at Pathing's defaults and are kept", "[viewer
     CHECK(defaults.allow_auto_hide);
     CHECK(defaults.allow_animation);
     CHECK(defaults.smart_categories);
+    CHECK_FALSE(defaults.behind_terrain);
     CHECK(defaults.show_interact_prompt);
     CHECK(defaults.clipboard_consent == 0);
 
@@ -48,6 +49,7 @@ TEST_CASE("behavior settings start at Pathing's defaults and are kept", "[viewer
     settings.allow_auto_hide = false;
     settings.allow_animation = false;
     settings.smart_categories = false;
+    settings.behind_terrain = true;
     settings.show_interact_prompt = false;
     settings.clipboard_consent = 2;
     REQUIRE(viewer::settings::save(temp.path(), settings));
@@ -55,6 +57,7 @@ TEST_CASE("behavior settings start at Pathing's defaults and are kept", "[viewer
     CHECK_FALSE(loaded.allow_auto_hide);
     CHECK_FALSE(loaded.allow_animation);
     CHECK_FALSE(loaded.smart_categories);
+    CHECK(loaded.behind_terrain);
     CHECK_FALSE(loaded.show_interact_prompt);
     CHECK(loaded.clipboard_consent == 2);
 }

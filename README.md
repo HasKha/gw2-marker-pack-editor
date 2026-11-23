@@ -40,7 +40,8 @@ show on the minimap and the full map too, with a tooltip when you point at one â
 its categories, a right click hides them â€” and Pathing's map settings under **Minimap** and
 **Full map** in the options. With
 [GoodRender](https://github.com/HasKha/gw2-good-render) loaded, markers draw under the game's
-windows and hide behind walls; without it they draw over everything.
+windows, and **Hide markers behind terrain** in the options, or a pack's `render-layer`, puts
+them behind walls and hills; without it they draw over everything.
 
 **Marker Packs** lists the packs Blish HUD's Pathing offers: download one
 into the addon's own folder, update it, open its page or delete it. Packs you keep updated

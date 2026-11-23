@@ -13,6 +13,10 @@ namespace viewer {
 
 namespace {
 
+bool behindTerrain(RenderLayer layer, const WorldOptions& options) {
+    return layer == RenderLayer::Terrain || (layer == RenderLayer::Default && options.behind_terrain);
+}
+
 std::atomic<std::shared_ptr<const Scene>> latest;
 
 // Below this an item is invisible: under one step of an 8-bit alpha.
@@ -63,6 +67,7 @@ void appendLayer(
         if (layer.edited) item.pathable = marker.pathable;
         item.colour = applyOpacity(marker.tint, opacity);
         item.depth = squaredDistance(position, camera.position);
+        item.behind_terrain = behindTerrain(marker.render_layer, options);
         if (marker.has_rotation) {
             // Fixed in the world, so it foreshortens with the viewing angle. minSize and
             // maxSize clamp a billboard's screen size and do not apply: clamping a
@@ -114,6 +119,7 @@ void appendLayer(
                 std::copy(std::begin(quad.corners), std::end(quad.corners), item.corners);
                 std::copy(std::begin(quad.uv), std::end(quad.uv), item.uv);
                 item.depth = squaredDistance(middle, camera.position);
+                item.behind_terrain = behindTerrain(trail.render_layer, options);
                 if (layer.edited) {
                     item.pathable = trail.pathable;
                     item.is_trail = true;

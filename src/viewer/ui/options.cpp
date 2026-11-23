@@ -28,6 +28,13 @@ bool drawPack(settings::Settings* settings, bool* show_hidden) {
     changed |= slider("Max trail animation speed", &settings->max_trail_speed, 0.0f, 10.0f, "%.1f");
     changed |= slider("Marker scale", &settings->marker_scale, 0.1f, 4.0f, "%.2f");
     changed |= ImGui::Checkbox("Fade markers and trails during combat", &settings->combat_fade);
+    changed |= ImGui::Checkbox("Hide markers behind terrain", &settings->behind_terrain);
+    if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip(
+            "With GoodRender: walls and hills hide markers and trails behind them.\n"
+            "Off, they draw over the world and under the game's windows.\n"
+            "A pack can choose for its own markers.");
+    }
 
     changed |= ImGui::Checkbox("Allow markers to hide themselves", &settings->allow_auto_hide);
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("Off shows every marker, whatever festival, character or interaction would hide it.");

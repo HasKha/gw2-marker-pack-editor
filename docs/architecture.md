@@ -714,8 +714,8 @@ the overlay then, and the editor clears its hover state, so a click on the map c
 whatever the mouse was last over in the world either.
 
 A draw list has no depth buffer, so through the overlay sink markers are not occluded by
-world geometry. Through GoodRender they are: `world_quad` hides each pixel behind what the
-game drew in front of it. The editor's outlines and handles stay on the draw list, over
+world geometry. Through GoodRender those behind the terrain are: `world_quad` hides each pixel
+behind what the game drew in front of it (see [viewer.md](viewer.md#drawing)). The editor's outlines and handles stay on the draw list, over
 everything, which is what they are for.
 
 ImGuizmo takes the same view/projection matrices plus a model matrix per selected

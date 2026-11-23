@@ -127,10 +127,9 @@ What goes where, through GoodRender:
 
 | What | How | Moment |
 |---|---|---|
-| a marker, billboarded | `world_quad`, corners from `Camera::billboardQuad` at the size min/max size allow under the moment's camera | `WORLD_FINISHED` |
-| a marker with `rotate` | `world_quad`, corners from the same transform the editor's gizmo uses | `WORLD_FINISHED` |
-| a trail | `world_quad`, one per quad of `viewer/ribbon.*`'s strip; `animspeed` scrolls the uvs | `WORLD_FINISHED` |
-| the minimap and the full map | `draw_list`, projected from MumbleLink's map fields as the moment reads them | `BEFORE_WINDOWS` |
+| markers and trails over the terrain, the default | `draw_list`, through `render/overlay.*` with the moment's camera | `BEFORE_WINDOWS` |
+| markers and trails behind the terrain | `world_quad`, the corners the overlay would draw | `WORLD_FINISHED` |
+| the minimap and the full map | `draw_list`, projected from MumbleLink's map fields as the moment reads them, over the world's | `BEFORE_WINDOWS` |
 | info text, the interact prompt, the map's tooltip and menu | ImGui windows | Nexus's render, over everything |
 
 **Billboards do not use `world_billboard`.** Blish's billboard faces the ray to its own centre,
@@ -139,8 +138,13 @@ takes a centre and half sizes and faces it its own way. Building the corners our
 both sinks drawing the one shape `itemCorners` in `scene.*` gives them.
 
 `BEFORE_WINDOWS` is the point of all of it: over the game's HUD and nameplates, under its
-windows and tooltips. `world_quad` does the occlusion: each pixel is hidden behind what the
-game drew in front of it, which no draw list ever is.
+windows and tooltips. **Over the terrain is the default**, as Blish HUD draws every marker:
+the world never hides one. Behind the terrain is the player's choice, **Hide markers behind
+terrain** in the options, and a pack's per category or marker with `render-layer`, our own
+attribute (see [format.md](format.md#render-layer-ours)), which wins over the player's. There,
+`world_quad` does the occlusion: each pixel is hidden behind what the game drew in front of it,
+which no draw list ever is. The scene carries the choice per item (`SceneItem::behind_terrain`),
+settled when it is built.
 
 **Fades are colour alpha, per quad.** `alpha`, `fadeNear`/`fadeFar`, the combat fade and the
 max-opacity setting all multiply into the quad's colour on the CPU, as Pathing's
@@ -153,9 +157,10 @@ approximation shows.
 
 **Without the service**, the same scene goes through `render/overlay.*` at
 `ERenderType_Render`, projected with `camera.*`, over everything the way the editor draws.
-Only on a frame no moment drew: every moment of a frame comes before its Present, so the
-moment sets a flag and the Nexus render takes it (`good_render_sink::takeDrawn`). A loading
-screen, the full map, or no service at all, and the overlay draws.
+Only what no moment drew: every moment of a frame comes before its Present, so each moment
+sets a flag for what it drew — behind the terrain, over it, the map — and the Nexus render
+takes them (`good_render_sink::takeDrawn`) and draws the rest. A loading screen, the full map,
+or no service at all, and the overlay draws.
 
 **A marker without its icon is not drawn**, as Pathing draws nothing without a texture —
 including while the icon waits for its turn in the load budget. The edited pack's are kept in

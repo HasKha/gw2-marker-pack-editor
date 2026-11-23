@@ -172,9 +172,9 @@ void drawTexturedQuad(
     list->PopTextureID();
 }
 
-void drawScene(ImDrawList* list, const Camera& camera, const Scene& scene) {
+void drawScene(ImDrawList* list, const Camera& camera, const Scene& scene, bool terrain, bool over) {
     for (const SceneItem& item : scene.items) {
-        if (!item.texture) continue;
+        if (!item.texture || !(item.behind_terrain ? terrain : over)) continue;
         glm::vec3 corners[4];
         const ImVec2* uv = nullptr;
         ClippedQuad quad;

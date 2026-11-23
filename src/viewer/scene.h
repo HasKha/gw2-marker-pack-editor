@@ -46,6 +46,10 @@ struct SceneItem {
 
     float depth = 0.0f; // squared distance from the camera it was sorted with
 
+    // With GoodRender, hidden behind what of the world is in front of it, at WORLD_FINISHED;
+    // otherwise over the world and under the game's windows, at BEFORE_WINDOWS.
+    bool behind_terrain = false;
+
     // For the pack open in the editor, the pathable this draws, into its Pack::pathables, and
     // whether it is a piece of trail: what the editor outlines and picks. kNoIndex for every
     // other pack's.
@@ -70,6 +74,8 @@ struct WorldOptions {
     bool combat_fade = true; // "Fade Markers and Trails During Combat": half opacity
     bool in_combat = false; // MumbleLink's, this frame
     bool show_hidden = false; // what behaviors filter is drawn too, a marker at half opacity
+    // Ours: where GoodRender draws what its pack leaves to the player (RenderLayer::Default).
+    bool behind_terrain = false;
 };
 
 // The texture for an image of one pack, or null while it is not available — which, for a

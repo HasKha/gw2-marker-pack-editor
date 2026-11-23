@@ -1,6 +1,7 @@
 #include "viewer/bake.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <string_view>
 
@@ -76,7 +77,23 @@ bool resolveRotation(const pack::Pack& pack, const pack::Pathable& pathable, glm
     return present;
 }
 
+RenderLayer renderLayerOf(const pack::Pack& pack, const pack::Pathable& pathable) {
+    const std::string* value = pack.effectiveValue(pathable, "render-layer");
+    return value ? parseRenderLayer(*value) : RenderLayer::Default;
+}
+
 } // namespace
+
+RenderLayer parseRenderLayer(std::string_view value) {
+    const auto is = [&](std::string_view name) {
+        return value.size() == name.size() && std::equal(value.begin(), value.end(), name.begin(), [](char a, char b) {
+                   return std::tolower(static_cast<unsigned char>(a)) == b;
+               });
+    };
+    if (is("windows")) return RenderLayer::Windows;
+    if (is("terrain")) return RenderLayer::Terrain;
+    return RenderLayer::Default;
+}
 
 // ImVec2 predates constexpr constructors in the imgui Nexus ships, hence const.
 const ImVec2 kRotatedMarkerUv[4] = {{1, 1}, {0, 1}, {0, 0}, {1, 0}};
@@ -134,6 +151,7 @@ bool bakeMarker(const pack::Pack& pack, const pack::Pathable& pathable, BakedMar
     out->in_game_visibility = pack.effectiveBool(pathable, "ingamevisibility");
     out->map_visibility = pack.effectiveBool(pathable, "mapvisibility");
     out->minimap_visibility = pack.effectiveBool(pathable, "minimapvisibility");
+    out->render_layer = renderLayerOf(pack, pathable);
     out->map_display_size = pack.effectiveFloat(pathable, "mapdisplaysize");
     out->scale_on_map_with_zoom = pack.effectiveBool(pathable, "scaleonmapwithzoom");
     // inforange is an alias, taken only while triggerrange is still the default.
@@ -175,6 +193,7 @@ BakedPathables bake(const pack::Pack& pack) {
             trail.in_game_visibility = pack.effectiveBool(pathable, "ingamevisibility");
             trail.map_visibility = pack.effectiveBool(pathable, "mapvisibility");
             trail.minimap_visibility = pack.effectiveBool(pathable, "minimapvisibility");
+            trail.render_layer = renderLayerOf(pack, pathable);
             trail.behaviors = behaviors::bakeBehaviors(pack, pathable, false);
 
             // Trails default to 700/900 where markers default to disabled, so the table's

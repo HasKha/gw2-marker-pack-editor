@@ -108,6 +108,26 @@ TEST_CASE("a trail fades at 700 and 900 unless it says otherwise", "[bake]") {
     CHECK(baked.trails[1].anim_speed == Approx(2.0f));
 }
 
+TEST_CASE("render-layer is inherited, and anything but its two values leaves it to the player", "[bake]") {
+    const corpus::TempDir temp("bake_render_layer");
+    const Loaded loaded = loadXml(temp, R"(<MarkerCategory name="walls" render-layer="Terrain"/>
+        <MarkerCategory name="free"/>
+        <POIs>
+            <POI type="walls" xpos="0" ypos="0" zpos="0"/>
+            <POI type="walls" xpos="0" ypos="0" zpos="0" render-layer="windows"/>
+            <POI type="free" xpos="0" ypos="0" zpos="0" render-layer="sky"/>
+            <Trail type="walls" trailData="a.trl"/>
+        </POIs>)");
+
+    const viewer::BakedPathables baked = viewer::bake(loaded.model);
+    REQUIRE(baked.markers.size() == 3);
+    CHECK(baked.markers[0].render_layer == viewer::RenderLayer::Terrain);
+    CHECK(baked.markers[1].render_layer == viewer::RenderLayer::Windows);
+    CHECK(baked.markers[2].render_layer == viewer::RenderLayer::Default);
+    REQUIRE(baked.trails.size() == 1);
+    CHECK(baked.trails[0].render_layer == viewer::RenderLayer::Terrain);
+}
+
 TEST_CASE("tint and color are the same attribute", "[bake]") {
     const corpus::TempDir temp("bake_tint");
     const Loaded loaded = loadXml(temp, R"(<POIs>

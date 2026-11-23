@@ -5,6 +5,7 @@
 #include <atomic>
 
 #include "viewer/map_scene.h"
+#include "viewer/render/overlay.h"
 
 namespace viewer::good_render_sink {
 
@@ -15,28 +16,42 @@ good_render::Slot* slot = nullptr;
 
 const Mumble::Data* mumble_link = nullptr;
 
-// Set by the moment, taken by the Nexus render that ends the same frame.
-std::atomic<bool> drawn{false};
+// Set by the moments, taken by the Nexus render that ends the same frame.
+std::atomic<bool> terrain_drawn{false};
+std::atomic<bool> over_drawn{false};
 std::atomic<bool> map_drawn{false};
 
+// Up to WORLD_FINISHED what is bound is the scene, which resolution scaling makes smaller than
+// the window; minSize and maxSize, and the draw list, are in window pixels.
+glm::vec2 windowSize(const good_render::Moment& moment) {
+    const float scale = moment.pixels_per_window_pixel > 0.0f ? moment.pixels_per_window_pixel : 1.0f;
+    return glm::vec2(moment.width / scale, moment.height / scale);
+}
+
 void onMoment(const good_render::Moment* moment) {
-    // In the game's UI, over its HUD, where the game draws its own map markers.
+    // In the game's UI, over its HUD: the world's markers over the terrain, then the map, where
+    // the game draws its own map markers.
     if (moment->moment == good_render::MOMENT_BEFORE_WINDOWS && moment->draw_list) {
-        const float scale = moment->pixels_per_window_pixel > 0.0f ? moment->pixels_per_window_pixel : 1.0f;
-        map_scene::drawPublished(moment->draw_list, mumble_link, glm::vec2(moment->width / scale, moment->height / scale));
+        if (moment->camera) {
+            if (const std::shared_ptr<const Scene> scene = published()) {
+                drawOver(*moment, *scene);
+                over_drawn = true;
+            }
+        }
+        map_scene::drawPublished(moment->draw_list, mumble_link, windowSize(*moment));
         map_drawn = true;
         return;
     }
 
-    // The finished world, before any UI: markers belong under the HUD and the windows. Null
-    // world_quad or camera means no world to draw into this frame — leave it to the fallback.
+    // The finished world, before any UI: what is behind the terrain. Null world_quad or camera
+    // means no world to draw into this frame — leave it to the fallback.
     if (moment->moment != good_render::MOMENT_WORLD_FINISHED || !moment->world_quad || !moment->camera) return;
 
     const std::shared_ptr<const Scene> scene = published();
     if (!scene) return;
 
     submit(*moment, *scene);
-    drawn = true;
+    terrain_drawn = true;
 }
 
 } // namespace
@@ -54,12 +69,12 @@ void unload() {
     good_render::close(link);
 }
 
-bool takeDrawn() {
-    return drawn.exchange(false);
-}
-
-bool takeMapDrawn() {
-    return map_drawn.exchange(false);
+Drawn takeDrawn() {
+    Drawn drawn;
+    drawn.terrain = terrain_drawn.exchange(false);
+    drawn.over = over_drawn.exchange(false);
+    drawn.map = map_drawn.exchange(false);
+    return drawn;
 }
 
 Camera cameraFromMoment(const good_render::Camera& source, glm::vec2 viewport) {
@@ -81,13 +96,10 @@ Camera cameraFromMoment(const good_render::Camera& source, glm::vec2 viewport) {
 }
 
 void submit(const good_render::Moment& moment, const Scene& scene) {
-    // Up to WORLD_FINISHED what is bound is the scene, which resolution scaling makes smaller
-    // than the window; minSize and maxSize are in window pixels.
-    const float scale = moment.pixels_per_window_pixel > 0.0f ? moment.pixels_per_window_pixel : 1.0f;
-    const Camera camera = cameraFromMoment(*moment.camera, glm::vec2(moment.width / scale, moment.height / scale));
+    const Camera camera = cameraFromMoment(*moment.camera, windowSize(moment));
 
     for (const SceneItem& item : scene.items) {
-        if (!item.texture) continue;
+        if (!item.texture || !item.behind_terrain) continue;
         // A billboard goes through world_quad as the overlay's quad, not through
         // world_billboard: Blish's billboard faces the ray to its own centre rather than the
         // camera's plane, and its size is clamped on its projected corners.
@@ -106,6 +118,10 @@ void submit(const good_render::Moment& moment, const Scene& scene) {
         }
         moment.world_quad(world, coords, item.texture, item.colour);
     }
+}
+
+void drawOver(const good_render::Moment& moment, const Scene& scene) {
+    overlay::drawScene(moment.draw_list, cameraFromMoment(*moment.camera, windowSize(moment)), scene, false, true);
 }
 
 } // namespace viewer::good_render_sink
