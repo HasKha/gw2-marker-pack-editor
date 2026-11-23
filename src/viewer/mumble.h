@@ -1,5 +1,6 @@
 #pragma once
 
+#include <glm/vec2.hpp>
 #include <glm/vec3.hpp>
 
 #include <cstdint>
@@ -63,7 +64,8 @@ struct MumbleState {
     bool is_compass_rotation_enabled = false;
     bool is_compass_top_right = false;
     bool is_map_open = false;
-    double map_scale = 1.0;
+    double map_scale = 1.0; // continent units per UI pixel, on whichever map is up
+    glm::dvec2 map_center{0.0}; // continent: what the middle of the compass or the map shows
     bool is_text_input_focused = false;
     int ui_size = 1; // Gw2Enum::UiSize: Normal
 
@@ -76,5 +78,9 @@ struct MumbleState {
 
 // The frame MumbleLink holds now. Not available while the game has not written it.
 MumbleState mumbleState(const Mumble::Data* data);
+
+// The same without the identity, whose fields keep their defaults: what any thread may read,
+// since reading the identity parses JSON into a cache only the frame's thread may touch.
+MumbleState contextState(const Mumble::Data* data);
 
 } // namespace viewer

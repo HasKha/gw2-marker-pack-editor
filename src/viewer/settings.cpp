@@ -1,8 +1,61 @@
 #include "viewer/settings.h"
 
+#include <algorithm>
+
 #include "viewer/json_file.h"
 
 namespace viewer::settings {
+
+namespace {
+
+// Each setting by the name it is saved under, so that reading and writing go through one list.
+template <class T>
+struct Field {
+    const char* key;
+    T Settings::* member;
+    T min{};
+    T max{};
+};
+
+constexpr Field<bool> kBools[] = {
+    {"enable_editing", &Settings::enable_editing},
+    {"read_blish_folder", &Settings::read_blish_folder},
+    {"run_scripts", &Settings::run_scripts},
+    {"allow_auto_hide", &Settings::allow_auto_hide},
+    {"allow_animation", &Settings::allow_animation},
+    {"show_interact_prompt", &Settings::show_interact_prompt},
+    {"world_pathables", &Settings::world_pathables},
+    {"combat_fade", &Settings::combat_fade},
+    {"map_pathables", &Settings::map_pathables},
+    {"map_above_below", &Settings::map_above_below},
+    {"map_fade_far_trails", &Settings::map_fade_far_trails},
+    {"map_tooltips", &Settings::map_tooltips},
+};
+
+// With the range each is clamped to, so that a hand-edited file cannot name a choice that
+// does not exist.
+constexpr Field<int> kInts[] = {
+    {"clipboard_consent", &Settings::clipboard_consent, 0, 2},
+    {"interact_key", &Settings::interact_key, 0, 255},
+    {"info_display", &Settings::info_display, 0, 2},
+    {"map_marker_visibility", &Settings::map_marker_visibility, 0, 2},
+    {"map_trail_visibility", &Settings::map_trail_visibility, 0, 2},
+    {"minimap_marker_visibility", &Settings::minimap_marker_visibility, 0, 2},
+    {"minimap_trail_visibility", &Settings::minimap_trail_visibility, 0, 2},
+};
+
+// Pathing's SetRange for each.
+constexpr Field<float> kFloats[] = {
+    {"max_opacity", &Settings::max_opacity, 0.0f, 1.0f},
+    {"view_distance", &Settings::view_distance, 25.0f, 50000.0f},
+    {"max_trail_speed", &Settings::max_trail_speed, 0.0f, 10.0f},
+    {"marker_scale", &Settings::marker_scale, 0.1f, 4.0f},
+    {"map_opacity", &Settings::map_opacity, 0.0f, 1.0f},
+    {"minimap_opacity", &Settings::minimap_opacity, 0.0f, 1.0f},
+    {"map_trail_width", &Settings::map_trail_width, 0.5f, 4.5f},
+};
+
+} // namespace
 
 Settings load(const std::filesystem::path& folder) {
     Settings settings;
@@ -12,14 +65,15 @@ Settings load(const std::filesystem::path& folder) {
     settings.enable_editing = std::filesystem::exists(folder / EDITOR_FILE_NAME, ec);
 
     if (const std::optional<nlohmann::json> parsed = json_file::readObject(folder / FILE_NAME)) {
-        settings.enable_editing = json_file::readBool(*parsed, "enable_editing", settings.enable_editing);
-        settings.read_blish_folder = json_file::readBool(*parsed, "read_blish_folder", settings.read_blish_folder);
-        settings.run_scripts = json_file::readBool(*parsed, "run_scripts", settings.run_scripts);
-        settings.allow_auto_hide = json_file::readBool(*parsed, "allow_auto_hide", settings.allow_auto_hide);
-        settings.allow_animation = json_file::readBool(*parsed, "allow_animation", settings.allow_animation);
-        settings.show_interact_prompt = json_file::readBool(*parsed, "show_interact_prompt", settings.show_interact_prompt);
-        settings.clipboard_consent = json_file::readInt(*parsed, "clipboard_consent", settings.clipboard_consent);
-        settings.interact_key = json_file::readInt(*parsed, "interact_key", settings.interact_key);
+        for (const Field<bool>& field : kBools) {
+            settings.*field.member = json_file::readBool(*parsed, field.key, settings.*field.member);
+        }
+        for (const Field<int>& field : kInts) {
+            settings.*field.member = std::clamp(json_file::readInt(*parsed, field.key, settings.*field.member), field.min, field.max);
+        }
+        for (const Field<float>& field : kFloats) {
+            settings.*field.member = std::clamp(json_file::readFloat(*parsed, field.key, settings.*field.member), field.min, field.max);
+        }
     }
     return settings;
 }
@@ -28,14 +82,9 @@ bool save(const std::filesystem::path& folder, const Settings& settings) {
     if (folder.empty()) return false;
 
     nlohmann::json out;
-    out["enable_editing"] = settings.enable_editing;
-    out["read_blish_folder"] = settings.read_blish_folder;
-    out["run_scripts"] = settings.run_scripts;
-    out["allow_auto_hide"] = settings.allow_auto_hide;
-    out["allow_animation"] = settings.allow_animation;
-    out["show_interact_prompt"] = settings.show_interact_prompt;
-    out["clipboard_consent"] = settings.clipboard_consent;
-    out["interact_key"] = settings.interact_key;
+    for (const Field<bool>& field : kBools) out[field.key] = settings.*field.member;
+    for (const Field<int>& field : kInts) out[field.key] = settings.*field.member;
+    for (const Field<float>& field : kFloats) out[field.key] = settings.*field.member;
     return json_file::write(folder / FILE_NAME, out);
 }
 

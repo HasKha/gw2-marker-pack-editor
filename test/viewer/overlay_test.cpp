@@ -8,38 +8,14 @@
 
 #include <cmath>
 
+#include "viewer/draw_list.h"
 #include "viewer/render/overlay.h"
 #include "viewer/test_camera.h"
 
 namespace {
 
-// A draw list needs a context for its shared data, and nothing else of one.
-class DrawListFixture
-{
-public:
-    DrawListFixture()
-        : context_(ImGui::CreateContext())
-        , list_(ImGui::GetDrawListSharedData()) {
-        list_._ResetForNewFrame();
-        list_.PushClipRectFullScreen();
-    }
-    ~DrawListFixture() { ImGui::DestroyContext(context_); }
-
-    DrawListFixture(const DrawListFixture&) = delete;
-    DrawListFixture& operator=(const DrawListFixture&) = delete;
-
-    ImDrawList& list() { return list_; }
-
-private:
-    ImGuiContext* context_;
-    ImDrawList list_;
-};
-
-// Any non-null id will do: nothing samples it.
-ImTextureID fakeTexture() {
-    static int texture = 0;
-    return &texture;
-}
+using viewer::test::DrawListFixture;
+using viewer::test::fakeTexture;
 
 const ImVec2 kUv[4] = {{0, 1}, {1, 1}, {1, 0}, {0, 0}};
 

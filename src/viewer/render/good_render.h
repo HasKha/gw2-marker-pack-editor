@@ -1,5 +1,6 @@
 #pragma once
 
+#include <Mumble.h>
 #include <good_render.h>
 
 #include <glm/vec2.hpp>
@@ -7,17 +8,19 @@
 #include "viewer/camera.h"
 #include "viewer/scene.h"
 
-// The sink that draws the published scene into the game's own frame through GoodRender, at
-// MOMENT_WORLD_FINISHED: under the game's windows and HUD, and each pixel hidden behind what
-// the game drew in front of it.
+// The sink that draws the published scenes into the game's own frame through GoodRender: the
+// world at MOMENT_WORLD_FINISHED, under the game's windows and HUD and each pixel hidden behind
+// what the game drew in front of it; the map at MOMENT_BEFORE_WINDOWS, over the HUD and under
+// the windows.
 //
 // GoodRender is optional. Subscribing costs nothing while no service is loaded, and every
-// frame no moment draws — no service, a loading screen, the full map — the Nexus render
-// callback draws the overlay instead.
+// frame no moment draws a scene — no service, a loading screen, the full map for the world —
+// the Nexus render callback draws it instead.
 namespace viewer::good_render_sink {
 
-// Subscribes, whether or not the service is loaded yet: it calls once it is.
-void load();
+// Subscribes, whether or not the service is loaded yet: it calls once it is. The map is
+// placed by `mumble` as the moment finds it.
+void load(const Mumble::Data* mumble);
 
 // Unsubscribes and waits for a call in progress to return. Never from inside a moment.
 void unload();
@@ -26,6 +29,9 @@ void unload();
 // frame draws the overlay only when this is false: every moment of a frame comes before its
 // Present, so a frame the service reached has already been drawn.
 bool takeDrawn();
+
+// The same for the map's scene.
+bool takeMapDrawn();
 
 // A moment's camera as our own, for the projection min/max size needs. `viewport` is in window
 // pixels, the space minSize and maxSize are in.

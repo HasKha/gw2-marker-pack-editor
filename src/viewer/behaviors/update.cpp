@@ -86,10 +86,6 @@ Guid behaviorGuid(const Behaviors& behaviors, const BakedMarker& marker, const P
     return behaviors.mode == static_cast<int>(Mode::OnceDailyPerCharacter) ? xorGuid(marker.guid, player.character) : marker.guid;
 }
 
-bool categoryActive(size_t node, const std::vector<char>& visible) {
-    return node >= visible.size() || visible[node];
-}
-
 // What one frame needs while running a marker's behaviors.
 class Runner
 {
@@ -352,7 +348,7 @@ void update(runtime::LiveMap* live, const std::vector<char>& visible, const Host
         if (!live->markers[i].marker.behaviors) continue;
 
         // A category turned off, or a marker a script removed, loses focus on the way out.
-        if (live->markers[i].removed || !categoryActive(live->markers[i].node, visible)) {
+        if (live->markers[i].removed || !runtime::nodeVisible(live->markers[i].node, visible)) {
             if (!live->markers[i].behavior.inactive) runner.unfocus(i);
             live->markers[i].behavior.inactive = true;
             continue;
@@ -371,7 +367,7 @@ void update(runtime::LiveMap* live, const std::vector<char>& visible, const Host
 
     for (size_t i = 0; i < live->trails.size(); ++i) {
         const LiveTrail& trail = live->trails[i];
-        if (!trail.trail.behaviors || trail.removed || !categoryActive(trail.node, visible)) continue;
+        if (!trail.trail.behaviors || trail.removed || !runtime::nodeVisible(trail.node, visible)) continue;
         runner.filter(Entity{true, i});
     }
 }

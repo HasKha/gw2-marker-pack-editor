@@ -134,6 +134,8 @@ bool bakeMarker(const pack::Pack& pack, const pack::Pathable& pathable, BakedMar
     out->in_game_visibility = pack.effectiveBool(pathable, "ingamevisibility");
     out->map_visibility = pack.effectiveBool(pathable, "mapvisibility");
     out->minimap_visibility = pack.effectiveBool(pathable, "minimapvisibility");
+    out->map_display_size = pack.effectiveFloat(pathable, "mapdisplaysize");
+    out->scale_on_map_with_zoom = pack.effectiveBool(pathable, "scaleonmapwithzoom");
     // inforange is an alias, taken only while triggerrange is still the default.
     out->trigger_range = pack.effectiveFloat(pathable, "triggerrange");
     if (out->trigger_range == pack::defaultFloat("triggerrange")) {

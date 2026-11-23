@@ -58,6 +58,12 @@ void clear(Installed* installed);
 // Per node of `tree`, whether what is under it shows: it and every ancestor are on.
 std::vector<char> visibleNodes(const registry::CategoryTree& tree, const store::CategoryStates& states);
 
+// Whether a pathable under `node` shows, by `visible` from visibleNodes. One whose type names
+// no category has nothing to turn off, so it shows.
+inline bool nodeVisible(size_t node, const std::vector<char>& visible) {
+    return node >= visible.size() || visible[node];
+}
+
 // A marker on the live map: a copy of its pack's, which scripts are free to change.
 struct LiveMarker {
     size_t pack = 0; // into Installed::packs: the pack it, or the script that made it, came from

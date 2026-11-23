@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "corpus.h"
+#include "viewer/draw_list.h"
 #include "viewer/render/good_render.h"
 #include "viewer/runtime.h"
 #include "viewer/scene.h"
@@ -50,11 +51,7 @@ std::unique_ptr<viewer::registry::LoadedPack> loadedPack(std::string path, viewe
     return loaded;
 }
 
-// Any non-null id will do: nothing samples it.
-ImTextureID fakeTexture() {
-    static int texture = 0;
-    return &texture;
-}
+using viewer::test::fakeTexture;
 
 viewer::TextureLookup everyTexture() {
     return [](size_t, const std::string& path) { return path.empty() ? nullptr : fakeTexture(); };
@@ -63,11 +60,12 @@ viewer::TextureLookup everyTexture() {
 struct Built {
     viewer::runtime::Installed installed;
     viewer::store::CategoryStates states;
+    viewer::WorldOptions options;
     viewer::Scene scene;
 
     void build(const viewer::Camera& camera, const viewer::TextureLookup& textures = everyTexture(), float seconds = 0.0f) {
         const viewer::runtime::LiveMap live = viewer::runtime::liveMap(installed, kMap);
-        viewer::buildScene(live, viewer::runtime::visibleNodes(installed.tree, states), camera, seconds, false, textures, &scene);
+        viewer::buildScene(live, viewer::runtime::visibleNodes(installed.tree, states), camera, seconds, options, textures, &scene);
     }
 };
 
@@ -205,13 +203,64 @@ TEST_CASE("what behaviors filter is left out, or shown at half opacity, and a bo
 
     const viewer::Camera camera = test_camera::axisCamera();
     const std::vector<char> visible = viewer::runtime::visibleNodes(built.installed.tree, built.states);
-    viewer::buildScene(live, visible, camera, 5.0f, false, everyTexture(), &built.scene);
+    viewer::buildScene(live, visible, camera, 5.0f, {}, everyTexture(), &built.scene);
     REQUIRE(built.scene.items.size() == 1);
     CHECK(built.scene.items[0].centre.y == Approx(2.0f)); // risen all the way
 
-    viewer::buildScene(live, visible, camera, 5.0f, true, everyTexture(), &built.scene);
+    viewer::WorldOptions ghosts;
+    ghosts.show_hidden = true;
+    viewer::buildScene(live, visible, camera, 5.0f, ghosts, everyTexture(), &built.scene);
     REQUIRE(built.scene.items.size() == 2);
     CHECK((built.scene.items[1].colour >> IM_COL32_A_SHIFT & 0xFF) == 128);
+}
+
+TEST_CASE("Pathing's world settings scale, fade, cap and hide what the scene draws", "[scene]") {
+    Built built;
+    viewer::BakedPathables pathables;
+    pathables.markers.push_back(marker({0.0f, 0.0f, 10.0f}, 1));
+    pathables.markers[0].min_size = 10.0f;
+    pathables.markers.push_back(marker({0.0f, 0.0f, 60.0f}, 1));
+    viewer::runtime::install(&built.installed, loadedPack("pack", pathables));
+    const viewer::Camera camera = test_camera::axisCamera();
+    const auto alpha = [](const viewer::SceneItem& item) { return (item.colour >> IM_COL32_A_SHIFT) & 0xFF; };
+
+    built.build(camera);
+    REQUIRE(built.scene.items.size() == 2);
+    const viewer::SceneItem near_marker = built.scene.items[1];
+    CHECK(alpha(near_marker) == 255);
+
+    SECTION("marker scale: the size and the least size") {
+        built.options.marker_scale = 2.0f;
+        built.build(camera);
+        REQUIRE(built.scene.items.size() == 2);
+        CHECK(built.scene.items[1].size == Approx(near_marker.size * 2.0f));
+        CHECK(built.scene.items[1].min_size == Approx(20.0f));
+    }
+
+    SECTION("max opacity, and half again in combat") {
+        built.options.max_opacity = 0.5f;
+        built.options.in_combat = true;
+        built.build(camera);
+        REQUIRE(built.scene.items.size() == 2);
+        CHECK(alpha(built.scene.items[1]) == 64);
+
+        built.options.combat_fade = false;
+        built.build(camera);
+        CHECK(alpha(built.scene.items[1]) == 128);
+    }
+
+    SECTION("view distance, in metres for a marker") {
+        built.options.view_distance = 30.0f;
+        built.build(camera);
+        REQUIRE(built.scene.items.size() == 1);
+        CHECK(built.scene.items[0].centre.z == Approx(10.0f));
+    }
+
+    SECTION("off, nothing") {
+        built.options.enabled = false;
+        built.build(camera);
+        CHECK(built.scene.items.empty());
+    }
 }
 
 TEST_CASE("the scene is back to front, billboards and quads together", "[scene]") {
@@ -346,7 +395,7 @@ TEST_CASE("a real pack draws on its own map, and only there", "[scene][corpus]")
         viewer::runtime::visibleNodes(built.installed.tree, built.states),
         camera,
         1.5f,
-        false,
+        {},
         everyTexture(),
         &built.scene);
     CHECK_FALSE(built.scene.items.empty());

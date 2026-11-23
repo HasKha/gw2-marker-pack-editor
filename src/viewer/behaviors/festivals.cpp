@@ -61,37 +61,24 @@ std::optional<std::vector<std::string>> festivalsFromList(std::string_view json)
     return active;
 }
 
-FestivalFetcher::~FestivalFetcher() {
-    stop();
-}
-
 void FestivalFetcher::start() {
-    if (worker_.joinable()) return;
-    worker_ = std::thread([this] {
+    request_.start([]() -> std::optional<std::vector<std::string>> {
         std::optional<std::vector<std::string>> active;
         if (const std::optional<std::string> body = http::get(L"api.guildwars2.com", kDailyGroupPath))
             active = festivalsFromDailyGroup(*body);
         // Since early 2022 the API has at times listed every festival at once; Blish HUD
         // asks its own service then, as it does when the API cannot be reached.
-        if (!active || active->size() == std::size(kFestivals)) {
-            active.reset();
-            if (const std::optional<std::string> body = http::get(L"l.blishhud.com", L"/general/getactivefestivals")) {
-                active = festivalsFromList(*body);
-            }
-        }
-        if (!active) return;
-        std::lock_guard lock(mutex_);
-        active_ = std::move(*active);
+        if (active && active->size() != std::size(kFestivals)) return active;
+        if (const std::optional<std::string> body = http::get(L"l.blishhud.com", L"/general/getactivefestivals"))
+            return festivalsFromList(*body);
+        return std::nullopt;
     });
 }
 
-void FestivalFetcher::stop() {
-    if (worker_.joinable()) worker_.join();
-}
-
-std::vector<std::string> FestivalFetcher::active() const {
-    std::lock_guard lock(mutex_);
-    return active_;
+const std::vector<std::string>& FestivalFetcher::active() const {
+    static const std::vector<std::string> kNone;
+    const std::vector<std::string>* active = request_.get();
+    return active ? *active : kNone;
 }
 
 } // namespace viewer::behaviors

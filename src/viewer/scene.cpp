@@ -18,11 +18,6 @@ std::atomic<std::shared_ptr<const Scene>> latest;
 // Below this an item is invisible: under one step of an 8-bit alpha.
 constexpr float kInvisibleOpacity = 0.003f;
 
-bool categoryVisible(size_t node, const std::vector<char>& visible) {
-    // A pathable whose type names no category has nothing to turn off, so it shows.
-    return node >= visible.size() || visible[node];
-}
-
 float squaredDistance(const glm::vec3& a, const glm::vec3& b) {
     const glm::vec3 d = a - b;
     return glm::dot(d, d);
@@ -35,33 +30,36 @@ void buildScene(
     const std::vector<char>& visible,
     const Camera& camera,
     float seconds,
-    bool show_hidden,
+    const WorldOptions& options,
     const TextureLookup& texture,
     Scene* out) {
     out->items.clear();
 
     // With the map up the world is not on screen, and anything drawn would sit at positions
     // that mean nothing over it.
-    if (!camera.valid || camera.map_open) return;
+    if (!camera.valid || camera.map_open || !options.enabled) return;
+
+    // GetOpacity's settings, the same for every marker and trail.
+    const float settings_opacity = options.max_opacity * (options.combat_fade && options.in_combat ? 0.5f : 1.0f);
 
     for (const runtime::LiveMarker& live_marker : live.markers) {
         const BakedMarker& marker = live_marker.marker;
-        if (live_marker.removed || !marker.in_game_visibility || !categoryVisible(live_marker.node, visible)) continue;
+        if (live_marker.removed || !marker.in_game_visibility || !runtime::nodeVisible(live_marker.node, visible)) continue;
         const bool filtered = live_marker.behavior.filtered;
-        if (filtered && !show_hidden) continue;
+        if (filtered && !options.show_hidden) continue;
 
+        const float distance = glm::distance(marker.position, camera.player);
+        if (distance > options.view_distance) continue;
         // StandardMarker.GetOpacity: a hidden marker shown is half there, whatever its fades.
         const float opacity =
-            filtered ? 0.5f
-                     : marker.alpha *
-                           fadeFactor(metresToInches(glm::distance(marker.position, camera.player)), marker.fade_near, marker.fade_far);
+            filtered ? 0.5f : marker.alpha * fadeFactor(metresToInches(distance), marker.fade_near, marker.fade_far) * settings_opacity;
         if (opacity <= kInvisibleOpacity) continue;
         const glm::vec3 position = marker.position + glm::vec3(0.0f, behaviors::bounceOffset(live_marker, seconds), 0.0f);
 
         // Blish scales the unit quad by iconSize * 2, for either kind of marker. A quad that
         // size reaches at most 0.71 of it from its centre whatever way it is turned, so a
         // centre a full width behind the camera has none of itself in front.
-        const float size = marker.icon_size * 2.0f;
+        const float size = marker.icon_size * 2.0f * options.marker_scale;
         if (glm::dot(position - camera.position, camera.front) < -size) continue;
 
         const ImTextureID image = texture(live_marker.texture_pack, marker.icon);
@@ -76,13 +74,13 @@ void buildScene(
             // maxSize clamp a billboard's screen size and do not apply: clamping a
             // world-locked quad would detach it from the surface it is placed on.
             item.kind = SceneItem::Kind::Quad;
-            rotatedMarkerQuad(position, marker.rotation, marker.icon_size, item.corners);
+            rotatedMarkerQuad(position, marker.rotation, marker.icon_size * options.marker_scale, item.corners);
             std::copy(std::begin(kRotatedMarkerUv), std::end(kRotatedMarkerUv), item.uv);
         } else {
             item.kind = SceneItem::Kind::Billboard;
             item.centre = position;
             item.size = size;
-            item.min_size = marker.min_size;
+            item.min_size = marker.min_size * options.marker_scale;
             item.max_size = marker.max_size;
         }
         out->items.push_back(item);
@@ -93,13 +91,16 @@ void buildScene(
     static std::vector<RibbonQuad> quads;
     for (const runtime::LiveTrail& live_trail : live.trails) {
         const BakedTrail& trail = live_trail.trail;
-        if (live_trail.removed || !trail.in_game_visibility || !trail.geometry || !categoryVisible(live_trail.node, visible)) continue;
-        if (live_trail.behavior.filtered && !show_hidden) continue;
+        if (live_trail.removed || !trail.in_game_visibility || !trail.geometry || !runtime::nodeVisible(live_trail.node, visible)) continue;
+        if (live_trail.behavior.filtered && !options.show_hidden) continue;
 
         const ImTextureID image = texture(live_trail.texture_pack, trail.texture);
         if (!image) continue;
 
-        const float scroll = seconds * trail.anim_speed;
+        // StandardTrail.World.Render: the view distance caps the fade, in the fade's inches.
+        const float fade_far = std::min(trail.fade_far, options.view_distance);
+        const float fade_near = std::min(trail.fade_near, options.view_distance - (trail.fade_far - trail.fade_near));
+        const float scroll = seconds * std::min(trail.anim_speed, options.max_trail_speed);
         for (const pack::trl::Segment& segment : trail.geometry->segments) {
             quads.clear();
             appendRibbon(segment.points, kTrailHalfWidth * trail.scale, trail.is_wall, scroll, &quads);
@@ -109,7 +110,7 @@ void buildScene(
                 // the approximation viewer.md describes.
                 const glm::vec3 middle = (quad.corners[0] + quad.corners[1] + quad.corners[2] + quad.corners[3]) * 0.25f;
                 const float opacity =
-                    trail.alpha * fadeFactor(metresToInches(glm::distance(middle, camera.player)), trail.fade_near, trail.fade_far);
+                    trail.alpha * fadeFactor(metresToInches(glm::distance(middle, camera.player)), fade_near, fade_far) * settings_opacity;
                 if (opacity <= kInvisibleOpacity) continue;
 
                 SceneItem item;

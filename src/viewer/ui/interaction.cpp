@@ -20,18 +20,21 @@ const ImVec4 kUnhideColour(173.0f / 255.0f, 216.0f / 255.0f, 230.0f / 255.0f, 1.
 
 } // namespace
 
-bool draw(const behaviors::Screen& screen, const std::string& key_name, bool show_prompt) {
+bool draw(const behaviors::Screen& screen, settings::InfoDisplay info, const std::string& key_name, bool show_prompt) {
     const ImVec2 display = ImGui::GetIO().DisplaySize;
 
-    if (!screen.info.empty() && !screen.info.back().empty()) {
+    if (info != settings::InfoDisplay::Never && !screen.info.empty() && !screen.info.back().empty()) {
         ImGui::SetNextWindowPos(ImVec2(display.x * 0.5f, display.y * 0.12f), ImGuiCond_Always, ImVec2(0.5f, 0.0f));
-        ImGui::SetNextWindowBgAlpha(0.6f);
+        const bool bare = info == settings::InfoDisplay::WithoutBackground;
+        ImGui::SetNextWindowBgAlpha(bare ? 0.0f : 0.6f);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, bare ? 0.0f : ImGui::GetStyle().WindowBorderSize);
         if (ImGui::Begin("##marker_info", nullptr, kOverlayFlags | ImGuiWindowFlags_NoInputs)) {
             ImGui::PushTextWrapPos(ImGui::GetFontSize() * 24.0f);
             ImGui::TextUnformatted(screen.info.back().c_str());
             ImGui::PopTextWrapPos();
         }
         ImGui::End();
+        ImGui::PopStyleVar();
     }
 
     if (!show_prompt || !screen.prompt) return false;

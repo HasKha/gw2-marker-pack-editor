@@ -48,6 +48,21 @@ struct Scene {
     std::vector<SceneItem> items; // back to front: with no depth between our own quads, order is all there is
 };
 
+// Pathing's pack settings that change how the world is drawn (ModuleSettings.InitPackSettings),
+// with its defaults, and what of this frame they depend on.
+struct WorldOptions {
+    bool enabled = true; // "Show Markers in World"
+    float max_opacity = 1.0f; // "Max Opacity", over every fade
+    // "Max View Distance". Pathing measures a marker's distance against it in metres and hands
+    // it to the trail shader beside fadeNear and fadeFar, in inches; both are kept.
+    float view_distance = 25000.0f;
+    float max_trail_speed = 10.0f; // "Max Trail Animation Speed"
+    float marker_scale = 1.0f; // "Marker Scale": iconSize and minSize
+    bool combat_fade = true; // "Fade Markers and Trails During Combat": half opacity
+    bool in_combat = false; // MumbleLink's, this frame
+    bool show_hidden = false; // what behaviors filter is drawn too, a marker at half opacity
+};
+
 // The texture for an image of one pack, or null while it is not available — which, for a
 // marker, means it is not drawn this frame, as Pathing draws nothing without one.
 using TextureLookup = std::function<ImTextureID(size_t pack, const std::string& path)>;
@@ -55,14 +70,13 @@ using TextureLookup = std::function<ImTextureID(size_t pack, const std::string& 
 // Builds the scene from the live map: what is on it, not removed, in game, under a visible
 // category and not filtered by its behaviors. `camera` sorts and culls, and its `player` is
 // what fades are measured from; `seconds` is the time trail textures scroll by and markers
-// bounce by; `visible` is runtime::visibleNodes. With `show_hidden`, what behaviors filter
-// is drawn after all — a marker at half opacity, as Pathing draws its ghosts.
+// bounce by; `visible` is runtime::visibleNodes.
 void buildScene(
     const runtime::LiveMap& live,
     const std::vector<char>& visible,
     const Camera& camera,
     float seconds,
-    bool show_hidden,
+    const WorldOptions& options,
     const TextureLookup& texture,
     Scene* out);
 

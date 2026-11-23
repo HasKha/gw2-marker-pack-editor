@@ -9,7 +9,7 @@ ctest --test-dir build -C Release --output-on-failure
 
 They assert the whole read → model → write → save round trip — every pack parses, the writer is stable,
 comments and BOM and CRLF survive, a save reopens as the same model — against the real packs rather than
-fixtures. No game needed, and a few seconds: about five and a half run one case at a time, which is how ctest
+fixtures. No game needed, and a few seconds: about six run one case at a time, which is how ctest
 runs by default, and half that with `-j8`. Nearly all of it is three sweeps over the corpus — the format in
 `corpus_test.cpp`, the bake, and the scripts — and a process per case.
 
@@ -95,7 +95,13 @@ An error that is the pack's own — one Pathing raises too, read off the pack's 
 Behaviors are tested the same way: `behavior_test.cpp` writes a pack of POIs a hundred metres apart and
 walks a hand-set MumbleLink between them, a case per rule; `behavior_data_test.cpp` covers what they read —
 attributes with Pathing's parsing quirks, cron schedules, `timers.txt`, the festival answers — on its own. `test/viewer/test_camera.h`
-is the camera whose projections can be written by hand, for any test that projects.
+is the camera whose projections can be written by hand, for any test that projects, and
+`test/viewer/draw_list.h` an ImGui draw list with no device, for any test that draws.
+
+The maps are tested over a kilometre square whose continent coordinates are its own metres, so every
+expected position can be worked out by hand (`map_scene_test.cpp`); the projection itself against
+Queensdale's rectangles, as the API gives them and as Pathing's fallback file has them (`map_test.cpp`).
+Nothing asks the API: the map catalog takes its request as an argument.
 
 ## Above the pack layer
 

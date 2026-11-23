@@ -4,6 +4,8 @@
 
 #include <atomic>
 
+#include "viewer/map_scene.h"
+
 namespace viewer::good_render_sink {
 
 namespace {
@@ -11,10 +13,21 @@ namespace {
 good_render::Link link;
 good_render::Slot* slot = nullptr;
 
+const Mumble::Data* mumble_link = nullptr;
+
 // Set by the moment, taken by the Nexus render that ends the same frame.
 std::atomic<bool> drawn{false};
+std::atomic<bool> map_drawn{false};
 
 void onMoment(const good_render::Moment* moment) {
+    // In the game's UI, over its HUD, where the game draws its own map markers.
+    if (moment->moment == good_render::MOMENT_BEFORE_WINDOWS && moment->draw_list) {
+        const float scale = moment->pixels_per_window_pixel > 0.0f ? moment->pixels_per_window_pixel : 1.0f;
+        map_scene::drawPublished(moment->draw_list, mumble_link, glm::vec2(moment->width / scale, moment->height / scale));
+        map_drawn = true;
+        return;
+    }
+
     // The finished world, before any UI: markers belong under the HUD and the windows. Null
     // world_quad or camera means no world to draw into this frame — leave it to the fallback.
     if (moment->moment != good_render::MOMENT_WORLD_FINISHED || !moment->world_quad || !moment->camera) return;
@@ -28,7 +41,8 @@ void onMoment(const good_render::Moment* moment) {
 
 } // namespace
 
-void load() {
+void load(const Mumble::Data* mumble) {
+    mumble_link = mumble;
     link = good_render::open();
     // Order 0, as GoodRender's README asks of anyone without a reason to draw over others.
     if (link.block) slot = good_render::subscribe(*link.block, onMoment, 0);
@@ -42,6 +56,10 @@ void unload() {
 
 bool takeDrawn() {
     return drawn.exchange(false);
+}
+
+bool takeMapDrawn() {
+    return map_drawn.exchange(false);
 }
 
 Camera cameraFromMoment(const good_render::Camera& source, glm::vec2 viewport) {

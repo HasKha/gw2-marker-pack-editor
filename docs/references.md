@@ -54,7 +54,7 @@ ones above:
 | Behaviors | `Behavior/StandardPathableBehavior.cs`, `Behavior/Filter/`, `Behavior/Modifier/` |
 | Persisted state | `State/KvStates.cs` (script `Storage`), `State/BehaviorStates.cs`, `State/CategoryStates.cs` |
 | Opacity, size and fade rules | `Entity/StandardMarker.World.cs` (`GetOpacity`, min/max size), `Entity/StandardTrail.World.cs` |
-| Minimap and full map | `Entity/MapProjection.cs`, `Entity/StandardMarker.MiniMap.cs`, `UI/Controls/FlatMap.cs` |
+| Minimap and full map | `Entity/MapProjection.cs`, `Entity/StandardMarker.MiniMap.cs`, `Entity/StandardTrail.MiniMap.cs`, `UI/Controls/FlatMap.cs`, `State/MapStates.cs`; `ref/fallback/mapDetails.json`, whose layout `maps.json` keeps |
 | Settings players expect | `ModuleSettings.cs` |
 | The pack catalog | `MarkerPackRepo/MarkerPackRepo.cs`, `MarkerPackRepo/MarkerPackPkg.cs` |
 
@@ -65,6 +65,8 @@ Scripts see more than Pathing's own code. What else defines the API they are wri
 | **Blish HUD** | `github.com/blish-hud/Blish-HUD` — `Blish HUD/GameServices/Gw2MumbleService.cs`, `Blish HUD/GameServices/Gw2Mumble/` (`CurrentMap`, `PlayerCharacter`, `PlayerCamera`, `UI`, `Info`) | **every `Mumble.*` member.** `PathingGlobal` hands scripts Blish HUD's own `GameService.Gw2Mumble`, so its names, units and types are the API, not MumbleLink's |
 | **NeoLua** | `github.com/neolithos/neolua` | how a .NET object behaves in Lua: method calls with `.` or `:`, number and string conversions, `Int32`/`Float` arithmetic. What the call-style shim and the number notes in [viewer.md](viewer.md#lua) imitate |
 | **Gw2Sharp** | `github.com/Archomeda/Gw2Sharp` — `Gw2Sharp/Models/` (`ProfessionType`, `RaceType`, `UiSize`, `MapType`, `MountType`) | the enum names `Mumble.*` members return as strings, and their numbers |
+| **Blish HUD's scaling** | `Blish HUD/GameServices/GraphicsService.cs` (`GetScaleRatio`) | the 0.897 Pathing's map corrects by: Blish HUD's pixel at the Normal interface size |
+| **The GW2 API's maps** | `https://api.guildwars2.com/v2/maps?ids=all` | each map's `map_rect` (inches, y up) and `continent_rect` (y down), which place the world on the continent |
 | **Cronos** | `github.com/HangfireIO/Cronos` — `src/Cronos/CronExpression.cs` | the `schedule` filter's cron expressions: fields, `?`, 7 as Sunday, day of month and day of week both matching |
 | **MonoGame 3.8** | `github.com/MonoGame/MonoGame` — `MonoGame.Framework/Vector3.cs`, `Color.cs`, `GameTime.cs` | the value types scripts hold: `Vector3`'s methods, `Color`'s constructors and channels, `GameTime` as `OnTick` hands it. Pathing pins 3.8.0.1641 |
 

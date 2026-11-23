@@ -85,13 +85,11 @@ int enumValue(Gw2Enum type, std::string_view name) {
     return 0;
 }
 
-MumbleState mumbleState(const Mumble::Data* data) {
+MumbleState contextState(const Mumble::Data* data) {
     MumbleState state;
     if (!data || data->UITick == 0) return state;
 
     const Mumble::Context& context = data->Context;
-    const Identity& identity = parseIdentity(data->Identity);
-
     state.available = true;
     state.tick = static_cast<int>(data->UITick);
 
@@ -101,18 +99,11 @@ MumbleState mumbleState(const Mumble::Data* data) {
 
     state.player_position = toBlish(data->AvatarPosition);
     state.player_forward = toBlish(data->AvatarFront);
-    state.name = identity.name;
-    state.profession = identity.profession;
-    state.race = identity.race;
-    state.specialization = identity.specialization;
-    state.team_color_id = identity.team_color_id;
-    state.is_commander = identity.commander;
     state.is_in_combat = context.IsInCombat;
     state.mount = static_cast<int>(context.MountIndex);
 
     state.camera_position = toBlish(data->CameraPosition);
     state.camera_forward = toBlish(data->CameraFront);
-    if (identity.fov > 0.0f) state.field_of_view = identity.fov;
 
     state.compass_width = context.Compass.Width;
     state.compass_height = context.Compass.Height;
@@ -121,13 +112,29 @@ MumbleState mumbleState(const Mumble::Data* data) {
     state.is_compass_top_right = context.IsCompassTopRight;
     state.is_map_open = context.IsMapOpen;
     state.map_scale = context.Compass.Scale;
+    state.map_center = glm::dvec2(context.Compass.Center.X, context.Compass.Center.Y);
     state.is_text_input_focused = context.IsTextboxFocused;
-    state.ui_size = identity.ui_size;
 
     state.build_id = static_cast<int>(context.BuildID);
     state.is_game_focused = context.IsGameFocused;
     state.shard_id = context.ShardID;
     state.process_id = context.ProcessID;
+    return state;
+}
+
+MumbleState mumbleState(const Mumble::Data* data) {
+    MumbleState state = contextState(data);
+    if (!state.available) return state;
+
+    const Identity& identity = parseIdentity(data->Identity);
+    state.name = identity.name;
+    state.profession = identity.profession;
+    state.race = identity.race;
+    state.specialization = identity.specialization;
+    state.team_color_id = identity.team_color_id;
+    state.is_commander = identity.commander;
+    if (identity.fov > 0.0f) state.field_of_view = identity.fov;
+    state.ui_size = identity.ui_size;
     return state;
 }
 

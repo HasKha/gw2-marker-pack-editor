@@ -27,7 +27,10 @@ print and any error, and **Run pack scripts** in the options turns them off. Mar
 they do there too: they hide by festival, character, schedule or once you have used them, show
 what they are about when you walk up, and **F** — or the key you pick in the options —
 interacts, copying a waypoint or toggling a category. The options also hold Pathing's choices
-for whether markers may hide themselves, animate or copy to the clipboard. With
+for whether markers may hide themselves, animate or copy to the clipboard. Markers and trails
+show on the minimap and the full map too, with a tooltip when you point at one — Shift shows
+its categories, a right click hides them — and Pathing's map settings under **Maps** in the
+options. With
 [GoodRender](https://github.com/HasKha/gw2-good-render) loaded, markers draw under the game's
 windows and hide behind walls; without it they draw over everything.
 

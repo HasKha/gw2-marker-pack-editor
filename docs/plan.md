@@ -46,7 +46,7 @@ it, save it back, and the edited markers show correctly in Blish HUD.**
 | Settings | the Settings toggles, gizmo mode, which windows are open and where the browsers start, kept in `settings.json` |
 | Create pack | `New Pack...` builds an empty pack in memory; Save As writes the first zip |
 | Write | serializes the owned document; comments, order, spelling, BOM, CRLF and the file split survive. 947/947 files stable on rewrite |
-| Tests | `mpe_test`, 44 cases over the real pack corpus, the selection rules and the trail editing layer; `mpe_viewer_test`, 119 over the camera, the quad path, textures, settings, the bake, the registry, the ribbon, the scene, the GoodRender sink, the Lua scripts and the behaviors, the scripts over every scripted corpus pack; and a check that nothing in `src/viewer/` includes the editor. All run by `ctest` |
+| Tests | `mpe_test`, 44 cases over the real pack corpus, the selection rules and the trail editing layer; `mpe_viewer_test`, 152 over the camera, the quad path, textures, settings, the bake, the registry, the ribbon, the scene, the GoodRender sink, the Lua scripts, the behaviors and the maps, the scripts over every scripted corpus pack; and a check that nothing in `src/viewer/` includes the editor. All run by `ctest` |
 
 A pack can be edited end to end, grown new branches, and started from nothing. The test
 row's claims are measured against the corpus in [testing.md](testing.md).
@@ -177,9 +177,9 @@ recording moment.
 - With editing on: open a pack from the Blish HUD folder, save it, close it — does the save
   succeed, and does the pack come back in the viewer?
 
-Not in it, and not needed for the pull: Pathing's view distance, marker scale, max opacity and
-combat fade settings, which come with the rest of Pathing's settings in milestone 4. Nor
-inheritance across packs — see [viewer.md](viewer.md#packs-across-packs).
+Not in it, and not needed for the pull: inheritance across packs — see
+[viewer.md](viewer.md#packs-across-packs). Pathing's view distance, marker scale, max opacity
+and combat fade settings came with milestone 4.
 
 ### 2. Lua — done offline
 
@@ -226,12 +226,42 @@ every `script-*` function packs name, the way a player walking each map would.
 
 **First beta here**, once that pull passes: local packs, scripts and behaviors all working.
 
-Not in it: achievement and raid filters (milestone 7), and the info and prompt's final look —
-Pathing's gear icon and info window — which come with the rest of the screen in milestone 4.
+Not in it: achievement and raid filters (milestone 7).
 
-### 4. Maps and screen
+### 4. Maps and screen — done offline
 
-- The minimap and the full map, the compass, info text, tooltips, Pathing's map settings.
+Built: the minimap and the full map, as Pathing's FlatMap draws them — markers at their
+`mapDisplaySize`, zoomed or not, above/below arrows, trails as lines faded by height, the
+compass turning with the camera, the fade after the map opens. Every map's rectangles come
+from the GW2 API once a session, kept in `maps.json` for the next. The map draws at GoodRender's
+`BEFORE_WINDOWS`, over the HUD and under the windows, or over everything without it. Over a
+marker on either map: its tooltip, the category path with Shift, and a right-click menu that
+hides its category. Pathing's map settings, its pack settings for the world (view distance,
+marker scale, max opacity, combat fade, trail speed, world markers off) and its info display
+mode are in the options, the options in two sections.
+
+**Left: one pull in game**, deciding these in advance:
+- The minimap at Normal and at Larger interface size, in both corners, with compass rotation
+  on and off: does each marker sit on the game's own icon for the same spot — a waypoint
+  marker on the waypoint — and does nothing spill outside the compass?
+- With DPI scaling on in the game's options: does the compass's box still fit the compass?
+  That is the one thing Nexus's `Scaling` is trusted to carry.
+- The full map: are markers drawn over the map, or under it — see
+  [Open questions](#open-questions)? Panning it, do they stay put without trailing a frame?
+  Zoomed all the way out on a map with every pack installed, does the frame time hold?
+- The tooltip over a marker on the full map, the category path with Shift, and right-click →
+  hide.
+
+Not in it:
+- **Pathing's own art**: its info window and gear icon are the game's textures, drawn with
+  an alpha-mask shader; ours are plain ImGui windows. Its above/below icons are drawn as
+  arrows.
+- **A trail without a tint is white on the map**, where Pathing samples its texture for the
+  dominant colour. That needs the image decoded on our side, which Nexus does not hand back.
+- **Hiding the full map as the camera moves**, before MumbleLink says it closed
+  (FlatMap's `MapTriggerHideFromCamera`): one frame's difference at most.
+- Pathing's per-pixel fades — markers between character and camera, trails around the
+  character — and their two settings: milestone 7.
 
 ### 5. The catalog
 
@@ -259,7 +289,8 @@ Pathing's gear icon and info window — which come with the rest of the screen i
   clamping, every repeat has to be its own quad. The ribbon keeps each quad's v near zero
   either way, and one look at a long trail segment in the pull answers it.
 - **Whether the full map counts as a window** at `BEFORE_WINDOWS`, i.e. whether markers drawn
-  there land over it or under it. One pull answers it.
+  there land over it or under it. One pull answers it. Under it, the full map moves to
+  `UI_FINISHED` and the minimap stays.
 - **Texture memory with every pack loaded.** Nexus never releases a texture, which was fine
   for one pack; with all of them, a long session accumulates every icon it has seen.
 

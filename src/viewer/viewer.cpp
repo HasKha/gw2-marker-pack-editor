@@ -16,6 +16,8 @@
 #include "viewer/behaviors/states.h"
 #include "viewer/behaviors/update.h"
 #include "viewer/camera.h"
+#include "viewer/map.h"
+#include "viewer/map_scene.h"
 #include "viewer/mumble.h"
 #include "viewer/registry.h"
 #include "viewer/render/good_render.h"
@@ -28,6 +30,8 @@
 #include "viewer/textures.h"
 #include "viewer/ui/category_menu.h"
 #include "viewer/ui/interaction.h"
+#include "viewer/ui/map_menu.h"
+#include "viewer/ui/options.h"
 #include "viewer/ui/script_console.h"
 
 namespace viewer {
@@ -36,6 +40,8 @@ namespace {
 
 AddonAPI* api = nullptr;
 Mumble::Data* mumble_link = nullptr;
+// Read for its Scaling only: its Width and Height go stale (see fromMumble).
+const NexusLinkData* nexus_link = nullptr;
 std::filesystem::path folder;
 
 // What the options page edits and saves, against what this session loaded with.
@@ -59,10 +65,37 @@ uint64_t visible_tree = ~0ull; // and the Installed revision
 // A few textures decoded per frame across every pack — see LoadBudget.
 LoadBudget texture_budget{4};
 
-// The last scene published, and the one before it, kept to be reused once nothing else
-// holds it. A scene is thousands of items, and allocating one a frame is a waste.
-std::shared_ptr<Scene> current_scene;
-std::shared_ptr<Scene> spare_scene;
+// The last scene published, and the one before it, the older reused once no sink holds it any
+// more. A scene is thousands of items, and allocating one a frame is a waste.
+template <class T>
+class Recycled
+{
+public:
+    // A scene to build into: the spare, if nothing holds it, or a new one.
+    std::shared_ptr<T> take() { return spare_ && spare_.use_count() == 1 ? std::move(spare_) : std::make_shared<T>(); }
+    // Keeps `built`, which is about to be published.
+    void keep(const std::shared_ptr<T>& built) {
+        spare_ = std::move(current_);
+        current_ = built;
+    }
+    void clear() {
+        current_.reset();
+        spare_.reset();
+    }
+
+private:
+    std::shared_ptr<T> current_;
+    std::shared_ptr<T> spare_;
+};
+
+Recycled<Scene> scenes;
+
+// The minimap and the full map: every map's rectangles, the fade after the map changes, and
+// what was published.
+map::Catalog maps;
+map_scene::FadeIn map_fade;
+map_scene::TrailCache map_trails;
+Recycled<map_scene::MapScene> map_scenes;
 
 // What the editor has open, as last reported, and what the viewer has acted on.
 std::filesystem::path edit_requested;
@@ -84,7 +117,6 @@ bool scripts_stale = true;
 behaviors::BehaviorStates behavior_states;
 behaviors::Screen screen;
 behaviors::FestivalFetcher festivals;
-std::vector<std::string> festivals_on;
 
 // Pathing's "Temporarily Show Ghost Markers", which it turns off at every start: so a session
 // setting, never saved.
@@ -112,6 +144,10 @@ std::filesystem::path storageFile() {
 
 std::filesystem::path timersFile() {
     return folder.empty() ? folder : folder / behaviors::TIMERS_FILE_NAME;
+}
+
+std::filesystem::path mapsFile() {
+    return folder.empty() ? folder : folder / map::CACHE_FILE_NAME;
 }
 
 behaviors::UtcMillis utcNow() {
@@ -219,7 +255,7 @@ behaviors::Host behaviorHost() {
 }
 
 behaviors::Frame behaviorFrame() {
-    return behaviors::Frame{&mumble_state, utcNow(), ImGui::GetTime(), &festivals_on};
+    return behaviors::Frame{&mumble_state, utcNow(), ImGui::GetTime(), &festivals.active()};
 }
 
 // The interact key's name as the keyboard writes it, for the prompt.
@@ -241,7 +277,6 @@ UINT onWndProc(HWND, UINT message, WPARAM key, LPARAM flags) {
 
 // One frame of behaviors, after the scripts have ticked.
 void runBehaviors() {
-    festivals_on = festivals.active();
     const behaviors::Host host = behaviorHost();
     const behaviors::Frame frame = behaviorFrame();
     behaviors::update(&live, visible, host, frame);
@@ -277,6 +312,76 @@ void updatePacks() {
 std::string loadingStatus() {
     if (!loader.busy()) return std::to_string(installed.packs.size()) + " packs";
     return "Loading packs: " + std::to_string(installed.packs.size()) + " of " + std::to_string(discovered.size());
+}
+
+// Screen pixels per UI pixel: Nexus's own scaling, which follows the interface size and the
+// game's DPI scaling, or the interface size alone before Nexus says.
+float uiScale() {
+    if (nexus_link && nexus_link->Scaling > 0.0f) return nexus_link->Scaling;
+    return map::uiScale(mumble_state.ui_size);
+}
+
+WorldOptions worldOptions() {
+    WorldOptions options;
+    options.enabled = persisted.world_pathables;
+    options.max_opacity = persisted.max_opacity;
+    options.view_distance = persisted.view_distance;
+    options.max_trail_speed = persisted.max_trail_speed;
+    options.marker_scale = persisted.marker_scale;
+    options.combat_fade = persisted.combat_fade;
+    options.in_combat = mumble_state.is_in_combat;
+    options.show_hidden = show_hidden;
+    return options;
+}
+
+map_scene::Options mapOptions() {
+    map_scene::Options options;
+    options.enabled = persisted.map_pathables;
+    options.map_markers = static_cast<map_scene::Visibility>(persisted.map_marker_visibility);
+    options.map_trails = static_cast<map_scene::Visibility>(persisted.map_trail_visibility);
+    options.minimap_markers = static_cast<map_scene::Visibility>(persisted.minimap_marker_visibility);
+    options.minimap_trails = static_cast<map_scene::Visibility>(persisted.minimap_trail_visibility);
+    options.map_opacity = persisted.map_opacity;
+    options.minimap_opacity = persisted.minimap_opacity;
+    options.above_below = persisted.map_above_below;
+    options.fade_far_trails = persisted.map_fade_far_trails;
+    options.trail_width = persisted.map_trail_width;
+    options.show_hidden = show_hidden;
+    return options;
+}
+
+// What the minimap or the full map shows this frame. Nothing on a map the API has not
+// described, as in Pathing.
+void buildMapScene(const TextureLookup& texture) {
+    const std::shared_ptr<map_scene::MapScene> next = map_scenes.take();
+    const float fade = map_fade.update(mumble_state, ImGui::GetTime());
+    if (const map::MapDetails* details = mumble_state.available ? maps.find(mumble_state.map_id) : nullptr) {
+        map_scene::build(live, visible, *details, mumble_state, mapOptions(), fade, uiScale(), texture, &map_trails, next.get());
+    } else {
+        *next = map_scene::MapScene{};
+    }
+    map_scenes.keep(next);
+    map_scene::publish(next);
+}
+
+// The map's tooltip and menu, over what was published this frame.
+void drawMapMenu() {
+    const std::shared_ptr<const map_scene::MapScene> scene = map_scene::published();
+    if (!scene || scene->full_map != mumble_state.is_map_open) return;
+    const ImVec2 display = ImGui::GetIO().DisplaySize;
+    const std::optional<map::View> view = map::view(mumble_state, glm::vec2(display.x, display.y), scene->ui_scale);
+    if (!view) return;
+
+    ui::map_menu::Context context;
+    context.scene = scene.get();
+    context.view = &*view;
+    context.live = &live;
+    context.tree = &installed.tree;
+    context.states = &category_states;
+    context.player = mumble_state.player_position;
+    context.tooltips = persisted.map_tooltips;
+    context.copy = [](const std::string& text) { setClipboard(text, "Copied: " + text); };
+    if (ui::map_menu::draw(context)) saveStates();
 }
 
 // Everything is decided here, at Present, before the next frame is drawn: GoodRender's
@@ -317,11 +422,12 @@ void preRender() {
         return installed_pack.textures.get(pack::normalizePath(path), texture_budget, read).texture;
     };
 
-    std::shared_ptr<Scene> next = spare_scene && spare_scene.use_count() == 1 ? spare_scene : std::make_shared<Scene>();
-    buildScene(live, visible, camera, static_cast<float>(ImGui::GetTime()), show_hidden, texture, next.get());
-    spare_scene = std::move(current_scene);
-    current_scene = next;
-    publish(std::move(next));
+    const std::shared_ptr<Scene> next = scenes.take();
+    buildScene(live, visible, camera, static_cast<float>(ImGui::GetTime()), worldOptions(), texture, next.get());
+    scenes.keep(next);
+    publish(next);
+
+    buildMapScene(texture);
 }
 
 void render() {
@@ -334,6 +440,11 @@ void render() {
             if (camera.valid) overlay::drawScene(ImGui::GetBackgroundDrawList(), camera, *scene);
         }
     }
+    if (!good_render_sink::takeMapDrawn()) {
+        const ImVec2 display = ImGui::GetIO().DisplaySize;
+        map_scene::drawPublished(ImGui::GetBackgroundDrawList(), mumble_link, glm::vec2(display.x, display.y));
+    }
+    drawMapMenu();
 
     const auto script_menu = [] {
         if (persisted.run_scripts) ui::script_console::drawMenu(scripts.get());
@@ -345,46 +456,13 @@ void render() {
     const ImVec2 display = ImGui::GetIO().DisplaySize;
     const Camera camera = fromMumble(mumble_link, glm::vec2(display.x, display.y));
     if (camera.valid && !camera.map_open &&
-        ui::interaction::draw(screen, keyName(persisted.interact_key), persisted.show_interact_prompt)) {
+        ui::interaction::draw(
+            screen,
+            static_cast<settings::InfoDisplay>(persisted.info_display),
+            keyName(persisted.interact_key),
+            persisted.show_interact_prompt)) {
         behaviors::interactWith(&live, screen.prompt->marker, behaviorHost(), behaviorFrame());
     }
-}
-
-// The behavior settings, Pathing's pack settings by its own names.
-void drawBehaviorOptions() {
-    bool changed = false;
-    changed |= ImGui::Checkbox("Allow markers to hide themselves", &persisted.allow_auto_hide);
-    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Off shows every marker, whatever festival, character or interaction would hide it.");
-    changed |= ImGui::Checkbox("Allow markers to animate", &persisted.allow_animation);
-    changed |= ImGui::Checkbox("Show what interacting does", &persisted.show_interact_prompt);
-
-    static constexpr const char* kConsents[] = {"Always", "Only when I interact", "Never"};
-    ImGui::SetNextItemWidth(ImGui::GetFontSize() * 12.0f);
-    changed |= ImGui::Combo("Markers may copy to the clipboard", &persisted.clipboard_consent, kConsents, IM_ARRAYSIZE(kConsents));
-
-    // A letter, as the game's own interact key is one; F unless the player moved it.
-    int letter = persisted.interact_key >= 'A' && persisted.interact_key <= 'Z' ? persisted.interact_key - 'A' : 'F' - 'A';
-    ImGui::SetNextItemWidth(ImGui::GetFontSize() * 4.0f);
-    if (ImGui::Combo(
-            "Interact key",
-            &letter,
-            [](void*, int index, const char** text) {
-                static char letters[26][2];
-                letters[index][0] = static_cast<char>('A' + index);
-                *text = letters[index];
-                return true;
-            },
-            nullptr,
-            26)) {
-        persisted.interact_key = 'A' + letter;
-        interact_key = persisted.interact_key;
-        changed = true;
-    }
-    if (ImGui::IsItemHovered()) ImGui::SetTooltip("The game's interact key: the addon cannot read the game's binding.");
-
-    ImGui::Checkbox("Show hidden markers faded, to unhide them", &show_hidden);
-    if (ImGui::IsItemHovered()) ImGui::SetTooltip("For this session only, as in Pathing.");
-    if (changed) settings::save(folder, persisted);
 }
 
 void drawOptions() {
@@ -409,7 +487,13 @@ void drawOptions() {
         replaceLiveMap(live.map_id);
     }
 
-    drawBehaviorOptions();
+    if (ImGui::CollapsingHeader("Markers")) {
+        if (ui::options::drawPack(&persisted, &show_hidden)) {
+            interact_key = persisted.interact_key;
+            settings::save(folder, persisted);
+        }
+    }
+    if (ImGui::CollapsingHeader("Maps") && ui::options::drawMaps(&persisted)) settings::save(folder, persisted);
 
     if (ImGui::Button("Reload packs")) reloadPacks();
     ImGui::SameLine();
@@ -439,6 +523,7 @@ void onMarkersKeybind(const char*, bool is_release) {
 void load(AddonAPI* aApi, Mumble::Data* aMumbleLink) {
     api = aApi;
     mumble_link = aMumbleLink;
+    nexus_link = static_cast<const NexusLinkData*>(api->DataLink.Get("DL_NEXUS_LINK"));
 
     // Nexus makes the directory; the files are ours.
     const char* directory = api->Paths.GetAddonDirectory(ADDON_FOLDER);
@@ -451,6 +536,7 @@ void load(AddonAPI* aApi, Mumble::Data* aMumbleLink) {
     behavior_states.load(timersFile());
     interact_key = persisted.interact_key;
     festivals.start();
+    maps.start(mapsFile());
 
     script::Host host;
     host.installed = &installed;
@@ -469,7 +555,7 @@ void load(AddonAPI* aApi, Mumble::Data* aMumbleLink) {
     scripts_stale = true;
 
     discoverAndLoad();
-    good_render_sink::load();
+    good_render_sink::load(mumble_link);
 
     api->Renderer.Register(ERenderType_PreRender, preRender);
     api->Renderer.Register(ERenderType_Render, render);
@@ -494,12 +580,15 @@ void unload() {
 
     loader.stop();
     festivals.stop();
+    maps.stop();
     saveStates();
     scripts.reset();
     screen = behaviors::Screen{};
     publish(nullptr);
-    current_scene.reset();
-    spare_scene.reset();
+    scenes.clear();
+    map_scene::publish(nullptr);
+    map_scenes.clear();
+    map_trails = map_scene::TrailCache{};
     live = runtime::LiveMap{};
     installed = runtime::Installed{};
     editor = {};

@@ -67,6 +67,8 @@ struct BakedMarker {
     bool in_game_visibility = true;
     bool map_visibility = true;
     bool minimap_visibility = true;
+    float map_display_size = 20.0f; // across, in Blish HUD's pixels at MapScale 1 — see map_scene.*
+    bool scale_on_map_with_zoom = true;
     float trigger_range = 2.0f; // triggerrange, or inforange standing in for it (StandardMarker_Focus.cs)
     float reset_length = 0.0f; // seconds a ReappearAfterTimer marker hides for; scripts set it
 

@@ -37,6 +37,11 @@ int readInt(const nlohmann::json& object, const char* key, int fallback) {
     return it != object.end() && it->is_number_integer() ? it->get<int>() : fallback;
 }
 
+float readFloat(const nlohmann::json& object, const char* key, float fallback) {
+    const auto it = object.find(key);
+    return it != object.end() && it->is_number() ? it->get<float>() : fallback;
+}
+
 std::string readString(const nlohmann::json& object, const char* key) {
     const auto it = object.find(key);
     return it != object.end() && it->is_string() ? it->get<std::string>() : std::string();

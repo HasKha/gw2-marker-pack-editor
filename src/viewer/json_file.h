@@ -25,6 +25,7 @@ bool write(const std::filesystem::path& file, const nlohmann::json& value);
 // value() throws on the wrong type.
 bool readBool(const nlohmann::json& object, const char* key, bool fallback);
 int readInt(const nlohmann::json& object, const char* key, int fallback);
+float readFloat(const nlohmann::json& object, const char* key, float fallback); // any number
 std::string readString(const nlohmann::json& object, const char* key);
 
 } // namespace viewer::json_file

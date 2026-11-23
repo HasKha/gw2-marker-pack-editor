@@ -1,11 +1,11 @@
 #pragma once
 
-#include <mutex>
 #include <optional>
 #include <string>
 #include <string_view>
-#include <thread>
 #include <vector>
+
+#include "viewer/background.h"
 
 // Which festivals are on, for the `festival` filter: Blish HUD's FestivalContext, which asks
 // the GW2 API and, when the API gets it wrong, Blish HUD's own service.
@@ -35,23 +35,16 @@ std::optional<std::vector<std::string>> festivalsFromList(std::string_view json)
 class FestivalFetcher
 {
 public:
-    FestivalFetcher() = default;
-    ~FestivalFetcher();
-    FestivalFetcher(const FestivalFetcher&) = delete;
-    FestivalFetcher& operator=(const FestivalFetcher&) = delete;
-
     void start();
     // Waits for a request still in flight, which its timeouts bound: unloading offline costs
     // at most those seconds.
-    void stop();
+    void stop() { request_.stop(); }
 
     // The festivals on, lowercase; empty until the answer is in.
-    std::vector<std::string> active() const;
+    const std::vector<std::string>& active() const;
 
 private:
-    std::thread worker_;
-    mutable std::mutex mutex_;
-    std::vector<std::string> active_;
+    Background<std::vector<std::string>> request_;
 };
 
 } // namespace viewer::behaviors

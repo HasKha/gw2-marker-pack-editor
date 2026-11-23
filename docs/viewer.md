@@ -48,7 +48,7 @@ src/
   pack/            mpe_pack — unchanged. The format, nothing else
   viewer/          mpe_viewer, links mpe_pack
     viewer.*       lifecycle, the addon's name and folder, its options page, EditorHooks
-    settings.*     viewer.json: "Enable pack editing"
+    settings.*     viewer.json: "Enable pack editing", and Pathing's settings by its names
     json_file.*    lenient reads and writes of small JSON files, the editor's too
     registry.*     installed packs: discovery, enable/disable, loading on a worker, the merged tree
     bake.*         pack::Pack -> the runtime model: resolved attributes, grouped by map id
@@ -63,16 +63,20 @@ src/
                    os_library.cpp, lson.*, console.*
     guid.*         Pathing's Guid: from the pack's base64, or an MD5 of any other text
     identity.*     MumbleLink's identity JSON, read once per change
-    scene.*        this frame's world quads, billboards and screen items, built from runtime
+    scene.*        this frame's world quads and billboards, built from runtime
+    map.*          where the world lands on the minimap and the full map: the maps' rectangles
+                   from the API and maps.json, the compass's bounds, the projection
+    map_scene.*    what the maps show, built from runtime; drawn into any draw list
     render/        the sinks: good_render.* (moments) and overlay.* (Nexus render, draw list)
-    map.*          the minimap and full map projection (Pathing's Entity/MapProjection.cs)
+    background.h   one job on a thread of its own, its answer read from frames
     camera.*       MumbleLink -> view/projection
     mumble.*       MumbleLink as Blish HUD names it, for scripts and behaviors; Gw2Sharp's enums
-    http.*         HTTPS GETs on a worker, through WinHTTP: festivals, then the catalog
+    http.*         HTTPS GETs on a worker, through WinHTTP: festivals, maps, then the catalog
     textures.*     budgeted texture decoding: LoadBudget, TextureCache
     catalog.*      the public pack catalog: list, download, update
     store.*        what outlives a session: category toggles, script Storage
-    ui/            the category menu, pack manager, settings, script console
+    ui/            the category menu, the script console, interaction.* (info and prompt),
+                   map_menu.* (the maps' tooltip and menu), options.* (Pathing's settings)
   editor/          mpe_editor, links mpe_pack and mpe_viewer
 ```
 
@@ -95,9 +99,9 @@ how it fades is still the editor renderer's until the scene exists.
 | Where | Runs |
 |---|---|
 | worker | parsing and baking packs; catalog downloads |
-| `ERenderType_PreRender` | MumbleLink, map changes, behaviors, Lua `OnTick`, building the scene, publishing it |
-| `ERenderType_Render` | the viewer's and the editor's windows; the overlay sink when there is no service |
-| GoodRender moments | the latest published scene, submitted. Nothing else |
+| `ERenderType_PreRender` | MumbleLink, map changes, behaviors, Lua `OnTick`, building the scenes, publishing them |
+| `ERenderType_Render` | the viewer's and the editor's windows, the map's tooltip; the overlay sink for a scene no moment drew |
+| GoodRender moments | the latest published scenes, submitted. Nothing else |
 
 **The scene is world space and carries no camera.** It is built at one Present and drawn at
 the next frame's moments, and projecting it there, with the camera `Moment` hands over, is
@@ -117,8 +121,8 @@ What goes where, through GoodRender:
 | a marker, billboarded | `world_quad`, corners from `Camera::billboardQuad` at the size min/max size allow under the moment's camera | `WORLD_FINISHED` |
 | a marker with `rotate` | `world_quad`, corners from the same transform the editor's gizmo uses | `WORLD_FINISHED` |
 | a trail | `world_quad`, one per quad of `viewer/ribbon.*`'s strip; `animspeed` scrolls the uvs | `WORLD_FINISHED` |
-| info text, the interact icon, tooltips, the compass | `draw_list` | `BEFORE_WINDOWS` |
-| the minimap and the full map | `draw_list`, projected from MumbleLink's map fields | `BEFORE_WINDOWS` |
+| the minimap and the full map | `draw_list`, projected from MumbleLink's map fields as the moment reads them | `BEFORE_WINDOWS` |
+| info text, the interact prompt, the map's tooltip and menu | ImGui windows | Nexus's render, over everything |
 
 **Billboards do not use `world_billboard`.** Blish's billboard faces the ray to its own centre,
 not the camera's plane, and its size is clamped on its projected corners; GoodRender's call
@@ -262,6 +266,33 @@ one of our text fields has the keyboard. The info text and the prompt ("Copy '�
 interacts. A hidden marker, while hidden markers are shown faded, says why it is hidden, and
 interacting unhides it — removing its filters, its script with them, as Pathing does.
 
+## Maps
+
+Pathing's FlatMap and each pathable's `RenderToMiniMap`, in `map.*` and `map_scene.*`.
+
+- **Three spaces.** The world in MumbleLink's metres; the continent, where MumbleLink puts the
+  map's centre, about two feet to a unit with y down; and the UI pixel, which MumbleLink
+  measures the compass in and MapScale is continent units per. A UI pixel is a screen pixel at
+  the Normal interface size; Nexus's `Scaling` turns one into the other, interface size and
+  DPI together. Pathing works in Blish HUD's own pixels and corrects twice for them — MapScale
+  times 0.897, and 19 to 40 pixels added to the compass — and both corrections come out as UI
+  pixels. Sizes Pathing gives in its own pixels — `mapDisplaySize`, a trail's width — keep
+  their 0.897.
+- **A map's rectangles** come from `/v2/maps?ids=all`, once a session on a worker, written to
+  `maps.json` in Pathing's own fallback layout; the file stands until the API answers. A map
+  neither knows shows nothing, as in Pathing.
+- **Like the world scene, the map scene carries no view**: the moment reads MumbleLink's
+  centre, scale and rotation itself, the context only — its identity is parsed into a cache
+  only the frame's thread may touch. A map being dragged does not trail a frame behind.
+- **Trails are laid on the continent once per live map** — 180,000 points on one map with
+  the corpus installed. A frame picks which show; the fade by height follows the player, read
+  where they are drawn.
+- **Clipped by hand.** A GoodRender draw list ignores clip rectangles, so an icon on the
+  compass's edge is cut with its uvs, and a line with Liang–Barsky. Pathing draws an icon only
+  when its centre is inside, and so do we.
+- **The tooltip and the menu** are ImGui, at Nexus's render, over what was published that
+  frame. The right click reaches the game too, as FlatMap does not block it.
+
 ## Packs
 
 - **Where they come from.** Our own folder, `addons/<addon>/packs/`, and, read-only, Blish
@@ -328,6 +359,10 @@ As in the rest of the repo: against the real corpus, offline, under `ctest`.
   temp folder (`script_test.cpp`).
 - **Scene**: built through a recording sink, so what would be drawn is asserted without a
   device.
+- **Maps**: the projection against Queensdale's rectangles as the API and Pathing's fallback
+  file both give them, and a hand-set compass (`map_test.cpp`); what the map shows over a
+  kilometre square whose continent coordinates are its metres, drawn into a draw list
+  (`map_scene_test.cpp`).
 
 Only the sinks need the game, and each change to one is checked with a single pull decided in
 advance.

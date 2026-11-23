@@ -121,6 +121,28 @@ TEST_CASE("tint and color are the same attribute", "[bake]") {
     CHECK(baked.markers[1].tint == IM_COL32(0, 255, 0, 255));
 }
 
+TEST_CASE("a marker's size on the map is inherited, 20 unless it says otherwise", "[bake]") {
+    const corpus::TempDir temp("bake_map_size");
+    std::ofstream(temp / "markers.xml") << R"(<OverlayData>
+        <MarkerCategory name="c" mapDisplaySize="32" scaleOnMapWithZoom="0"/>
+        <MarkerCategory name="d"/>
+        <POIs>
+            <POI type="c" xpos="0" ypos="0" zpos="0"/>
+            <POI type="d" xpos="0" ypos="0" zpos="0"/>
+            <POI type="d" xpos="0" ypos="0" zpos="0" mapDisplaySize="8"/>
+        </POIs>
+    </OverlayData>)";
+    const Loaded loaded = loadPath(temp.path());
+
+    const viewer::BakedPathables baked = viewer::bake(loaded.model);
+    REQUIRE(baked.markers.size() == 3);
+    CHECK(baked.markers[0].map_display_size == 32.0f);
+    CHECK_FALSE(baked.markers[0].scale_on_map_with_zoom);
+    CHECK(baked.markers[1].map_display_size == 20.0f);
+    CHECK(baked.markers[1].scale_on_map_with_zoom);
+    CHECK(baked.markers[2].map_display_size == 8.0f);
+}
+
 TEST_CASE("a fade is linear between its bounds and off when either is negative", "[bake]") {
     CHECK(viewer::fadeFactor(50.0f, 100.0f, 200.0f) == Approx(1.0f));
     CHECK(viewer::fadeFactor(150.0f, 100.0f, 200.0f) == Approx(0.5f));
