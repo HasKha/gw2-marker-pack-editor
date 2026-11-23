@@ -19,6 +19,7 @@
 #include "viewer/mumble.h"
 
 using namespace viewer::behaviors;
+using viewer::UtcMillis;
 
 namespace {
 

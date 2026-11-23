@@ -1,7 +1,6 @@
 #include "viewer/behaviors/states.h"
 
 #include <chrono>
-#include <cstdio>
 #include <fstream>
 #include <string>
 
@@ -21,40 +20,6 @@ constexpr UtcMillis kWeeklyResetTimeOfDay = (7 * 60 + 30) * 60 * 1000;
 UtcMillis startOfDay(UtcMillis now) {
     const sys_days day = floor<days>(sys_time<milliseconds>{milliseconds{now}});
     return duration_cast<milliseconds>(day.time_since_epoch()).count();
-}
-
-// "yyyy-MM-ddTHH:mm:ss", the "s" format.
-std::string formatTime(UtcMillis time) {
-    const sys_time<milliseconds> point{milliseconds{time}};
-    const sys_days day = floor<days>(point);
-    const year_month_day date{day};
-    const hh_mm_ss<seconds> clock{floor<seconds>(point - day)};
-    char text[32];
-    std::snprintf(
-        text,
-        sizeof(text),
-        "%04d-%02u-%02uT%02d:%02d:%02d",
-        static_cast<int>(date.year()),
-        static_cast<unsigned>(date.month()),
-        static_cast<unsigned>(date.day()),
-        static_cast<int>(clock.hours().count()),
-        static_cast<int>(clock.minutes().count()),
-        static_cast<int>(clock.seconds().count()));
-    return text;
-}
-
-std::optional<UtcMillis> parseTime(const std::string& text) {
-    int year = 0;
-    unsigned month = 0;
-    unsigned day = 0;
-    int hour = 0;
-    int minute = 0;
-    int second = 0;
-    if (std::sscanf(text.c_str(), "%d-%u-%uT%d:%d:%d", &year, &month, &day, &hour, &minute, &second) != 6) return std::nullopt;
-    const year_month_day date{std::chrono::year{year}, std::chrono::month{month}, std::chrono::day{day}};
-    if (!date.ok()) return std::nullopt;
-    const auto time = sys_days{date} + hours{hour} + minutes{minute} + seconds{second};
-    return duration_cast<milliseconds>(time.time_since_epoch()).count();
 }
 
 } // namespace
@@ -147,7 +112,7 @@ void BehaviorStates::load(const std::filesystem::path& file) {
         // Pathing before 1.1.5 wrote the date without its "t"; DateTime.Parse took either.
         std::string when = line.substr(comma + 1);
         if (!when.empty() && when.front() == 't') when.erase(0, 1);
-        const std::optional<UtcMillis> expiry = parseTime(when);
+        const std::optional<UtcMillis> expiry = parseUtc(when);
         if (guid && expiry) until_time_[*guid] = std::max(until_time_[*guid], *expiry);
     }
 }
@@ -155,7 +120,7 @@ void BehaviorStates::load(const std::filesystem::path& file) {
 bool BehaviorStates::save(const std::filesystem::path& file) {
     std::ofstream out(file, std::ios::trunc);
     if (!out) return false;
-    for (const auto& [guid, expiry] : until_time_) out << toString(guid) << ",t" << formatTime(expiry) << '\n';
+    for (const auto& [guid, expiry] : until_time_) out << toString(guid) << ",t" << formatUtc(expiry) << '\n';
     if (!out) return false;
     dirty_ = false;
     return true;

@@ -29,6 +29,11 @@ std::filesystem::path blishMarkersFolder();
 // names — in the same order every time.
 std::vector<std::filesystem::path> discoverPacks(const std::filesystem::path& folder);
 
+// Our folder's packs, then `others` less any that one of ours stands in for: a pack whose
+// file name, less its extension, is one of ours, ignoring case. A catalog pack updated into our
+// folder is then not drawn twice beside Blish HUD's older copy of it.
+std::vector<std::filesystem::path> mergeSources(std::vector<std::filesystem::path> ours, const std::vector<std::filesystem::path>& others);
+
 // Whether two paths name the same pack: the same file or folder however spelled, or — when
 // one is gone from disk — the same path once normalized. Never for an empty path.
 bool samePack(const std::filesystem::path& a, const std::filesystem::path& b);

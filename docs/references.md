@@ -56,7 +56,7 @@ ones above:
 | Opacity, size and fade rules | `Entity/StandardMarker.World.cs` (`GetOpacity`, min/max size), `Entity/StandardTrail.World.cs` |
 | Minimap and full map | `Entity/MapProjection.cs`, `Entity/StandardMarker.MiniMap.cs`, `Entity/StandardTrail.MiniMap.cs`, `UI/Controls/FlatMap.cs`, `State/MapStates.cs`; `ref/fallback/mapDetails.json`, whose layout `maps.json` keeps |
 | Settings players expect | `ModuleSettings.cs` |
-| The pack catalog | `MarkerPackRepo/MarkerPackRepo.cs`, `MarkerPackRepo/MarkerPackPkg.cs` |
+| The pack catalog | `MarkerPackRepo/MarkerPackRepo.cs`, `MarkerPackRepo/MarkerPackPkg.cs`, `Utility/PackHandlingUtil.cs` (download, check, replace, delete), `UI/Views/PackRepoView.cs` and `UI/Controls/MarkerPackHero.cs` (the window) |
 
 Scripts see more than Pathing's own code. What else defines the API they are written against:
 

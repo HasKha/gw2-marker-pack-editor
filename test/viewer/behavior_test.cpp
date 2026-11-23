@@ -18,6 +18,7 @@
 #include "viewer/store.h"
 
 using namespace viewer::behaviors;
+using viewer::UtcMillis;
 
 namespace {
 

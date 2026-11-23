@@ -22,7 +22,7 @@ namespace {
 
 // FestivalContext.DAILY_GROUP_ID: the daily achievements, whose categories include a
 // festival's while it is on.
-constexpr const wchar_t* kDailyGroupPath = L"/v2/achievements/groups/18DB115A-8637-4290-A636-821362A3C4A8";
+constexpr const char* kDailyGroupUrl = "https://api.guildwars2.com/v2/achievements/groups/18DB115A-8637-4290-A636-821362A3C4A8";
 
 std::string lowercase(std::string text) {
     for (char& c : text) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
@@ -64,12 +64,11 @@ std::optional<std::vector<std::string>> festivalsFromList(std::string_view json)
 void FestivalFetcher::start() {
     request_.start([]() -> std::optional<std::vector<std::string>> {
         std::optional<std::vector<std::string>> active;
-        if (const std::optional<std::string> body = http::get(L"api.guildwars2.com", kDailyGroupPath))
-            active = festivalsFromDailyGroup(*body);
+        if (const std::optional<std::string> body = http::get(kDailyGroupUrl)) active = festivalsFromDailyGroup(*body);
         // Since early 2022 the API has at times listed every festival at once; Blish HUD
         // asks its own service then, as it does when the API cannot be reached.
         if (active && active->size() != std::size(kFestivals)) return active;
-        if (const std::optional<std::string> body = http::get(L"l.blishhud.com", L"/general/getactivefestivals"))
+        if (const std::optional<std::string> body = http::get("https://l.blishhud.com/general/getactivefestivals"))
             return festivalsFromList(*body);
         return std::nullopt;
     });

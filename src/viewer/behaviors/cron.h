@@ -4,12 +4,11 @@
 #include <optional>
 #include <string_view>
 
+#include "viewer/utc.h"
+
 // The `schedule` filter's cron expressions, read as Pathing reads them: with Cronos, five
 // fields, or six with seconds first (AttributeParsingUtil.GetValueAsCronExpression), in UTC.
 namespace viewer::behaviors {
-
-// Milliseconds since the Unix epoch, UTC: the clock every timed behavior runs on.
-using UtcMillis = int64_t;
 
 class CronSchedule
 {

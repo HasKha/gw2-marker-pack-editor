@@ -103,6 +103,15 @@ expected position can be worked out by hand (`map_scene_test.cpp`); the projecti
 Queensdale's rectangles, as the API gives them and as Pathing's fallback file has them (`map_test.cpp`).
 Nothing asks the API: the map catalog takes its request as an argument.
 
+The pack catalog likewise: `catalog_test.cpp` reads a catalog written in the test, and runs downloads
+against a fetch of its own that copies the corpus's smallest pack. One case reaches the real catalog and
+downloads its smallest pack; it is hidden, so ctest never runs it. Run it by hand after touching `http.*`
+or how the catalog is read:
+
+```bash
+bin/Release/mpe_viewer_test.exe "[.web]"
+```
+
 ## Above the pack layer
 
 `mpe_test` links `mpe_editor`, so anything in the editor a test reaches is linked in, and what touches

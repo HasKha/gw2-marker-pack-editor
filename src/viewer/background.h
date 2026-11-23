@@ -28,9 +28,11 @@ public:
         started_ = true;
         worker_ = std::thread([this, job = std::move(job)] {
             std::optional<T> answer = job();
-            if (!answer) return;
-            value_ = std::move(*answer);
-            ready_.store(true, std::memory_order_release);
+            if (answer) {
+                value_ = std::move(*answer);
+                ready_.store(true, std::memory_order_release);
+            }
+            finished_.store(true, std::memory_order_release);
         });
     }
 
@@ -43,10 +45,14 @@ public:
     // none. Never written again once set, so it is read without a lock.
     const T* get() const { return ready_.load(std::memory_order_acquire) ? &value_ : nullptr; }
 
+    // Whether the job has returned, with an answer or without one.
+    bool finished() const { return finished_.load(std::memory_order_acquire); }
+
 private:
     std::thread worker_;
     bool started_ = false;
     std::atomic<bool> ready_{false};
+    std::atomic<bool> finished_{false};
     T value_{};
 };
 

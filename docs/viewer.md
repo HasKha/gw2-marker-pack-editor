@@ -73,10 +73,13 @@ src/
     mumble.*       MumbleLink as Blish HUD names it, for scripts and behaviors; Gw2Sharp's enums
     http.*         HTTPS GETs on a worker, through WinHTTP: festivals, maps, then the catalog
     textures.*     budgeted texture decoding: LoadBudget, TextureCache
-    catalog.*      the public pack catalog: list, download, update
+    catalog.*      the public pack catalog: its list, packs on disk, which are stale, Keep updated
+    downloads.*    catalog packs downloading into our folder, a thread each
+    utc.*          the wall clock, and the date format the timers and the catalog share
     store.*        what outlives a session: category toggles, script Storage
     ui/            the category menu, the script console, interaction.* (info and prompt),
-                   map_menu.* (the maps' tooltip and menu), options.* (Pathing's settings)
+                   map_menu.* (the maps' tooltip and menu), options.* (Pathing's settings),
+                   pack_catalog.* (the catalog's window)
   editor/          mpe_editor, links mpe_pack and mpe_viewer
 ```
 
@@ -98,7 +101,7 @@ how it fades is still the editor renderer's until the scene exists.
 
 | Where | Runs |
 |---|---|
-| worker | parsing and baking packs; catalog downloads |
+| worker | parsing and baking packs; the catalog's list and each download; festivals; maps |
 | `ERenderType_PreRender` | MumbleLink, map changes, behaviors, Lua `OnTick`, building the scenes, publishing them |
 | `ERenderType_Render` | the viewer's and the editor's windows, the map's tooltip; the overlay sink for a scene no moment drew |
 | GoodRender moments | the latest published scenes, submitted. Nothing else |
@@ -300,9 +303,27 @@ Pathing's FlatMap and each pathable's `RenderToMiniMap`, in `map.*` and `map_sce
   their packs without copying anything. Each source can be turned off, since a player still
   running Blish HUD would otherwise see every marker twice.
 - **The catalog** is `https://mp-repo.blishhud.com/repo.json`, the list Pathing reads
-  (`MarkerPackRepo/MarkerPackRepo.cs`). Its entries carry name, author, version, size and a
-  download URL (`MarkerPackPkg.cs`). Downloads go over WinHTTP on a worker into our own
-  folder; an update is a newer catalog version than the one installed.
+  (`MarkerPackRepo/MarkerPackRepo.cs`), asked for once at load. Its entries carry name,
+  author, size, a last update and a download URL (`MarkerPackPkg.cs`). Its `FileName` is
+  someone else's path: anything but a bare `.zip` or `.taco` name is left out.
+- **Which pack is which.** A package's copy on disk is the pack whose file name, less its
+  extension, is the package's, ours before Blish HUD's. It is stale when the catalog's
+  `LastUpdate` is later than the file was written, as Pathing reads it — not by version, which
+  the catalog gives as an opaque number. Pathing matches any file whose path *contains* the
+  name, which mistakes `TehsTrails-HeroPoints.taco` for Teh's Trails.
+- **Downloads go into our folder only**, as `<file>.part` beside the pack, over WinHTTP on a
+  thread each, with Pathing's browser-like user agent. One that arrives is opened as an archive
+  before anything else happens. Putting it in place is the frame's job: the old copy is open
+  while installed, so it is dropped first, and nothing happens while the loader is reading,
+  since the pack it reads may be the one being replaced. Then the folders are listed again and
+  only what changed is loaded or dropped.
+- **Ours stands in for Blish HUD's.** A pack in our folder hides Blish HUD's pack of the same
+  name, so updating one of Blish HUD's packs from the catalog draws the new copy alone, and
+  deleting ours brings theirs back. Blish HUD's folder is never written.
+- **Keep updated** is Pathing's, on unless turned off, the exceptions in `catalog.json`. Once a
+  session, as soon as the catalog answers, each of our packs it keeps updated that is stale is
+  downloaded again. Blish HUD's copies are updated only when asked: Blish HUD updates those
+  itself.
 - **A pack from the catalog is never edited in place**: the next update would overwrite the
   edits. Edit offers a personal copy instead.
 

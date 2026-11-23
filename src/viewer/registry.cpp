@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <set>
 
 #include "pack/trl.h"
 #include "pack/xml_reader.h"
@@ -47,6 +48,20 @@ std::vector<std::filesystem::path> discoverPacks(const std::filesystem::path& fo
     std::sort(archives.begin(), archives.end());
     if (has_loose_xml) archives.push_back(folder);
     return archives;
+}
+
+std::vector<std::filesystem::path> mergeSources(std::vector<std::filesystem::path> ours, const std::vector<std::filesystem::path>& others) {
+    const auto key = [](const std::filesystem::path& path) {
+        std::string stem = path.stem().string();
+        for (char& c : stem) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        return stem;
+    };
+    std::set<std::string> taken;
+    for (const std::filesystem::path& path : ours) taken.insert(key(path));
+    for (const std::filesystem::path& path : others) {
+        if (!taken.count(key(path))) ours.push_back(path);
+    }
+    return ours;
 }
 
 bool samePack(const std::filesystem::path& a, const std::filesystem::path& b) {

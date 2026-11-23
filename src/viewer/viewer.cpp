@@ -16,6 +16,8 @@
 #include "viewer/behaviors/states.h"
 #include "viewer/behaviors/update.h"
 #include "viewer/camera.h"
+#include "viewer/catalog.h"
+#include "viewer/downloads.h"
 #include "viewer/map.h"
 #include "viewer/map_scene.h"
 #include "viewer/mumble.h"
@@ -32,7 +34,9 @@
 #include "viewer/ui/interaction.h"
 #include "viewer/ui/map_menu.h"
 #include "viewer/ui/options.h"
+#include "viewer/ui/pack_catalog.h"
 #include "viewer/ui/script_console.h"
+#include "viewer/utc.h"
 
 namespace viewer {
 
@@ -103,6 +107,18 @@ std::filesystem::path edit_applied;
 
 bool markers_window = false;
 bool console_window = false;
+bool catalog_window = false;
+
+// The public catalog: its list, asked for at load; the downloads into our folder; the per-pack
+// choices; every pack on disk as the catalog sees them; and whether this session's automatic
+// updates have been started.
+std::unique_ptr<Background<std::vector<catalog::Package>>> catalog_request;
+catalog::Downloads downloads;
+catalog::AutoUpdate auto_update;
+std::vector<catalog::LocalPack> local_packs;
+bool auto_updated = false;
+// The packs on disk changed while the loader was busy: they are synced once it is done.
+bool sync_pending = false;
 
 // Scripts: one engine for every pack, built again with every live map, as Pathing's is with
 // every map. `scripts_stale` holds from the moment the live map is replaced until the engine
@@ -146,13 +162,16 @@ std::filesystem::path timersFile() {
     return folder.empty() ? folder : folder / behaviors::TIMERS_FILE_NAME;
 }
 
-std::filesystem::path mapsFile() {
-    return folder.empty() ? folder : folder / map::CACHE_FILE_NAME;
+std::filesystem::path packsFolder() {
+    return folder.empty() ? folder : folder / PACKS_FOLDER;
 }
 
-behaviors::UtcMillis utcNow() {
-    using namespace std::chrono;
-    return duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count();
+std::filesystem::path catalogFile() {
+    return folder.empty() ? folder : folder / catalog::STATE_FILE_NAME;
+}
+
+std::filesystem::path mapsFile() {
+    return folder.empty() ? folder : folder / map::CACHE_FILE_NAME;
 }
 
 // Every few seconds: what changed is written, and timers that ran out are dropped.
@@ -197,25 +216,62 @@ void runScripts() {
     scripts->tick(ImGui::GetTime(), io.DeltaTime);
 }
 
-// Every pack in our own folder and, unless turned off, in Blish HUD's.
-void discoverAndLoad() {
-    std::vector<std::filesystem::path> folders;
+// Every pack in our own folder and, unless turned off, in Blish HUD's, less those of Blish
+// HUD's one of ours stands in for.
+std::vector<std::filesystem::path> discoverAll() {
+    std::vector<std::filesystem::path> ours;
     if (!folder.empty()) {
         std::error_code ec;
-        std::filesystem::create_directories(folder / PACKS_FOLDER, ec);
-        folders.push_back(folder / PACKS_FOLDER);
+        std::filesystem::create_directories(packsFolder(), ec);
+        ours = registry::discoverPacks(packsFolder());
     }
+    std::vector<std::filesystem::path> blish;
     if (persisted.read_blish_folder) {
-        const std::filesystem::path blish = registry::blishMarkersFolder();
+        const std::filesystem::path blish_folder = registry::blishMarkersFolder();
         std::error_code ec;
-        if (!blish.empty() && std::filesystem::is_directory(blish, ec)) folders.push_back(blish);
+        if (!blish_folder.empty() && std::filesystem::is_directory(blish_folder, ec)) blish = registry::discoverPacks(blish_folder);
     }
+    return registry::mergeSources(std::move(ours), blish);
+}
 
-    discovered.clear();
-    for (const std::filesystem::path& source : folders) {
-        for (std::filesystem::path& path : registry::discoverPacks(source)) discovered.push_back(std::move(path));
-    }
+void setDiscovered(std::vector<std::filesystem::path> paths) {
+    discovered = std::move(paths);
+    local_packs = catalog::localPacks(discovered, packsFolder());
+}
+
+bool isDiscovered(const std::filesystem::path& path) {
+    return std::any_of(discovered.begin(), discovered.end(), [&](const std::filesystem::path& known) {
+        return registry::samePack(known, path);
+    });
+}
+
+void discoverAndLoad() {
+    setDiscovered(discoverAll());
     loader.add(discovered);
+}
+
+// Brings the installed packs in line with the folders after the catalog wrote or deleted one:
+// what is gone is dropped, what is new is loaded, and nothing else is read again. Waits for
+// the loader, which may be reading a pack that is about to go.
+void syncPacks() {
+    if (loader.busy()) {
+        sync_pending = true;
+        return;
+    }
+    sync_pending = false;
+    setDiscovered(discoverAll());
+
+    std::vector<std::filesystem::path> gone;
+    for (const std::unique_ptr<runtime::InstalledPack>& pack : installed.packs) {
+        if (!isDiscovered(pack->loaded->path)) gone.push_back(pack->loaded->path);
+    }
+    for (const std::filesystem::path& path : gone) runtime::uninstall(&installed, path);
+
+    std::vector<std::filesystem::path> added;
+    for (const std::filesystem::path& path : discovered) {
+        if (!runtime::isInstalled(installed, path) && !registry::samePack(path, edit_applied)) added.push_back(path);
+    }
+    loader.add(std::move(added));
 }
 
 void reloadPacks() {
@@ -299,14 +355,116 @@ void updatePacks() {
     }
 
     if (edit_requested == edit_applied) return;
-    const auto isDiscovered = [](const std::filesystem::path& path) {
-        return std::any_of(discovered.begin(), discovered.end(), [&](const std::filesystem::path& known) {
-            return registry::samePack(known, path);
-        });
-    };
     if (!edit_applied.empty() && isDiscovered(edit_applied)) loader.add({edit_applied});
     if (!edit_requested.empty()) runtime::uninstall(&installed, edit_requested);
     edit_applied = edit_requested;
+}
+
+// Puts each download that arrived in place of its old copy. Not while the loader is busy: the
+// pack it is reading may be the one being replaced.
+void installDownloads() {
+    if (loader.busy()) return;
+    bool any = false;
+    for (const catalog::Downloads::Finished& finished : downloads.take()) {
+        any = true;
+        if (registry::samePack(finished.target, edit_applied)) {
+            downloads.fail(finished, "it is open in the editor: close it and download again");
+            continue;
+        }
+        // An installed pack keeps its archive open, and Windows will not replace an open file.
+        runtime::uninstall(&installed, finished.target);
+        if (!MoveFileExW(finished.part.c_str(), finished.target.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_COPY_ALLOWED)) {
+            downloads.fail(finished, "could not replace " + finished.target.filename().string());
+        }
+    }
+    if (any) syncPacks();
+}
+
+// Deletes one of our own packs from disk. Blish HUD's folder is only ever read.
+void deletePack(const std::filesystem::path& path) {
+    if (registry::samePack(path, edit_applied)) return;
+    runtime::uninstall(&installed, path);
+    std::error_code ec;
+    std::filesystem::remove(path, ec);
+    if (ec) api->Log(ELogLevel_WARNING, ADDON_NAME, ("could not delete " + path.string() + ": " + ec.message()).c_str());
+    syncPacks();
+}
+
+void startCatalogRequest() {
+    catalog_request = std::make_unique<Background<std::vector<catalog::Package>>>();
+    catalog_request->start([]() -> std::optional<std::vector<catalog::Package>> {
+        const std::optional<std::string> body = http::get(catalog::REPO_URL, std::chrono::seconds(15));
+        return body ? catalog::parse(*body) : std::nullopt;
+    });
+}
+
+// Pathing's "Keep Updated": once a session, as soon as the catalog has answered, each of our
+// packs older than the catalog's is downloaded again.
+void autoUpdate() {
+    const std::vector<catalog::Package>* packages = catalog_request ? catalog_request->get() : nullptr;
+    if (auto_updated || !packages) return;
+    auto_updated = true;
+    for (const catalog::Package& package : *packages) {
+        const catalog::LocalPack* local = catalog::findLocal(package, local_packs);
+        if (local && local->ours && catalog::state(package, local) == catalog::State::Stale && auto_update.enabled(package.name)) {
+            downloads.start(package, packsFolder());
+        }
+    }
+}
+
+// A web page in the player's browser.
+void openInBrowser(const std::string& url) {
+    const int length = MultiByteToWideChar(CP_UTF8, 0, url.c_str(), -1, nullptr, 0);
+    if (length <= 0) return;
+    std::wstring wide(static_cast<size_t>(length), L'\0');
+    MultiByteToWideChar(CP_UTF8, 0, url.c_str(), -1, wide.data(), length);
+    ShellExecuteW(nullptr, L"open", wide.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+}
+
+void drawCatalog() {
+    if (!catalog_window) return;
+    const std::vector<catalog::Package>* packages = catalog_request ? catalog_request->get() : nullptr;
+
+    std::vector<ui::pack_catalog::Row> rows;
+    size_t stale = 0;
+    if (packages) {
+        rows.reserve(packages->size());
+        for (const catalog::Package& package : *packages) {
+            ui::pack_catalog::Row row;
+            row.package = &package;
+            row.local = catalog::findLocal(package, local_packs);
+            row.state = catalog::state(package, row.local);
+            row.download = downloads.status(package.file_name);
+            row.keep_updated = auto_update.enabled(package.name);
+            if (row.state == catalog::State::Stale) ++stale;
+            rows.push_back(row);
+        }
+    }
+
+    std::string status = "Asking the catalog...";
+    const bool failed = !packages && catalog_request && catalog_request->finished();
+    if (failed) status = "Could not reach the catalog.";
+    if (packages) {
+        status = std::to_string(packages->size()) + " packs in the catalog";
+        if (stale > 0) status += ", " + std::to_string(stale) + " with an update";
+    }
+
+    bool retry = false;
+    for (const ui::pack_catalog::Action& action : ui::pack_catalog::draw(rows, status, failed, &retry, &catalog_window)) {
+        const ui::pack_catalog::Row& row = rows[action.row];
+        switch (action.kind) {
+        case ui::pack_catalog::Action::Kind::Download: downloads.start(*row.package, packsFolder()); break;
+        case ui::pack_catalog::Action::Kind::Delete:
+            if (row.local) deletePack(row.local->path);
+            break;
+        case ui::pack_catalog::Action::Kind::KeepUpdated:
+            auto_update.set(row.package->name, action.value);
+            auto_update.save(catalogFile());
+            break;
+        case ui::pack_catalog::Action::Kind::OpenPage: openInBrowser(row.package->info); break;
+        }
+    }
+    if (retry) startCatalogRequest();
 }
 
 std::string loadingStatus() {
@@ -389,6 +547,9 @@ void drawMapMenu() {
 // anything slow there stalls the game.
 void preRender() {
     updatePacks();
+    installDownloads();
+    if (sync_pending) syncPacks();
+    autoUpdate();
 
     const ImVec2 display = ImGui::GetIO().DisplaySize;
     const Camera camera = fromMumble(mumble_link, glm::vec2(display.x, display.y));
@@ -452,6 +613,7 @@ void render() {
     // A player's own toggle is written at once, not with the scripts' changes.
     if (ui::category_menu::draw(installed.tree, &category_states, &markers_window, loadingStatus(), script_menu)) saveStates();
     ui::script_console::draw(*scripts, installed, &console_window);
+    drawCatalog();
 
     const ImVec2 display = ImGui::GetIO().DisplaySize;
     const Camera camera = fromMumble(mumble_link, glm::vec2(display.x, display.y));
@@ -502,6 +664,8 @@ void drawOptions() {
     ImGui::Checkbox("Markers window", &markers_window);
     ImGui::SameLine();
     ImGui::Checkbox("Script console", &console_window);
+    ImGui::SameLine();
+    ImGui::Checkbox("Pack catalog", &catalog_window);
 
     if (editor.draw_options) {
         ImGui::Separator();
@@ -512,6 +676,7 @@ void drawOptions() {
 void drawQuickAccess() {
     if (ImGui::MenuItem("Markers")) markers_window = !markers_window;
     if (ImGui::MenuItem("Script console")) console_window = !console_window;
+    if (ImGui::MenuItem("Pack catalog")) catalog_window = !catalog_window;
 }
 
 void onMarkersKeybind(const char*, bool is_release) {
@@ -554,7 +719,9 @@ void load(AddonAPI* aApi, Mumble::Data* aMumbleLink) {
     scripts = std::make_unique<script::Engine>(host);
     scripts_stale = true;
 
+    auto_update.load(catalogFile());
     discoverAndLoad();
+    startCatalogRequest();
     good_render_sink::load(mumble_link);
 
     api->Renderer.Register(ERenderType_PreRender, preRender);
@@ -579,6 +746,8 @@ void unload() {
     api->InputBinds.Deregister(KEYBIND_MARKERS_ID);
 
     loader.stop();
+    downloads.stop();
+    catalog_request.reset();
     festivals.stop();
     maps.stop();
     saveStates();

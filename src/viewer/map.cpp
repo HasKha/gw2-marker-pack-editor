@@ -172,7 +172,7 @@ glm::vec2 project(const View& view, const glm::dvec2& continent) {
 
 std::optional<std::string> Catalog::askApi() {
     // A few hundred kilobytes: longer than the festivals' five seconds.
-    return http::get(L"api.guildwars2.com", L"/v2/maps?ids=all", std::chrono::seconds(15));
+    return http::get("https://api.guildwars2.com/v2/maps?ids=all", std::chrono::seconds(15));
 }
 
 void Catalog::start(const std::filesystem::path& cache_file, Request request) {

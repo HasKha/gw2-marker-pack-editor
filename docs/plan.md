@@ -46,7 +46,7 @@ it, save it back, and the edited markers show correctly in Blish HUD.**
 | Settings | the Settings toggles, gizmo mode, which windows are open and where the browsers start, kept in `settings.json` |
 | Create pack | `New Pack...` builds an empty pack in memory; Save As writes the first zip |
 | Write | serializes the owned document; comments, order, spelling, BOM, CRLF and the file split survive. 947/947 files stable on rewrite |
-| Tests | `mpe_test`, 44 cases over the real pack corpus, the selection rules and the trail editing layer; `mpe_viewer_test`, 152 over the camera, the quad path, textures, settings, the bake, the registry, the ribbon, the scene, the GoodRender sink, the Lua scripts, the behaviors and the maps, the scripts over every scripted corpus pack; and a check that nothing in `src/viewer/` includes the editor. All run by `ctest` |
+| Tests | `mpe_test`, 44 cases over the real pack corpus, the selection rules and the trail editing layer; `mpe_viewer_test`, 154 over the camera, the quad path, textures, settings, the bake, the registry, the ribbon, the scene, the GoodRender sink, the Lua scripts, the behaviors, the maps and the catalog, the scripts over every scripted corpus pack, plus one hidden case that reaches the real catalog; and a check that nothing in `src/viewer/` includes the editor. All run by `ctest` |
 
 A pack can be edited end to end, grown new branches, and started from nothing. The test
 row's claims are measured against the corpus in [testing.md](testing.md).
@@ -263,10 +263,31 @@ Not in it:
 - Pathing's per-pixel fades — markers between character and camera, trails around the
   character — and their two settings: milestone 7.
 
-### 5. The catalog
+### 5. The catalog — done offline
 
-- List, install and update from the public catalog, into our own folder.
-- **First public release here.**
+Built: the **Pack catalog** window, Pathing's pack repository — the public catalog's packs,
+filtered by name, author or category, each with Download, Update or "Up to date", Keep
+updated, Info and, for our own copy, Delete. Downloads go into our `packs` folder on a worker
+each, with progress, are checked to be archives, and replace the old copy once nothing is
+reading it; only what changed on disk is loaded or dropped, not every pack. A catalog pack in
+our folder stands in for Blish HUD's copy of it. Packs kept updated are updated once a
+session, as soon as the catalog answers. WinHTTP was checked once against the real catalog,
+which reads, and its smallest pack downloads and opens.
+
+**Left: one pull in game**, deciding these in advance:
+- Download a pack not installed: does the window show its progress, and does it draw without
+  a reload of the others?
+- Update a pack drawn from Blish HUD's folder: does ours replace it, with no marker shown
+  twice?
+- Delete it: does Blish HUD's copy come back?
+- Unload the addon while a large pack downloads: does it unload within a second or two? A
+  download stops between reads, so only a stalled read waits for its timeout.
+
+**First public release here**, once that pull and the earlier ones pass: the maintainer's call.
+
+Not in it: Pathing's pack optimizer (TmfLib's PackWriter, which rewrites a downloaded pack),
+and a catalog other than the public one (Pathing's `PackRepoUrl` setting, which its UI does
+not offer).
 
 ### 6. Edit from the viewer
 
