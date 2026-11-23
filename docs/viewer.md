@@ -269,7 +269,10 @@ What Pathing's `Behavior/` does, in `behaviors/`, as plain functions over the li
   not filtered by it.
 
 **Interaction.** Pathing interacts on Blish HUD's own interact binding, F unless changed,
-because it cannot read the game's; the viewer does the same, with the key a setting. It is
+because it cannot read the game's. The viewer reads the game's instead, as Nexus keeps it:
+Interact's two binds in `<game>/addons/Nexus/GameBinds.xml`, read again whenever the file
+changes (`game_binds.h` has the format). A key whose game code is not a letter or a digit is
+not known, and F stands in when neither bind is. It is
 heard in Nexus's WndProc and passed on, so the game still interacts with whatever is in front
 of the player, as it does with Blish HUD running, and it is ignored while the game's chat or
 one of our text fields has the keyboard. The info text and the prompt ("Copy '…' to clipboard

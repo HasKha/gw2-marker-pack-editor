@@ -38,7 +38,6 @@ constexpr Field<bool> kBools[] = {
 // does not exist.
 constexpr Field<int> kInts[] = {
     {"clipboard_consent", &Settings::clipboard_consent, 0, 2},
-    {"interact_key", &Settings::interact_key, 0, 255},
     {"info_display", &Settings::info_display, 0, 2},
     {"map_marker_visibility", &Settings::map_marker_visibility, 0, 2},
     {"map_trail_visibility", &Settings::map_trail_visibility, 0, 2},

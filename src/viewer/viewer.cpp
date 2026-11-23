@@ -20,6 +20,7 @@
 #include "viewer/catalog.h"
 #include "viewer/downloads.h"
 #include "viewer/edited.h"
+#include "viewer/game_binds.h"
 #include "viewer/map.h"
 #include "viewer/map_scene.h"
 #include "viewer/mumble.h"
@@ -170,7 +171,43 @@ constexpr const char* kMenuPopup = "##marker_pack_menu";
 
 // The interact key, heard in the window procedure, which runs on the game's window thread
 // while the frame runs on its render thread.
-std::atomic<int> interact_key{'F'};
+//
+// The key is the game's, as Nexus keeps it: each of the two binds packed as its virtual key and,
+// from bit 8, Shift, Ctrl and Alt. F, the game's default, when Nexus's file names no key we know.
+std::atomic<uint32_t> interact_binds[2] = {'F', 0};
+std::filesystem::path game_binds_file;
+std::filesystem::file_time_type game_binds_written{};
+
+uint32_t pack(const game_binds::Key& key) {
+    return static_cast<uint32_t>(key.virtual_key) | (key.shift ? 1u << 8 : 0u) | (key.ctrl ? 2u << 8 : 0u) | (key.alt ? 4u << 8 : 0u);
+}
+
+// Reads Nexus's game binds again when the file changed: the player rebinding Interact in Nexus.
+void readInteractBind() {
+    std::error_code ec;
+    const std::filesystem::file_time_type written = std::filesystem::last_write_time(game_binds_file, ec);
+    if (ec || written == game_binds_written) return;
+    game_binds_written = written;
+    const std::vector<game_binds::Key> keys = game_binds::read(game_binds_file, game_binds::ACTION_INTERACT);
+    interact_binds[0] = keys.empty() ? uint32_t{'F'} : pack(keys[0]);
+    interact_binds[1] = keys.size() > 1 ? pack(keys[1]) : 0;
+}
+
+// Whether `key`, just pressed, is one of the interact binds, with its modifiers held.
+bool isInteract(WPARAM key) {
+    for (const std::atomic<uint32_t>& bind : interact_binds) {
+        const uint32_t packed = bind.load();
+        if (packed == 0 || static_cast<WPARAM>(packed & 0xFF) != key) continue;
+        const uint32_t mods = packed >> 8;
+        const auto held = [](int virtual_key) { return (GetKeyState(virtual_key) & 0x8000) != 0; };
+        if ((mods & 1) && !held(VK_SHIFT)) continue;
+        if ((mods & 2) && !held(VK_CONTROL)) continue;
+        if ((mods & 4) && !held(VK_MENU)) continue;
+        return true;
+    }
+    return false;
+}
+
 std::atomic<bool> interact_pressed{false};
 std::atomic<bool> escape_released{false};
 
@@ -210,6 +247,7 @@ void saveStates() {
         saved_categories = category_states.revision();
     if (script_storage.dirty()) script_storage.save(storageFile());
     behavior_states.expire(utcNow());
+    readInteractBind();
     if (behavior_states.dirty()) behavior_states.save(timersFile());
     last_save = std::chrono::steady_clock::now();
 }
@@ -347,7 +385,7 @@ std::string keyName(int virtual_key) {
 // in front of it as well, as it does with Blish HUD running.
 UINT onWndProc(HWND, UINT message, WPARAM key, LPARAM flags) {
     const bool first_press = (flags & (LPARAM{1} << 30)) == 0;
-    if (message == WM_KEYDOWN && first_press && static_cast<int>(key) == interact_key.load()) interact_pressed = true;
+    if (message == WM_KEYDOWN && first_press && isInteract(key)) interact_pressed = true;
     if (message == WM_KEYUP && key == VK_ESCAPE) escape_released = true;
     return message;
 }
@@ -759,7 +797,7 @@ void render() {
         ui::interaction::draw(
             screen,
             static_cast<settings::InfoDisplay>(persisted.info_display),
-            keyName(persisted.interact_key),
+            keyName(static_cast<int>(interact_binds[0].load() & 0xFF)),
             persisted.show_interact_prompt)) {
         behaviors::interactWith(&live, screen.prompt->marker, behaviorHost(), behaviorFrame());
     }
@@ -833,10 +871,7 @@ void drawOptions() {
     }
 
     if (ImGui::CollapsingHeader("Markers")) {
-        if (ui::options::drawPack(&persisted, &show_hidden)) {
-            interact_key = persisted.interact_key;
-            settings::save(folder, persisted);
-        }
+        if (ui::options::drawPack(&persisted, &show_hidden)) settings::save(folder, persisted);
     }
     if (ImGui::CollapsingHeader("Maps") && ui::options::drawMaps(&persisted)) settings::save(folder, persisted);
 
@@ -870,7 +905,10 @@ void load(AddonAPI* aApi, Mumble::Data* aMumbleLink) {
     saved_categories = category_states.revision();
     script_storage.load(storageFile());
     behavior_states.load(timersFile());
-    interact_key = persisted.interact_key;
+    if (const char* game = api->Paths.GetGameDirectory()) {
+        game_binds_file = std::filesystem::path(game) / "addons" / "Nexus" / game_binds::FILE_NAME;
+        readInteractBind();
+    }
     festivals.start();
     maps.start(mapsFile());
 

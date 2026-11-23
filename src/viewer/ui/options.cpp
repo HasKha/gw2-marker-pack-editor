@@ -43,25 +43,6 @@ bool drawPack(settings::Settings* settings, bool* show_hidden) {
     ImGui::SetNextItemWidth(ImGui::GetFontSize() * 12.0f);
     changed |= ImGui::Combo("Markers may copy to the clipboard", &settings->clipboard_consent, kConsents, IM_ARRAYSIZE(kConsents));
 
-    // A letter, as the game's own interact key is one; F unless the player moved it.
-    int letter = settings->interact_key >= 'A' && settings->interact_key <= 'Z' ? settings->interact_key - 'A' : 'F' - 'A';
-    ImGui::SetNextItemWidth(ImGui::GetFontSize() * 4.0f);
-    if (ImGui::Combo(
-            "Interact key",
-            &letter,
-            [](void*, int index, const char** text) {
-                static char letters[26][2];
-                letters[index][0] = static_cast<char>('A' + index);
-                *text = letters[index];
-                return true;
-            },
-            nullptr,
-            26)) {
-        settings->interact_key = 'A' + letter;
-        changed = true;
-    }
-    if (ImGui::IsItemHovered()) ImGui::SetTooltip("The game's interact key: the addon cannot read the game's binding.");
-
     ImGui::Checkbox("Show hidden markers faded, to unhide them", show_hidden);
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("For this session only, as in Pathing.");
     return changed;

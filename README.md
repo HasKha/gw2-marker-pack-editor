@@ -31,7 +31,7 @@ it — as the top of the addon's options choose; a keybind you set opens it at t
 Packs' Lua scripts run as they do in Pathing; **Script console**, in the options, shows what they
 print and any error, and **Run pack scripts** in the options turns them off. Markers behave as
 they do there too: they hide by festival, character, schedule or once you have used them, show
-what they are about when you walk up, and **F** — or the key you pick in the options —
+what they are about when you walk up, and the game's Interact key, as Nexus's game binds have it,
 interacts, copying a waypoint or toggling a category. The options also hold Pathing's choices
 for whether markers may hide themselves, animate or copy to the clipboard. Markers and trails
 show on the minimap and the full map too, with a tooltip when you point at one — Shift shows

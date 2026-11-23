@@ -208,7 +208,7 @@ Built: every filter (festival, map type, mount, profession, race, schedule, spec
 `behavior` attribute, `script-filter`) and modifier (info, bounce, copy, toggle, show/hide,
 reset guid, auto-trigger, `script-*`), focus by trigger range and interaction, under
 `viewer/behaviors/`. What `behavior` hid is kept in `timers.txt`. The interact key is heard
-through Nexus's WndProc and passed on to the game, F unless the player picks another letter.
+through Nexus's WndProc and passed on to the game; which key is milestone 7's.
 Pathing's pack settings are in the options: markers hiding themselves, animating, the prompt,
 clipboard consent (which `User.SetClipboard` honours), and hidden markers shown faded to
 unhide them. Festivals come from the GW2 API, with Blish HUD's fallback. Scripts reach
@@ -327,7 +327,7 @@ Nexus's API, fixed — and asked for the shape below. Each step is a commit of i
 3. **Blish HUD's packs imported, not read** — done offline. Its folder is no longer drawn from. A wizard on
    the first load, and a button in options, copy its packs into ours, with Pathing's category
    choices, script storage and hidden-marker timers.
-4. **Interact is Nexus's.** The key comes from Nexus's game binds (`GameBinds.xml`, its
+4. **Interact is Nexus's** — done offline. The key comes from Nexus's game binds (`GameBinds.xml`, its
    Interact action), not a setting of our own. GW2's key codes are its own: letters and digits
    are their ASCII codes, as Windows' are; anything else falls back to F.
 5. **The editor on demand.** No "Enable pack editing", nothing of the editor registered at

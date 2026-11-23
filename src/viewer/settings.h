@@ -33,7 +33,6 @@ struct Settings {
 
     // The key that interacts with a focused marker: Blish HUD's own interact binding, F
     // unless changed, since neither it nor Nexus can read the game's. A Windows virtual key.
-    int interact_key = 'F';
     int info_display = 0; // InfoDisplay: Pathing's "Marker Info Display Mode"
 
     // Pathing's pack settings for the world, as WorldOptions takes them.

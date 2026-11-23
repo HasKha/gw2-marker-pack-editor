@@ -67,21 +67,18 @@ TEST_CASE("behavior settings start at Pathing's defaults and are kept", "[viewer
     CHECK(defaults.allow_animation);
     CHECK(defaults.show_interact_prompt);
     CHECK(defaults.clipboard_consent == 0);
-    CHECK(defaults.interact_key == 'F');
 
     viewer::settings::Settings settings;
     settings.allow_auto_hide = false;
     settings.allow_animation = false;
     settings.show_interact_prompt = false;
     settings.clipboard_consent = 2;
-    settings.interact_key = 'G';
     REQUIRE(viewer::settings::save(temp.path(), settings));
     const viewer::settings::Settings loaded = viewer::settings::load(temp.path());
     CHECK_FALSE(loaded.allow_auto_hide);
     CHECK_FALSE(loaded.allow_animation);
     CHECK_FALSE(loaded.show_interact_prompt);
     CHECK(loaded.clipboard_consent == 2);
-    CHECK(loaded.interact_key == 'G');
 }
 
 TEST_CASE("map and world settings start at Pathing's defaults and are kept", "[viewer][settings]") {
