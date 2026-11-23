@@ -69,7 +69,7 @@ void init(AddonAPI* api) {
 
     // Nexus makes the directory; the file is ours.
     const char* directory = api->Paths.GetAddonDirectory(viewer::ADDON_FOLDER);
-    if (directory) file = std::filesystem::path(directory) / viewer::settings::EDITOR_FILE_NAME;
+    if (directory) file = std::filesystem::path(directory) / FILE_NAME;
 }
 
 void load(editor::Settings* editor, std::filesystem::path* last_folder, std::filesystem::path* last_image_folder) {

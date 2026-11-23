@@ -50,18 +50,15 @@ void AddonLoad(AddonAPI* aApi) {
     // viewer::fromMumble.
     Mumble::Data* mumble_link = (Mumble::Data*)aApi->DataLink.Get("DL_MUMBLE_LINK");
 
+    // The editor registers nothing: the viewer drives it, from Edit Marker Pack on. Connected
+    // first, so no callback of the viewer's ever sees the hooks half written.
+    marker_editor::load(aApi, mumble_link);
+    viewer::connectEditor(marker_editor::hooks());
     viewer::load(aApi, mumble_link);
-
-    // Off means inert: with editing disabled the editor registers nothing at all.
-    if (viewer::editingEnabled()) {
-        marker_editor::load(aApi, mumble_link);
-        viewer::connectEditor(marker_editor::hooks());
-    }
 }
 
 void AddonUnload() {
-    // editingEnabled() is what this session loaded with, so this undoes exactly what
-    // AddonLoad did, whatever the setting says now.
-    if (viewer::editingEnabled()) marker_editor::unload();
+    // The viewer first: once its callbacks are gone, nothing calls into the editor.
     viewer::unload();
+    marker_editor::unload();
 }

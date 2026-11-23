@@ -35,7 +35,9 @@ The invariants every change keeps. The sections below are why.
 - **Every edit is an `undo::Step`** with the matching capture inside, or it is the one edit
   Ctrl+Z cannot take back. See [Undo](#undo-records-images-not-inverses).
 - **The editor reports its open pack to the viewer every frame**, through
-  `viewer::setEditedPack` at the end of `marker_editor::render`, after the frame's edits. The
+  `viewer::setEditedPack` at the end of `marker_editor::render`, after the frame's edits.
+  `render` is not a Nexus callback: the viewer's render calls it through `EditorHooks`, and it
+  does nothing while the editor does not run (see [viewer.md](viewer.md#the-editor-inside)). The
   viewer draws the pack from that model, and would otherwise keep the zip open, which a save
   renames over.
 - **Nothing is erased from `Pack::categories` or `Pack::pathables`**, and nothing is inserted
@@ -46,8 +48,8 @@ The invariants every change keeps. The sections below are why.
 - **Each module is a `snake_case` namespace** with a matching `.h`/`.cpp` pair, and its header
   exposes only what other modules need.
 - **`src/entry.cpp` stays minimal**: it fills in the `AddonDefinition`, resolves the DataLink
-  pointers, loads the viewer, and loads the editor only when `viewer::editingEnabled()` says
-  so, connecting its hooks. No feature logic, no globals beyond `AddonDef` and `hSelf`. **Its flags never include `EAddonFlags_IsVolatile`**, which is for
+  pointers, connects the editor's hooks to the viewer and loads the viewer. The editor's own
+  `load` registers nothing with Nexus. No feature logic, no globals beyond `AddonDef` and `hSelf`. **Its flags never include `EAddonFlags_IsVolatile`**, which is for
   addons that hook the game: Nexus refuses to load a volatile addon once the game build is
   more than 350 past the one it last recorded, until the player re-enables it by hand
   (`IsVolatileDisabled` in Nexus's `Host/Addons/Addon.cpp`).
@@ -258,8 +260,8 @@ draw signatures genuinely differ (a camera here, a returned request there, the T
 no module at all), so a shared virtual would either widen every signature or keep the side
 channels that motivated it.
 
-The Nexus options page carries a checkbox per window, because a window closed with its X
-would otherwise only come back through a keybind that is unbound by default. The page itself
+The Nexus options page carries a checkbox per window while the editor runs, because a window
+closed with its X would otherwise only come back through a keybind that is unbound by default. The page itself
 is the viewer's — Nexus shows one options callback per addon — and the editor's part is
 `marker_editor::drawOptions`, drawn under it through `viewer::EditorHooks`.
 

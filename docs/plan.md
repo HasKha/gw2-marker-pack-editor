@@ -149,15 +149,13 @@ between. How each part works is [viewer.md](viewer.md).
 
 `mpe_viewer` exists in `src/viewer/`: the camera, `LoadBudget` and `TextureCache`, the
 draw-list quad path as `render/overlay.*`, and the lifecycle that owns the addon's options
-page. `entry.cpp` loads the editor only when "Enable pack editing" is on, which it is for an
-install that already has `settings.json`. Every case that passed before still passes,
+page. `entry.cpp` loaded the editor only when "Enable pack editing" was on (gone since: see
+milestone 7). Every case that passed before still passes,
 `mpe_viewer_test` links without `mpe_editor`, and `viewer_includes_no_editor` holds the
 include rule.
 
-**Left: one pull in game**, to answer one question: with an existing `settings.json`, does the
-options page show "Enable pack editing" ticked above the editor's window checkboxes, and does
-the editor open, draw and save a pack as 1.6 did? Then untick, reload the addon, and check
-the editor's windows, keybinds and Quick Access entry are all gone.
+**Left: one pull in game**, to answer one question: does the editor open, draw and save a pack
+as 1.6 did?
 
 ### 1. Packs drawn, no scripts — done offline
 
@@ -330,11 +328,22 @@ Nexus's API, fixed — and asked for the shape below. Each step is a commit of i
 4. **Interact is Nexus's** — done offline. The key comes from Nexus's game binds (`GameBinds.xml`, its
    Interact action), not a setting of our own. GW2's key codes are its own: letters and digits
    are their ASCII codes, as Windows' are; anything else falls back to F.
-5. **The editor on demand.** No "Enable pack editing", nothing of the editor registered at
-   load: the viewer's callbacks drive it, so Edit Marker Pack starts it at any time. It was
-   applied at load only because the editor registered a render callback of its own, which
-   cannot be done from inside one (Nexus holds its render mutex across every callback), and
-   unloading it would have dropped unsaved edits.
+5. **The editor on demand** — done offline. No "Enable pack editing", nothing of the editor
+   registered at load: the viewer's callbacks drive it, so Edit Marker Pack starts it at any
+   time, and it stops with nothing open and nothing on screen. It was applied at load only
+   because the editor registered a render callback of its own, which cannot be done from
+   inside one (Nexus holds its render mutex across every callback), and unloading it would
+   have dropped unsaved edits.
+
+**Left: one pull in game**, deciding these in advance:
+- Markers of an enabled installed pack stand in the world, with GoodRender and without it.
+- The icon in Nexus's bar opens the menu on a left and a right click; Nexus's own menu has the
+  same items; All Markers' children open to the side on hover.
+- The import offers itself on the first load with Blish HUD's packs, and the categories it
+  turned off stay off.
+- Interact fires on the key Nexus's game binds have for Interact, after rebinding it there.
+- Edit Marker Pack starts the editor and Ctrl+Z undoes an edit in it; closing its windows with
+  no pack open gives Ctrl+Z back to the game.
 
 ### 8. Later
 

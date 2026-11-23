@@ -112,12 +112,8 @@ bool drawItems(const Context& context) {
 
     ImGui::Separator();
     if (ImGui::Selectable("Manage Marker Packs") && context.manage_packs) context.manage_packs();
-    if (context.edit_pack) {
-        if (ImGui::Selectable("Edit Marker Pack")) context.edit_pack();
-    } else {
-        ImGui::TextDisabled("Edit Marker Pack");
-        if (ImGui::IsItemHovered()) ImGui::SetTooltip("Turn on \"Enable pack editing\" in the options, and reload the addon.");
-    }
+    // Not there with no editor to start.
+    if (context.edit_pack && ImGui::Selectable("Edit Marker Pack")) context.edit_pack();
     return changed;
 }
 

@@ -48,7 +48,7 @@ src/
   pack/            mpe_pack — unchanged. The format, nothing else
   viewer/          mpe_viewer, links mpe_pack
     viewer.*       lifecycle, the addon's name and folder, its options page, EditorHooks
-    settings.*     viewer.json: "Enable pack editing", and Pathing's settings by its names
+    settings.*     viewer.json: the menu's places, and Pathing's settings by its names
     json_file.*    lenient reads and writes of small JSON files, the editor's too
     registry.*     installed packs: discovery, enable/disable, loading on a worker, the merged tree
     blish_import.* what Blish HUD's Pathing has — packs, category choices, Storage, timers
@@ -363,15 +363,19 @@ the options page is not drawn from there.
 
 ## The editor inside
 
-- **A setting, "Enable pack editing", off by default.** It starts on for an install that
-  already has the editor's `settings.json`, so an existing editor user does not lose it in the
-  update. It lives in the viewer's own `viewer.json`, beside the editor's file rather than in
-  it: the editor rewrites its file whole, and "the file exists" is what the rule reads.
-- **Off means inert.** `marker_editor::load()` never runs: no windows, keybinds, Quick Access
-  entry or `WndProc` handling are registered.
-- **It applies at the next load.** Nexus holds its render mutex across every callback, so the
-  options page cannot register the editor's callbacks from inside one, and unloading it there
-  would drop unsaved edits. The page says so when the box and the session disagree.
+- **It runs on demand.** The menu's Edit Marker Pack, or the editor's keybind, starts it at any
+  time; it stops once it has no pack open and none of its windows on screen. Until then nothing
+  of it runs: no windows, no settings read, no binds.
+- **The viewer drives it.** `marker_editor::load` registers nothing with Nexus: the viewer's
+  render and `WndProc` call the editor's through `EditorHooks::render` and `wnd_proc`, which do
+  nothing while it does not run. Nexus holds its render mutex across every callback, so a render
+  callback of the editor's own could only be registered at load, which is why editing was once a
+  setting applied at the next load. The editor's keybind is the viewer's to register for the same
+  reason: it has to start an editor that has registered nothing.
+- **Undo and redo are bound only while it runs**, so Ctrl+Z and Ctrl+Y are the game's otherwise.
+  Registering a bind from inside a render callback is safe: Nexus's binds have a lock of their
+  own, and Nexus runs their handlers on a thread of its own, so the editor's only raise a flag
+  its frame acts on. Deregistering keeps the key the player chose.
 - **A pack is opened from the editor's File menu**, in place, wherever it is. A pack in our
   folder that came from the catalog is overwritten by its next update, edits and all: the
   catalog's Keep updated is the author's to turn off for it.

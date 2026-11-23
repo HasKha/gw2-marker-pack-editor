@@ -15,6 +15,9 @@ const char* key(Id id);
 
 bool& visible(Id id);
 
+// Whether any of the windows is on screen.
+bool anyVisible();
+
 // Hides everything, or brings back whatever was last hidden. What the keybind and the
 // quick access item do: the editor as a whole goes away and comes back with its layout.
 void toggleAll();

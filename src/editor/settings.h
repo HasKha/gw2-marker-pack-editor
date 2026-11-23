@@ -14,6 +14,8 @@
 // remembered them would be wrong the moment a different pack was opened.
 namespace settings {
 
+constexpr const char* FILE_NAME = "settings.json";
+
 void init(AddonAPI* api);
 
 // Applies whatever was saved. Call once, before the first frame. A missing or unreadable

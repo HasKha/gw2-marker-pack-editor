@@ -18,7 +18,6 @@ struct Field {
 };
 
 constexpr Field<bool> kBools[] = {
-    {"enable_editing", &Settings::enable_editing},
     {"import_offered", &Settings::import_offered},
     {"run_scripts", &Settings::run_scripts},
     {"allow_auto_hide", &Settings::allow_auto_hide},
@@ -60,10 +59,7 @@ constexpr Field<float> kFloats[] = {
 
 Settings load(const std::filesystem::path& folder) {
     Settings settings;
-    if (folder.empty()) return settings; // Nexus gave no folder: nothing to read, nothing to inherit
-
-    std::error_code ec;
-    settings.enable_editing = std::filesystem::exists(folder / EDITOR_FILE_NAME, ec);
+    if (folder.empty()) return settings; // Nexus gave no folder: nothing to read
 
     if (const std::optional<nlohmann::json> parsed = json_file::readObject(folder / FILE_NAME)) {
         for (const Field<bool>& field : kBools) {

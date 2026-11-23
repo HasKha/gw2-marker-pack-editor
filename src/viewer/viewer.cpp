@@ -55,7 +55,6 @@ std::filesystem::path folder;
 
 // What the options page edits and saves, against what this session loaded with.
 settings::Settings persisted;
-bool editing_this_session = false;
 
 EditorHooks editor;
 
@@ -209,6 +208,8 @@ bool isInteract(WPARAM key) {
 }
 
 std::atomic<bool> interact_pressed{false};
+// The editor's keybind, heard on a thread of Nexus's and acted on in the frame.
+std::atomic<bool> editor_requested{false};
 std::atomic<bool> escape_released{false};
 
 // What outlives the session is written at most this often, as Pathing flushes its states,
@@ -383,7 +384,9 @@ std::string keyName(int virtual_key) {
 
 // Hears the interact key and Escape, and passes both on: the game interacts with what it has
 // in front of it as well, as it does with Blish HUD running.
-UINT onWndProc(HWND, UINT message, WPARAM key, LPARAM flags) {
+UINT onWndProc(HWND window, UINT message, WPARAM key, LPARAM flags) {
+    // The editor first: a click it picks a marker with is not the game's.
+    if (editor.wnd_proc && editor.wnd_proc(window, message, key, flags) == 0) return 0;
     const bool first_press = (flags & (LPARAM{1} << 30)) == 0;
     if (message == WM_KEYDOWN && first_press && isInteract(key)) interact_pressed = true;
     if (message == WM_KEYUP && key == VK_ESCAPE) escape_released = true;
@@ -614,7 +617,7 @@ void drawMenuItems() {
     context.states = &category_states;
     context.scripts = persisted.run_scripts ? scripts.get() : nullptr;
     context.manage_packs = [] { catalog_window = true; };
-    if (editor.open) context.edit_pack = editor.open;
+    if (editor.start) context.edit_pack = editor.start;
     // A player's own toggle is written at once, not with the scripts' changes.
     if (ui::main_menu::drawItems(context)) saveStates();
 }
@@ -801,10 +804,17 @@ void render() {
             persisted.show_interact_prompt)) {
         behaviors::interactWith(&live, screen.prompt->marker, behaviorHost(), behaviorFrame());
     }
+
+    if (editor_requested.exchange(false) && editor.toggle) editor.toggle();
+    if (editor.render) editor.render();
 }
 
 void onMarkersKeybind(const char*, bool is_release) {
     if (!is_release) menu_requested = true;
+}
+
+void onEditorKeybind(const char*, bool is_release) {
+    if (!is_release) editor_requested = true;
 }
 
 // Puts the menu where the options say: in Nexus's menu, and behind our icon in Nexus's bar. Safe
@@ -852,13 +862,6 @@ void drawOptions() {
     }
     ImGui::Separator();
 
-    // Applied at the next load rather than now, both ways. Loading the editor means
-    // registering render callbacks, and Nexus holds its render mutex across every callback it
-    // runs (Context::Render in Nexus's UI/UiContext.cpp), so registering from inside one would
-    // deadlock. Unloading it now would throw away a pack's unsaved edits.
-    if (ImGui::Checkbox("Enable pack editing", &persisted.enable_editing)) settings::save(folder, persisted);
-    if (persisted.enable_editing != editing_this_session) ImGui::Text("Takes effect the next time the addon loads.");
-
     if (ImGui::Button("Import from Blish HUD...")) openImport();
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("Copies Blish HUD's marker packs into this addon, with what Pathing remembers.");
 
@@ -883,10 +886,7 @@ void drawOptions() {
     ImGui::SameLine();
     ImGui::Checkbox("Marker Packs", &catalog_window);
 
-    if (editor.draw_options) {
-        ImGui::Separator();
-        editor.draw_options();
-    }
+    if (editor.draw_options) editor.draw_options();
 }
 
 } // namespace
@@ -900,7 +900,6 @@ void load(AddonAPI* aApi, Mumble::Data* aMumbleLink) {
     const char* directory = api->Paths.GetAddonDirectory(ADDON_FOLDER);
     folder = directory ? std::filesystem::path(directory) : std::filesystem::path();
     persisted = settings::load(folder);
-    editing_this_session = persisted.enable_editing;
     category_states.load(categoriesFile());
     saved_categories = category_states.revision();
     script_storage.load(storageFile());
@@ -947,6 +946,10 @@ void load(AddonAPI* aApi, Mumble::Data* aMumbleLink) {
     // "(null)": no default bind; the player sets one in Nexus. Our icon presses it.
     api->InputBinds.RegisterWithString(KEYBIND_MARKERS_ID, onMarkersKeybind, "(null)");
     api->Localization.Set(KEYBIND_MARKERS_ID, "en", "Open the marker pack menu");
+    if (editor.toggle) {
+        api->InputBinds.RegisterWithString(KEYBIND_EDITOR_ID, onEditorKeybind, "(null)");
+        api->Localization.Set(KEYBIND_EDITOR_ID, "en", "Edit a marker pack");
+    }
     api->Textures.GetOrCreateFromMemory(ICON_TEXTURE_ID, const_cast<unsigned char*>(ui::icon_data::kIcon), sizeof(ui::icon_data::kIcon));
     api->Textures.GetOrCreateFromMemory(
         ICON_HOVER_TEXTURE_ID,
@@ -965,6 +968,7 @@ void unload() {
     api->WndProc.Deregister(onWndProc);
     removeMenuPlaces();
     api->InputBinds.Deregister(KEYBIND_MARKERS_ID);
+    api->InputBinds.Deregister(KEYBIND_EDITOR_ID);
 
     loader.stop();
     downloads.stop();
@@ -984,14 +988,12 @@ void unload() {
     live = runtime::LiveMap{};
     edited_live.clear();
     edited_report = {};
+    edit_requested.clear();
+    edit_applied.clear();
     edited_screen = behaviors::Screen{};
     installed = runtime::Installed{};
     editor = {};
     api = nullptr;
-}
-
-bool editingEnabled() {
-    return editing_this_session;
 }
 
 void connectEditor(const EditorHooks& hooks) {

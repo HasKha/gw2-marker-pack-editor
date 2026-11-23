@@ -32,9 +32,13 @@ constexpr const char* SHORTCUT_ID = "QA_MarkerPackEditor_Icon";
 constexpr const char* SHORTCUT_MENU_ID = "QA_MarkerPackEditor_IconMenu";
 constexpr const char* ICON_TEXTURE_ID = "TEX_MarkerPackEditor_Icon";
 constexpr const char* ICON_HOVER_TEXTURE_ID = "TEX_MarkerPackEditor_IconHover";
+// The editor's bind: starts it, then hides and restores its windows. Registered by the viewer,
+// since the editor registers nothing until it runs; the id is the one the editor's own toggle
+// had, so a bind the player set carries over.
+constexpr const char* KEYBIND_EDITOR_ID = "KB_MarkerPackEditor_Toggle";
 
-// What the viewer reaches the editor through. entry.cpp connects them when editing is on;
-// with editing off every hook stays null and the viewer never calls into the editor.
+// What the viewer reaches the editor through. entry.cpp connects them before the viewer loads;
+// with no editor every hook stays null and the viewer never calls into one.
 struct EditorHooks {
     // The editor's part of the options page, drawn under the viewer's own. Nexus shows one
     // options callback per addon — the first it finds registered from the addon's module
@@ -42,8 +46,17 @@ struct EditorHooks {
     // register one of its own beside the viewer's.
     void (*draw_options)() = nullptr;
 
-    // Shows the editor's main window: the menu's Edit Marker Pack.
-    void (*open)() = nullptr;
+    // Starts the editor, or shows its main window when it runs: the menu's Edit Marker Pack.
+    void (*start)() = nullptr;
+    // The editor's keybind: starts it, or hides and restores its windows.
+    void (*toggle)() = nullptr;
+
+    // The editor's frame and its share of the game's messages, from the viewer's own: Nexus
+    // holds its render mutex across every callback, so a render callback registered when the
+    // editor starts would have to be registered from inside one. Both do nothing while the
+    // editor does not run. A message the editor returns 0 for is the editor's.
+    void (*render)() = nullptr;
+    UINT (*wnd_proc)(HWND window, UINT message, WPARAM w_param, LPARAM l_param) = nullptr;
 
     // The editor's reads of its open pack's files, which see what is not saved yet: the edited
     // pack is drawn with these. Null draws it without images or trails.
@@ -60,11 +73,7 @@ struct EditorHooks {
 void load(AddonAPI* api, Mumble::Data* mumble_link);
 void unload();
 
-// Whether this session runs the editor: the "Enable pack editing" setting as it stood at
-// load. Ticking the setting changes what the next load does, not this one — see drawOptions
-// in viewer.cpp.
-bool editingEnabled();
-
+// Before load: the viewer's callbacks reach the editor as soon as they are registered.
 void connectEditor(const EditorHooks& hooks);
 
 // The pack the editor has open. Call every frame, after the frame's edits: the viewer compares,

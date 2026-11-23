@@ -7,12 +7,19 @@
 
 namespace marker_editor {
 
-constexpr const char* KEYBIND_TOGGLE_ID = "KB_MarkerPackEditor_Toggle";
+// Registered only while the editor runs — see bindHistory.
 constexpr const char* KEYBIND_UNDO_ID = "KB_MarkerPackEditor_Undo";
 constexpr const char* KEYBIND_REDO_ID = "KB_MarkerPackEditor_Redo";
 
+// The editor runs on demand. load keeps what it is given and registers nothing with Nexus; the
+// viewer drives the editor through hooks(), and the editor runs from the menu's Edit Marker
+// Pack until it has no pack open and none of its windows on screen.
 void load(AddonAPI* api, Mumble::Data* mumble_link);
+// Drops what is open, saved or not.
 void unload();
+
+// Whether the editor runs now.
+bool running();
 
 // The editor's part of the addon's options page. Not registered with Nexus: the viewer owns
 // the page and draws this under its own, through viewer::EditorHooks.

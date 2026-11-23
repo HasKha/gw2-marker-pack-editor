@@ -44,8 +44,9 @@ windows and hide behind walls; without it they draw over everything.
 into the addon's own folder, update it, open its page or delete it. Packs you keep updated
 update themselves when the addon loads.
 
-Editing is off on a fresh install. Turn on **Enable pack editing** in the addon's options in
-Nexus, then reload the addon; an install that already had the editor keeps it on.
+The editor runs only when you ask for it: **Edit Marker Pack** in the menu, or a keybind you
+set in Nexus, starts it at any time. Close its windows with no pack open and it is gone again,
+**Ctrl+Z** and **Ctrl+Y** with it.
 
 Whatever the editor has open is drawn as you edit it, exactly as a player will see it.
 

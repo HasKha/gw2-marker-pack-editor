@@ -37,6 +37,17 @@ namespace {
 AddonAPI* api = nullptr;
 Mumble::Data* mumble_link = nullptr;
 
+// Whether the editor runs: from Edit Marker Pack until it has no pack open and no window on
+// screen. Read on the game's message thread too, by onWndProc.
+std::atomic<bool> active{false};
+// The editor's settings are read on its first start, not at load: a player who never edits
+// never has them read.
+bool settings_loaded = false;
+
+// Nexus runs a bind's handler on a thread of its own, so undo and redo wait here for the frame.
+std::atomic<bool> undo_requested{false};
+std::atomic<bool> redo_requested{false};
+
 // Absolute path of the pack currently open, empty when none is.
 std::filesystem::path open_pack_path;
 std::string status_message;
@@ -254,6 +265,7 @@ UINT trackDeselectClick(UINT uMsg, WPARAM wParam) {
 }
 
 UINT onWndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
+    if (!active.load()) return 1;
     if (uMsg != WM_LBUTTONDOWN) return trackDeselectClick(uMsg, wParam);
 
     deselect_armed = false;
@@ -931,7 +943,82 @@ void deselectInViewport(editor::State& state) {
     state.selection.clear();
 }
 
+// Nexus binds are global, so they fire while a text field has the caret too — where Ctrl+Z
+// means "undo my typing" to ImGui and would mean "undo an edit" here. The field wins.
+void applyRequestedHistory() {
+    const bool undo = undo_requested.exchange(false);
+    const bool redo = redo_requested.exchange(false);
+    if (!state.loaded || ImGui::GetIO().WantTextInput) return;
+    if (undo) applyUndo();
+    if (redo) applyRedo();
+}
+
+void onEditKeybind(const char* aIdentifier, bool aIsRelease) {
+    if (aIsRelease) return;
+    if (std::strcmp(aIdentifier, KEYBIND_UNDO_ID) == 0) {
+        undo_requested = true;
+    } else if (std::strcmp(aIdentifier, KEYBIND_REDO_ID) == 0) {
+        redo_requested = true;
+    }
+}
+
+// Undo and redo are bound only while the editor runs: a bind Nexus has a handler for is not
+// the game's, and Ctrl+Z is the game's while nothing is being edited. Deregistering keeps the
+// player's own choice of key for the next start.
+void bindHistory(bool bound) {
+    if (bound) {
+        // The bindings everyone already has in their fingers, as the defaults.
+        api->InputBinds.RegisterWithString(KEYBIND_UNDO_ID, onEditKeybind, "CTRL+Z");
+        api->InputBinds.RegisterWithString(KEYBIND_REDO_ID, onEditKeybind, "CTRL+Y");
+        api->Localization.Set(KEYBIND_UNDO_ID, "en", "Undo (marker pack editor)");
+        api->Localization.Set(KEYBIND_REDO_ID, "en", "Redo (marker pack editor)");
+    } else {
+        api->InputBinds.Deregister(KEYBIND_UNDO_ID);
+        api->InputBinds.Deregister(KEYBIND_REDO_ID);
+    }
+}
+
+// Edit Marker Pack. Shows the tree, the window editing starts from, wherever the others were
+// left. Starting registers no render callback, so it is safe from inside one: the viewer's
+// render drives the editor's.
+void start() {
+    if (!active) {
+        if (!settings_loaded) {
+            settings::load(&state.settings, &last_folder, &last_image_folder);
+            settings_loaded = true;
+        }
+        bindHistory(true);
+        active = true;
+    }
+    ui::windows::visible(ui::windows::Id::Tree) = true;
+}
+
+// With nothing open and nothing on screen, nothing is left to edit: the editor lets go of its
+// binds, and the viewer of anything it was drawing from it.
+void stop() {
+    if (!active) return;
+    active = false;
+    bindHistory(false);
+    undo_requested = false;
+    redo_requested = false;
+    pending_select = pack::kNoIndex;
+    pending_select_point = pack::kNoIndex;
+    pending_deselect = false;
+    world::overlay::clearHovered();
+    viewer::setEditedPack({});
+}
+
+// The editor's keybind: starts the editor, or hides and restores its windows once it runs.
+void toggle() {
+    if (!active) {
+        start();
+    } else {
+        ui::windows::toggleAll();
+    }
+}
+
 void render() {
+    if (!active) return;
     if (std::optional<std::filesystem::path> picked = file_dialog::takeResult()) {
         switch (dialog_purpose) {
         case DialogPurpose::SaveAs:
@@ -950,6 +1037,7 @@ void render() {
 
     resources::beginFrame();
     undo::beginFrame();
+    applyRequestedHistory();
     // Compares and writes only when something moved, so this is free on almost every frame.
     settings::update(state.settings, last_folder, last_image_folder);
 
@@ -1008,44 +1096,39 @@ void render() {
 
     applyPendingAction();
     reportToViewer();
-}
 
-void onToggleKeybind(const char* aIdentifier, bool aIsRelease) {
-    if (aIsRelease) return;
-    ui::windows::toggleAll();
-}
-
-// Nexus binds are global, so they fire while a text field has the caret too — where Ctrl+Z
-// means "undo my typing" to ImGui and would mean "undo an edit" here. The field wins.
-void onEditKeybind(const char* aIdentifier, bool aIsRelease) {
-    if (aIsRelease || !state.loaded) return;
-    if (ImGui::GetIO().WantTextInput) return;
-
-    if (std::strcmp(aIdentifier, KEYBIND_UNDO_ID) == 0) {
-        applyUndo();
-    } else if (std::strcmp(aIdentifier, KEYBIND_REDO_ID) == 0) {
-        applyRedo();
-    }
+    // A dialog's answer still has somewhere to go, so it keeps the editor running.
+    if (!state.loaded && !ui::windows::anyVisible() && !file_dialog::isPending()) stop();
 }
 
 } // namespace
 
 void drawOptions() {
+    if (!active) return;
+    ImGui::Separator();
     // The way back once a window's close button has been used, short of the keybind or the
-    // quick access menu — neither of which is bound by default.
+    // menu's Edit Marker Pack.
     ImGui::Text("Editor windows");
     ui::windows::drawOptions();
-    ImGui::Text("The keybind and the Nexus menu item hide and restore all of them at once.");
+    ImGui::Text("The editor's keybind hides and restores all of them at once.");
+}
+
+bool running() {
+    return active.load();
 }
 
 viewer::EditorHooks hooks() {
     viewer::EditorHooks hooks;
     hooks.draw_options = drawOptions;
-    // The tree is the window editing starts from, wherever the others were left.
-    hooks.open = [] { ui::windows::visible(ui::windows::Id::Tree) = true; };
+    hooks.start = start;
+    hooks.toggle = toggle;
+    hooks.render = render;
+    hooks.wnd_proc = onWndProc;
     hooks.texture = resources::texture;
     hooks.trail = [](const std::string& path, bool* deferred) { return resources::trail(path, deferred); };
-    hooks.draw_overlay = [](const viewer::Camera& camera, const viewer::Scene& scene) { world::overlay::draw(state, camera, scene); };
+    hooks.draw_overlay = [](const viewer::Camera& camera, const viewer::Scene& scene) {
+        if (active.load()) world::overlay::draw(state, camera, scene);
+    };
     return hooks;
 }
 
@@ -1057,31 +1140,13 @@ void load(AddonAPI* _api, Mumble::Data* _mumble_link) {
     // Images added in the editor are not in the DataSource until a save, so the cache has
     // to be able to see the pack's pending adds. `state` outlives every load.
     resources::setPendingAssets(&state.pack);
-
     settings::init(api);
-    settings::load(&state.settings, &last_folder, &last_image_folder);
-
-    api->Renderer.Register(ERenderType_Render, render);
-    // "(null)" -> registered without a default bind; the user sets it in Nexus settings.
-    api->InputBinds.RegisterWithString(KEYBIND_TOGGLE_ID, onToggleKeybind, "(null)");
-    // These two do come with a default: they are the bindings everyone already has in their
-    // fingers, and an editor without them is a nuisance out of the box.
-    api->InputBinds.RegisterWithString(KEYBIND_UNDO_ID, onEditKeybind, "CTRL+Z");
-    api->InputBinds.RegisterWithString(KEYBIND_REDO_ID, onEditKeybind, "CTRL+Y");
-    api->WndProc.Register(onWndProc);
-    api->Localization.Set(KEYBIND_TOGGLE_ID, "en", "Toggle marker pack editor");
-    api->Localization.Set(KEYBIND_UNDO_ID, "en", "Undo");
-    api->Localization.Set(KEYBIND_REDO_ID, "en", "Redo");
 }
 
 void unload() {
-    api->Renderer.Deregister(render);
-    api->InputBinds.Deregister(KEYBIND_TOGGLE_ID);
-    api->InputBinds.Deregister(KEYBIND_UNDO_ID);
-    api->InputBinds.Deregister(KEYBIND_REDO_ID);
-    api->WndProc.Deregister(onWndProc);
-    // The viewer must not read a model that is about to go.
-    viewer::setEditedPack({});
+    // Saved or not, what is open goes with the addon, as it did when the editor registered
+    // its own callbacks.
+    stop();
     file_dialog::shutdown();
     resources::shutdown();
 }

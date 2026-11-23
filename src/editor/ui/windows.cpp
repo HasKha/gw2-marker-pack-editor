@@ -45,13 +45,6 @@ size_t indexOf(Id id) {
     return static_cast<size_t>(id);
 }
 
-bool anyVisible() {
-    for (bool visible : shown) {
-        if (visible) return true;
-    }
-    return false;
-}
-
 void hideAll() {
     for (size_t i = 0; i < kCount; ++i) {
         restore[i] = shown[i];
@@ -71,6 +64,13 @@ const char* key(Id id) {
 
 bool& visible(Id id) {
     return shown[indexOf(id)];
+}
+
+bool anyVisible() {
+    for (bool visible : shown) {
+        if (visible) return true;
+    }
+    return false;
 }
 
 void toggleAll() {

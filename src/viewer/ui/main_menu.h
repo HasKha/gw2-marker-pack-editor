@@ -16,7 +16,7 @@ struct Context {
     store::CategoryStates* states = nullptr;
     script::Engine* scripts = nullptr; // null while scripts do not run
     std::function<void()> manage_packs; // opens Marker Packs
-    std::function<void()> edit_pack; // opens the editor
+    std::function<void()> edit_pack; // starts the editor; null leaves the item out
 };
 
 // Draws the items into a popup or menu already begun. True when a category was turned on or off.
