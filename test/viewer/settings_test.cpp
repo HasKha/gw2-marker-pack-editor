@@ -40,18 +40,21 @@ TEST_CASE("behavior settings start at Pathing's defaults and are kept", "[viewer
     const viewer::settings::Settings defaults = viewer::settings::load(temp.path());
     CHECK(defaults.allow_auto_hide);
     CHECK(defaults.allow_animation);
+    CHECK(defaults.smart_categories);
     CHECK(defaults.show_interact_prompt);
     CHECK(defaults.clipboard_consent == 0);
 
     viewer::settings::Settings settings;
     settings.allow_auto_hide = false;
     settings.allow_animation = false;
+    settings.smart_categories = false;
     settings.show_interact_prompt = false;
     settings.clipboard_consent = 2;
     REQUIRE(viewer::settings::save(temp.path(), settings));
     const viewer::settings::Settings loaded = viewer::settings::load(temp.path());
     CHECK_FALSE(loaded.allow_auto_hide);
     CHECK_FALSE(loaded.allow_animation);
+    CHECK_FALSE(loaded.smart_categories);
     CHECK_FALSE(loaded.show_interact_prompt);
     CHECK(loaded.clipboard_consent == 2);
 }

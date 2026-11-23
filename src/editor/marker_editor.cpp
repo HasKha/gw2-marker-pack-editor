@@ -37,7 +37,7 @@ namespace {
 AddonAPI* api = nullptr;
 Mumble::Data* mumble_link = nullptr;
 
-// Whether the editor runs: from Edit Marker Pack until it has no pack open and no window on
+// Whether the editor runs: from Open Editor until it has no pack open and no window on
 // screen. Read on the game's message thread too, by onWndProc.
 std::atomic<bool> active{false};
 // The editor's settings are read on its first start, not at load: a player who never edits
@@ -978,7 +978,7 @@ void bindHistory(bool bound) {
     }
 }
 
-// Edit Marker Pack. Shows the tree, the window editing starts from, wherever the others were
+// Open Editor. Shows the tree, the window editing starts from, wherever the others were
 // left. Starting registers no render callback, so it is safe from inside one: the viewer's
 // render drives the editor's.
 void start() {
@@ -1006,15 +1006,6 @@ void stop() {
     pending_deselect = false;
     world::overlay::clearHovered();
     viewer::setEditedPack({});
-}
-
-// The editor's keybind: starts the editor, or hides and restores its windows once it runs.
-void toggle() {
-    if (!active) {
-        start();
-    } else {
-        ui::windows::toggleAll();
-    }
 }
 
 void render() {
@@ -1107,7 +1098,7 @@ void drawOptions() {
     if (!active) return;
     ImGui::Separator();
     // The way back once a window's close button has been used, short of the keybind or the
-    // menu's Edit Marker Pack.
+    // menu's Open Editor.
     ImGui::Text("Editor windows");
     ui::windows::drawOptions();
     ImGui::Text("The editor's keybind hides and restores all of them at once.");
@@ -1121,7 +1112,6 @@ viewer::EditorHooks hooks() {
     viewer::EditorHooks hooks;
     hooks.draw_options = drawOptions;
     hooks.start = start;
-    hooks.toggle = toggle;
     hooks.render = render;
     hooks.wnd_proc = onWndProc;
     hooks.texture = resources::texture;

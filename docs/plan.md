@@ -342,7 +342,7 @@ Nexus's API, fixed — and asked for the shape below. Each step is a commit of i
 - The import offers itself on the first load with Blish HUD's packs, and the categories it
   turned off stay off.
 - Interact fires on the key Nexus's game binds have for Interact, after rebinding it there.
-- Edit Marker Pack starts the editor and Ctrl+Z undoes an edit in it; closing its windows with
+- Open Editor starts the editor and Ctrl+Z undoes an edit in it; closing its windows with
   no pack open gives Ctrl+Z back to the game.
 
 ### 8. The second look
@@ -352,7 +352,7 @@ Asked for after milestone 7, before its pull in game. Each step is a commit of i
 1. **The import speaks to the player** — done offline. One line on what it does, the packs to
    tick, "You can open this window anytime from the addon options", and Import and Close at the
    right. Pathing's category choices, storage and timers always come along.
-2. **The menu, as Blish HUD's.** Our icon opens it under the icon. Clicking a category's name
+2. **The menu, as Blish HUD's** — done offline. Our icon opens it under the icon. Clicking a category's name
    toggles it. Pathing's smart categories: what has nothing on this map is hidden, behind a row
    that shows it. No separator of ours in Nexus's menu. The menu's own bind goes, as far as
    Nexus allows: the icon's left click needs one. A new bind, unset, turns All Markers on or off.

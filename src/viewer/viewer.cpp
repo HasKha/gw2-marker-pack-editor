@@ -1,6 +1,8 @@
 #include "viewer/viewer.h"
 
 #include <imgui.h>
+// For the rectangle of the button ImGui last saw clicked: where our icon in Nexus's bar is.
+#include <imgui_internal.h>
 
 #include <windows.h>
 
@@ -8,6 +10,7 @@
 #include <atomic>
 #include <chrono>
 #include <memory>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -163,10 +166,16 @@ behaviors::FestivalFetcher festivals;
 // setting, never saved.
 bool show_hidden = false;
 
-// Our icon in Nexus's bar was clicked, or the menu's bind pressed: the menu opens at the mouse on
-// the next render. Set from Nexus's input handling.
+// Our icon in Nexus's bar was clicked: the menu opens under it on the next render. Set from
+// Nexus's input handling, on a thread of its own, as is the bind turning All Markers on or off.
 std::atomic<bool> menu_requested{false};
+std::atomic<bool> all_markers_requested{false};
 constexpr const char* kMenuPopup = "##marker_pack_menu";
+
+// Pathing's smart categories: the menus whose hidden categories were asked for, until the map
+// changes.
+std::set<size_t> menu_show_all;
+int menu_show_all_map = 0;
 
 // The interact key, heard in the window procedure, which runs on the game's window thread
 // while the frame runs on its render thread.
@@ -208,8 +217,6 @@ bool isInteract(WPARAM key) {
 }
 
 std::atomic<bool> interact_pressed{false};
-// The editor's keybind, heard on a thread of Nexus's and acted on in the frame.
-std::atomic<bool> editor_requested{false};
 std::atomic<bool> escape_released{false};
 
 // What outlives the session is written at most this often, as Pathing flushes its states,
@@ -610,21 +617,65 @@ void drawImport() {
 }
 
 // The menu's items, wherever it is shown: Nexus's menu, our icon's, or our own popup.
-void drawMenuItems() {
+void drawItems(bool separator) {
+    if (live.map_id != menu_show_all_map) {
+        menu_show_all.clear();
+        menu_show_all_map = live.map_id;
+    }
+    // Walked while the menu is open only, and a map holds thousands at most.
+    const std::vector<char> on_map = persisted.smart_categories ? runtime::nodesOnMap(installed.tree, live) : std::vector<char>{};
+
     ui::main_menu::Context context;
     context.tree = &installed.tree;
     context.states = &category_states;
     context.scripts = persisted.run_scripts ? scripts.get() : nullptr;
     context.manage_packs = [] { catalog_window = true; };
-    if (editor.start) context.edit_pack = editor.start;
+    if (editor.start) context.open_editor = editor.start;
+    context.on_map = persisted.smart_categories ? &on_map : nullptr;
+    context.show_all = &menu_show_all;
+    context.separator = separator;
     // A player's own toggle is written at once, not with the scripts' changes.
     if (ui::main_menu::drawItems(context)) saveStates();
 }
 
-// The menu at the mouse, for a left click on our icon or the menu's bind.
+void drawMenuItems() {
+    drawItems(true);
+}
+
+void drawNexusMenuItems() {
+    drawItems(false);
+}
+
+// Opens the menu under our icon, or above it in the lower half of the screen, and likewise left
+// or right. Nexus's bar is an ImGui window, and ImGui keeps the rectangle of the button last
+// clicked as its nav focus (SetFocusID in imgui.cpp): our icon, while it holds the mouse. The
+// mouse itself, failing that.
+void placeMenu() {
+    const ImGuiContext& g = *ImGui::GetCurrentContext();
+    const ImVec2 mouse = ImGui::GetIO().MousePos;
+    ImRect icon(mouse, mouse);
+    if (const ImGuiWindow* window = g.NavWindow) {
+        const ImRect& relative = window->NavRectRel[0];
+        const ImRect clicked(
+            window->Pos.x + relative.Min.x,
+            window->Pos.y + relative.Min.y,
+            window->Pos.x + relative.Max.x,
+            window->Pos.y + relative.Max.y);
+        if (clicked.Contains(mouse)) icon = clicked;
+    }
+    const ImVec2 display = ImGui::GetIO().DisplaySize;
+    const bool below = icon.GetCenter().y < display.y * 0.5f;
+    const bool rightward = icon.GetCenter().x < display.x * 0.5f;
+    ImGui::SetNextWindowPos(
+        ImVec2(rightward ? icon.Min.x : icon.Max.x, below ? icon.Max.y : icon.Min.y),
+        ImGuiCond_Always,
+        ImVec2(rightward ? 0.0f : 1.0f, below ? 0.0f : 1.0f));
+}
+
+// The menu for a left click on our icon.
 void drawMenuPopup() {
     if (menu_requested.exchange(false)) {
-        ImGui::SetNextWindowPos(ImGui::GetIO().MousePos);
+        placeMenu();
         ImGui::OpenPopup(kMenuPopup);
     }
     if (ImGui::BeginPopup(kMenuPopup)) {
@@ -804,16 +855,19 @@ void render() {
         behaviors::interactWith(&live, screen.prompt->marker, behaviorHost(), behaviorFrame());
     }
 
-    if (editor_requested.exchange(false) && editor.toggle) editor.toggle();
+    if (all_markers_requested.exchange(false)) {
+        category_states.set(runtime::ALL_MARKERS, !category_states.enabled(runtime::ALL_MARKERS, true), true);
+        saveStates();
+    }
     if (editor.render) editor.render();
 }
 
-void onMarkersKeybind(const char*, bool is_release) {
+void onMenuKeybind(const char*, bool is_release) {
     if (!is_release) menu_requested = true;
 }
 
-void onEditorKeybind(const char*, bool is_release) {
-    if (!is_release) editor_requested = true;
+void onAllMarkersKeybind(const char*, bool is_release) {
+    if (!is_release) all_markers_requested = true;
 }
 
 // Puts the menu where the options say: in Nexus's menu, and behind our icon in Nexus's bar. Safe
@@ -823,7 +877,7 @@ void applyMenuPlaces() {
     static bool icon = false;
     if (persisted.menu_in_nexus != in_nexus) {
         if (persisted.menu_in_nexus) {
-            api->QuickAccess.AddContextMenu(QUICKACCESS_ID, nullptr, drawMenuItems);
+            api->QuickAccess.AddContextMenu(QUICKACCESS_ID, nullptr, drawNexusMenuItems);
         } else {
             api->QuickAccess.RemoveContextMenu(QUICKACCESS_ID);
         }
@@ -831,7 +885,7 @@ void applyMenuPlaces() {
     }
     if (persisted.menu_icon != icon) {
         if (persisted.menu_icon) {
-            api->QuickAccess.Add(SHORTCUT_ID, ICON_TEXTURE_ID, ICON_HOVER_TEXTURE_ID, KEYBIND_MARKERS_ID, ADDON_NAME);
+            api->QuickAccess.Add(SHORTCUT_ID, ICON_TEXTURE_ID, ICON_HOVER_TEXTURE_ID, KEYBIND_MENU_ID, ADDON_NAME);
             api->QuickAccess.AddContextMenu(SHORTCUT_MENU_ID, SHORTCUT_ID, drawMenuItems);
         } else {
             api->QuickAccess.RemoveContextMenu(SHORTCUT_MENU_ID);
@@ -943,12 +997,12 @@ void load(AddonAPI* aApi, Mumble::Data* aMumbleLink) {
     api->Renderer.Register(ERenderType_OptionsRender, drawOptions);
     api->WndProc.Register(onWndProc);
     // "(null)": no default bind; the player sets one in Nexus. Our icon presses it.
-    api->InputBinds.RegisterWithString(KEYBIND_MARKERS_ID, onMarkersKeybind, "(null)");
-    api->Localization.Set(KEYBIND_MARKERS_ID, "en", "Open the marker pack menu");
-    if (editor.toggle) {
-        api->InputBinds.RegisterWithString(KEYBIND_EDITOR_ID, onEditorKeybind, "(null)");
-        api->Localization.Set(KEYBIND_EDITOR_ID, "en", "Edit a marker pack");
-    }
+    // Nexus presses a shortcut's bind for a left click on it and has no other way to say so, so
+    // the menu has a bind: unset, and named for what it is there for.
+    api->InputBinds.RegisterWithString(KEYBIND_MENU_ID, onMenuKeybind, "(null)");
+    api->Localization.Set(KEYBIND_MENU_ID, "en", "Marker pack icon (left click)");
+    api->InputBinds.RegisterWithString(KEYBIND_ALL_MARKERS_ID, onAllMarkersKeybind, "(null)");
+    api->Localization.Set(KEYBIND_ALL_MARKERS_ID, "en", "Show or hide all markers");
     api->Textures.GetOrCreateFromMemory(ICON_TEXTURE_ID, const_cast<unsigned char*>(ui::icon_data::kIcon), sizeof(ui::icon_data::kIcon));
     api->Textures.GetOrCreateFromMemory(
         ICON_HOVER_TEXTURE_ID,
@@ -966,8 +1020,8 @@ void unload() {
     api->Renderer.Deregister(drawOptions);
     api->WndProc.Deregister(onWndProc);
     removeMenuPlaces();
-    api->InputBinds.Deregister(KEYBIND_MARKERS_ID);
-    api->InputBinds.Deregister(KEYBIND_EDITOR_ID);
+    api->InputBinds.Deregister(KEYBIND_MENU_ID);
+    api->InputBinds.Deregister(KEYBIND_ALL_MARKERS_ID);
 
     loader.stop();
     downloads.stop();

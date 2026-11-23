@@ -12,8 +12,8 @@ namespace viewer::ui::main_menu {
 namespace {
 
 // One row: the box when there is one, then the name, as a menu that opens on hover when it has
-// children and a selectable otherwise. True when the box, or a leaf's name, was clicked. With
-// children and open, the caller draws them and ends the menu: `*open` says so.
+// children and a selectable otherwise. True when the box or the name was clicked. With children
+// and open, the caller draws them and ends the menu: `*open` says so.
 bool row(const char* name, const bool* checked, bool has_children, bool* open) {
     bool clicked = false;
     *open = false;
@@ -22,19 +22,55 @@ bool row(const char* name, const bool* checked, bool has_children, bool* open) {
         clicked = ImGui::Checkbox("##on", &value);
         ImGui::SameLine();
     }
-    if (has_children) {
-        *open = ImGui::BeginMenu(name);
-    } else if (ImGui::Selectable(name, false, ImGuiSelectableFlags_DontClosePopups)) {
-        clicked = true;
+    if (!has_children) {
+        return ImGui::Selectable(name, false, ImGuiSelectableFlags_DontClosePopups) || clicked;
     }
-    return clicked;
+
+    // A click on a menu's name is the menu's, and once it opens ImGui's last item is in the menu
+    // beside it, so the name's click is read off its rectangle, as BeginMenu lays it out.
+    const ImVec2 name_min = ImGui::GetCursorScreenPos();
+    const ImVec2 name_max(name_min.x + ImGui::GetContentRegionAvail().x, name_min.y + ImGui::GetTextLineHeight());
+    const bool name_clicked = ImGui::IsWindowHovered() && ImGui::IsMouseHoveringRect(name_min, name_max) && ImGui::IsMouseClicked(0);
+    *open = ImGui::BeginMenu(name);
+    return clicked || (checked && name_clicked);
 }
+
+// Per child of a menu, whether it is drawn: smart categories leave out what is not on the map,
+// and a separator stays only above something drawn. How many categories were left out.
+size_t chooseShown(
+    const registry::CategoryTree& tree,
+    const std::vector<size_t>& children,
+    const Context& context,
+    size_t parent,
+    std::vector<char>* shown) {
+    shown->assign(children.size(), 1);
+    const bool filtered = context.on_map && !(context.show_all && context.show_all->count(parent));
+    size_t skipped = 0;
+    bool below = false; // something drawn below, up to the next separator
+    for (size_t i = children.size(); i-- > 0;) {
+        const registry::Category& node = tree.nodes[children[i]];
+        if (node.is_hidden) {
+            (*shown)[i] = 0;
+        } else if (node.is_separator) {
+            (*shown)[i] = !filtered || below;
+            below = false;
+        } else if (filtered && !(children[i] < context.on_map->size() && (*context.on_map)[children[i]])) {
+            (*shown)[i] = 0;
+            ++skipped;
+        } else {
+            below = true;
+        }
+    }
+    return skipped;
+}
+
+bool drawChildren(const registry::CategoryTree& tree, const std::vector<size_t>& children, size_t parent, const Context& context);
 
 // One category, and its children in a menu of their own while it is hovered. Pathing leaves out
 // what `ishidden` hides, and what is under it.
-bool drawCategory(const registry::CategoryTree& tree, size_t index, store::CategoryStates* states) {
+bool drawCategory(const registry::CategoryTree& tree, size_t index, const Context& context) {
     const registry::Category& node = tree.nodes[index];
-    if (node.is_hidden) return false;
+    store::CategoryStates* states = context.states;
 
     // A separator is a heading between its siblings, with nothing to turn on or off.
     if (node.is_separator) {
@@ -52,10 +88,30 @@ bool drawCategory(const registry::CategoryTree& tree, size_t index, store::Categ
         changed = true;
     }
     if (open) {
-        for (size_t child : node.children) changed |= drawCategory(tree, child, states);
+        changed |= drawChildren(tree, node.children, index, context);
         ImGui::EndMenu();
     }
     ImGui::PopID();
+    return changed;
+}
+
+// A menu's categories, and Pathing's "N Categories Are Hidden" under them, which shows them.
+bool drawChildren(const registry::CategoryTree& tree, const std::vector<size_t>& children, size_t parent, const Context& context) {
+    std::vector<char> shown;
+    const size_t skipped = chooseShown(tree, children, context, parent, &shown);
+    bool changed = false;
+    for (size_t i = 0; i < children.size(); ++i) {
+        if (shown[i]) changed |= drawCategory(tree, children[i], context);
+    }
+    if (skipped > 0) {
+        const std::string label = std::to_string(skipped) + (skipped == 1 ? " Category Is Hidden" : " Categories Are Hidden");
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
+        if (ImGui::Selectable(label.c_str(), false, ImGuiSelectableFlags_DontClosePopups) && context.show_all) {
+            context.show_all->insert(parent);
+        }
+        ImGui::PopStyleColor();
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("Hidden because they are for markers on a different map. Click to show them.");
+    }
     return changed;
 }
 
@@ -92,7 +148,7 @@ bool drawItems(const Context& context) {
     }
     if (open) {
         if (context.tree->roots.empty()) ImGui::TextDisabled("No packs loaded.");
-        for (size_t root : context.tree->roots) changed |= drawCategory(*context.tree, root, context.states);
+        changed |= drawChildren(*context.tree, context.tree->roots, pack::kNoIndex, context);
         ImGui::EndMenu();
     }
     ImGui::PopID();
@@ -110,10 +166,9 @@ bool drawItems(const Context& context) {
         }
     }
 
-    ImGui::Separator();
+    if (context.separator) ImGui::Separator();
     if (ImGui::Selectable("Manage Marker Packs") && context.manage_packs) context.manage_packs();
-    // Not there with no editor to start.
-    if (context.edit_pack && ImGui::Selectable("Edit Marker Pack")) context.edit_pack();
+    if (context.open_editor && ImGui::Selectable("Open Editor...")) context.open_editor();
     return changed;
 }
 

@@ -50,7 +50,7 @@ void AddonLoad(AddonAPI* aApi) {
     // viewer::fromMumble.
     Mumble::Data* mumble_link = (Mumble::Data*)aApi->DataLink.Get("DL_MUMBLE_LINK");
 
-    // The editor registers nothing: the viewer drives it, from Edit Marker Pack on. Connected
+    // The editor registers nothing: the viewer drives it, from Open Editor on. Connected
     // first, so no callback of the viewer's ever sees the hooks half written.
     marker_editor::load(aApi, mumble_link);
     viewer::connectEditor(marker_editor::hooks());

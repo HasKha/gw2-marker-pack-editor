@@ -134,6 +134,23 @@ TEST_CASE("a category shows only when every ancestor is on", "[runtime]") {
     CHECK(viewer::runtime::visibleNodes(tree, states)[tree.find("a.b.c")]);
 }
 
+TEST_CASE("a category is on the map when anything under it is", "[runtime]") {
+    viewer::registry::CategoryTree tree;
+    viewer::registry::mergeCategories(&tree, {category("a"), category("a.b", 0), category("a.c", 0), category("d")});
+    viewer::runtime::LiveMap live;
+    live.markers.push_back({});
+    live.markers.back().node = tree.find("a.b");
+    live.trails.push_back({});
+    live.trails.back().node = tree.find("d");
+    live.trails.back().removed = true; // by a script: no longer there
+
+    const std::vector<char> on_map = viewer::runtime::nodesOnMap(tree, live);
+    CHECK(on_map[tree.find("a.b")]);
+    CHECK(on_map[tree.find("a")]);
+    CHECK_FALSE(on_map[tree.find("a.c")]);
+    CHECK_FALSE(on_map[tree.find("d")]);
+}
+
 TEST_CASE("All Markers off hides every category, and on gives them back", "[runtime]") {
     viewer::runtime::Installed installed;
     viewer::runtime::install(&installed, loadedPack("pack", {}));

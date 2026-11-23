@@ -58,6 +58,24 @@ std::vector<char> visibleNodes(const registry::CategoryTree& tree, const store::
     return visible;
 }
 
+std::vector<char> nodesOnMap(const registry::CategoryTree& tree, const LiveMap& live) {
+    std::vector<char> on_map(tree.nodes.size(), 0);
+    const auto mark = [&](size_t node) {
+        // Up to the first ancestor already marked: everything above it is too.
+        while (node < on_map.size() && !on_map[node]) {
+            on_map[node] = 1;
+            node = tree.nodes[node].parent;
+        }
+    };
+    for (const LiveMarker& marker : live.markers) {
+        if (!marker.removed) mark(marker.node);
+    }
+    for (const LiveTrail& trail : live.trails) {
+        if (!trail.removed) mark(trail.node);
+    }
+    return on_map;
+}
+
 size_t nodeOf(const Installed& installed, size_t pack_index, size_t category) {
     const std::vector<size_t>& node_of = installed.packs[pack_index]->node_of;
     return category < node_of.size() ? node_of[category] : pack::kNoIndex;

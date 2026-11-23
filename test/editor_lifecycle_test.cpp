@@ -1,4 +1,4 @@
-// The editor runs on demand: nothing of it is bound with Nexus until Edit Marker Pack, and once
+// The editor runs on demand: nothing of it is bound with Nexus until Open Editor, and once
 // it has nothing open and nothing on screen it stops, giving Ctrl+Z back to the game.
 
 #include <imgui.h>
@@ -83,15 +83,17 @@ TEST_CASE("the editor binds nothing until it starts, and lets go once closed", "
     frames.run(hooks);
     CHECK(marker_editor::running()); // its tree is on screen
 
-    // The keybind hides every window; with no pack open, that closes the editor.
-    hooks.toggle();
-    CHECK_FALSE(ui::windows::anyVisible());
+    // Its last window closed, with no pack open, the editor is closed.
+    ui::windows::visible(ui::windows::Id::Tree) = false;
+    ui::windows::visible(ui::windows::Id::Details) = false;
+    ui::windows::visible(ui::windows::Id::Toolbar) = false;
+    REQUIRE_FALSE(ui::windows::anyVisible());
     frames.run(hooks);
     CHECK_FALSE(marker_editor::running());
     CHECK(bound.empty());
 
-    // And starts it again, with the tree back.
-    hooks.toggle();
+    // And starts again, with the tree back.
+    hooks.start();
     CHECK(marker_editor::running());
     CHECK(ui::windows::visible(ui::windows::Id::Tree));
     CHECK(bound.size() == 2);

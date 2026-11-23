@@ -114,6 +114,10 @@ struct LiveMap {
 // The node `category` of pack `pack_index` landed in, or kNoIndex.
 size_t nodeOf(const Installed& installed, size_t pack_index, size_t category);
 
+// Per node of `tree`, whether anything under it is on `live`'s map: Pathing's smart categories,
+// which leave the rest out of the menu (CategoryContextMenuStrip.EnsureActiveCategoriesPopulated).
+std::vector<char> nodesOnMap(const registry::CategoryTree& tree, const LiveMap& live);
+
 // Copies out every pack's markers and trails on `map_id`. Done on a map change or when the
 // packs change, not per frame: it walks every marker of every pack.
 LiveMap liveMap(const Installed& installed, int map_id);

@@ -349,29 +349,35 @@ bake moves after the merge.
 ## The menu
 
 Blish HUD's, one set of items wherever it is shown (`ui/main_menu.*`): **All Markers** and
-**Scripts**, every entry a row `[ ] name >` whose box turns it on and off and whose children open
-beside it on hover, as Pathing's context menu does; then **Manage Marker Packs** and **Edit
-Marker Pack**. All Markers' own box is kept with the categories' under the empty id, which no
-category has, and off hides every pack, as Pathing's root category does.
+**Scripts**, every entry a row `[ ] name >` whose box or name turns it on and off and whose
+children open beside it on hover, as Pathing's context menu does; then **Manage Marker Packs** and
+**Open Editor...**. All Markers' own box is kept with the categories' under the empty id, which no
+category has, and off hides every pack, as Pathing's root category does; a bind, unset, turns it
+on and off too.
+
+**Smart categories**, on by default as in Pathing, leave out of each menu the categories with
+nothing on the current map (`runtime::nodesOnMap`), and a separator with nothing under it, behind
+a row "N Categories Are Hidden" that shows that menu's whole until the map changes.
 
 It is shown in up to two places, chosen at the top of the options page: Nexus's own menu, and the
-menu of an icon of ours in Nexus's bar. Nexus opens an icon's context menu on a right click and
-presses its keybind on a left one, so the left click opens the same items in a popup of ours, at
-the mouse; the keybind does the same from anywhere. Both places are added and removed from the
+menu of an icon of ours in Nexus's bar. Nexus opens an icon's context menu on a right click, at the
+mouse, and presses its keybind on a left one, so the left click opens the same items in a popup
+of ours. That bind is the one Nexus lists as "Marker pack icon (left click)": Nexus has no other
+way to say the icon was clicked. The popup opens under the icon, whose rectangle ImGui keeps as
+the button last clicked (`placeMenu` in `viewer.cpp`). Both places are added and removed from the
 options page, which is safe: Nexus holds its quick access lock only while it draws the bar, and
-the options page is not drawn from there.
+the options page is not drawn from there. In Nexus's menu our separator is left out: Nexus draws
+one between addons already.
 
 ## The editor inside
 
-- **It runs on demand.** The menu's Edit Marker Pack, or the editor's keybind, starts it at any
-  time; it stops once it has no pack open and none of its windows on screen. Until then nothing
+- **It runs on demand.** The menu's Open Editor starts it at any time; it stops once it has no pack open and none of its windows on screen. Until then nothing
   of it runs: no windows, no settings read, no binds.
 - **The viewer drives it.** `marker_editor::load` registers nothing with Nexus: the viewer's
   render and `WndProc` call the editor's through `EditorHooks::render` and `wnd_proc`, which do
   nothing while it does not run. Nexus holds its render mutex across every callback, so a render
   callback of the editor's own could only be registered at load, which is why editing was once a
-  setting applied at the next load. The editor's keybind is the viewer's to register for the same
-  reason: it has to start an editor that has registered nothing.
+  setting applied at the next load.
 - **Undo and redo are bound only while it runs**, so Ctrl+Z and Ctrl+Y are the game's otherwise.
   Registering a bind from inside a render callback is safe: Nexus's binds have a lock of their
   own, and Nexus runs their handlers on a thread of its own, so the editor's only raise a flag

@@ -25,9 +25,11 @@ scripts stored, markers hidden until a time. **Import from Blish HUD...** in the
 it again. Blish HUD's folder is never drawn from, so both can run without every marker showing
 twice.
 The addon's menu is Blish HUD's: **All Markers** turns categories on and off, **Scripts** holds
-what packs' scripts add, **Manage Marker Packs** opens the catalog and **Edit Marker Pack** the
+what packs' scripts add, **Manage Marker Packs** opens the catalog and **Open Editor...** the
 editor. It is in Nexus's menu, and behind the addon's icon in Nexus's bar — left or right click
-it — as the top of the addon's options choose; a keybind you set opens it at the mouse.
+it — as the top of the addon's options choose. Like Pathing, it leaves out categories with
+nothing on the current map; **Smart categories** in the options shows them all. A keybind you
+set in Nexus shows or hides all markers.
 Packs' Lua scripts run as they do in Pathing; **Script console**, in the options, shows what they
 print and any error, and **Run pack scripts** in the options turns them off. Markers behave as
 they do there too: they hide by festival, character, schedule or once you have used them, show
@@ -44,8 +46,8 @@ windows and hide behind walls; without it they draw over everything.
 into the addon's own folder, update it, open its page or delete it. Packs you keep updated
 update themselves when the addon loads.
 
-The editor runs only when you ask for it: **Edit Marker Pack** in the menu, or a keybind you
-set in Nexus, starts it at any time. Close its windows with no pack open and it is gone again,
+The editor runs only when you ask for it: **Open Editor...** in the menu starts it at any
+time. Close its windows with no pack open and it is gone again,
 **Ctrl+Z** and **Ctrl+Y** with it.
 
 Whatever the editor has open is drawn as you edit it, exactly as a player will see it.

@@ -22,9 +22,10 @@ constexpr const char* ADDON_NAME = "Marker Pack Editor";
 constexpr const char* ADDON_FOLDER = "MarkerPackEditor";
 constexpr const char* PACKS_FOLDER = "packs";
 
-// The bind that opens the menu, which our icon in Nexus's bar presses when clicked. Its id is
-// the one the Markers window's bind had, so a bind the player set carries over.
-constexpr const char* KEYBIND_MARKERS_ID = "KB_MarkerPackEditor_Markers";
+// The bind our icon in Nexus's bar presses for a left click, which opens the menu.
+constexpr const char* KEYBIND_MENU_ID = "KB_MarkerPackEditor_Markers";
+// Turns All Markers on or off. Unset unless the player sets it.
+constexpr const char* KEYBIND_ALL_MARKERS_ID = "KB_MarkerPackEditor_AllMarkers";
 // The menu's items in Nexus's own menu, our icon in Nexus's bar, the same items behind the icon,
 // and the icon's two textures.
 constexpr const char* QUICKACCESS_ID = "QA_MarkerPackEditor_Markers";
@@ -32,10 +33,6 @@ constexpr const char* SHORTCUT_ID = "QA_MarkerPackEditor_Icon";
 constexpr const char* SHORTCUT_MENU_ID = "QA_MarkerPackEditor_IconMenu";
 constexpr const char* ICON_TEXTURE_ID = "TEX_MarkerPackEditor_Icon";
 constexpr const char* ICON_HOVER_TEXTURE_ID = "TEX_MarkerPackEditor_IconHover";
-// The editor's bind: starts it, then hides and restores its windows. Registered by the viewer,
-// since the editor registers nothing until it runs; the id is the one the editor's own toggle
-// had, so a bind the player set carries over.
-constexpr const char* KEYBIND_EDITOR_ID = "KB_MarkerPackEditor_Toggle";
 
 // What the viewer reaches the editor through. entry.cpp connects them before the viewer loads;
 // with no editor every hook stays null and the viewer never calls into one.
@@ -46,10 +43,8 @@ struct EditorHooks {
     // register one of its own beside the viewer's.
     void (*draw_options)() = nullptr;
 
-    // Starts the editor, or shows its main window when it runs: the menu's Edit Marker Pack.
+    // Starts the editor, or shows its main window when it runs: the menu's Open Editor.
     void (*start)() = nullptr;
-    // The editor's keybind: starts it, or hides and restores its windows.
-    void (*toggle)() = nullptr;
 
     // The editor's frame and its share of the game's messages, from the viewer's own: Nexus
     // holds its render mutex across every callback, so a render callback registered when the

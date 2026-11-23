@@ -32,6 +32,8 @@ bool drawPack(settings::Settings* settings, bool* show_hidden) {
     changed |= ImGui::Checkbox("Allow markers to hide themselves", &settings->allow_auto_hide);
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("Off shows every marker, whatever festival, character or interaction would hide it.");
     changed |= ImGui::Checkbox("Allow markers to animate", &settings->allow_animation);
+    changed |= ImGui::Checkbox("Smart categories", &settings->smart_categories);
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("The menu leaves out categories with nothing on the current map.");
     changed |= ImGui::Checkbox("Show what interacting does", &settings->show_interact_prompt);
 
     static constexpr const char* kInfoDisplays[] = {"Default", "Without background", "Never"};

@@ -17,6 +17,7 @@ struct Settings {
     // Pathing's pack settings for behaviors (ModuleSettings.cs), with its defaults.
     bool allow_auto_hide = true; // "Allow Markers to Automatically Hide"
     bool allow_animation = true; // "Allow Markers to Animate": bounce
+    bool smart_categories = true; // "Enable Smart Categories": the menu leaves out other maps'
     bool show_interact_prompt = true; // "Allow Markers to Show Interact Gear On-Screen"
     int clipboard_consent = 0; // behaviors::ClipboardConsent: Always
 
