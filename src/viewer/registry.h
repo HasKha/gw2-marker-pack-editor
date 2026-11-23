@@ -44,6 +44,10 @@ struct LoadedPack {
 
     BakedPathables pathables; // every trail's geometry and map id read already
     std::vector<BakedCategory> categories;
+
+    // The pack's categories alone, with their attributes and nothing else of the model: what
+    // a marker one of its scripts creates inherits from (Pack:CreateMarker).
+    pack::Pack declared;
 };
 
 // Reads, bakes and drops the XML of the pack at `path`, and reads every trail's .trl. Slow —
@@ -53,6 +57,7 @@ LoadedPack loadPack(const std::filesystem::path& path);
 // A category in the tree every pack shares.
 struct Category {
     std::string id; // full dotted path, lowercase
+    std::string name; // its own segment, as the pack that first declared it wrote it
     std::string label; // what the menu shows: the display name, else the name
     size_t parent = pack::kNoIndex;
     std::vector<size_t> children; // in the order packs first declared them

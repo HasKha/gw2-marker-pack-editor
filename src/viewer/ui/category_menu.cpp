@@ -45,7 +45,12 @@ bool drawNode(const registry::CategoryTree& tree, size_t index, store::CategoryS
 
 } // namespace
 
-bool draw(const registry::CategoryTree& tree, store::CategoryStates* states, bool* open, const std::string& status) {
+bool draw(
+    const registry::CategoryTree& tree,
+    store::CategoryStates* states,
+    bool* open,
+    const std::string& status,
+    const std::function<void()>& footer) {
     if (!*open) return false;
 
     ImGui::SetNextWindowSize(ImVec2(360.0f, 480.0f), ImGuiCond_FirstUseEver);
@@ -57,6 +62,7 @@ bool draw(const registry::CategoryTree& tree, store::CategoryStates* states, boo
         } else {
             for (size_t root : tree.roots) changed |= drawNode(tree, root, states);
         }
+        if (footer) footer();
     }
     ImGui::End();
     return changed;

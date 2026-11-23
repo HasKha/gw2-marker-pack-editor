@@ -67,7 +67,7 @@ struct Built {
 
     void build(const viewer::Camera& camera, const viewer::TextureLookup& textures = everyTexture(), float seconds = 0.0f) {
         const viewer::runtime::LiveMap live = viewer::runtime::liveMap(installed, kMap);
-        viewer::buildScene(installed, live, viewer::runtime::visibleNodes(installed.tree, states), camera, seconds, textures, &scene);
+        viewer::buildScene(live, viewer::runtime::visibleNodes(installed.tree, states), camera, seconds, textures, &scene);
     }
 };
 
@@ -318,14 +318,7 @@ TEST_CASE("a real pack draws on its own map, and only there", "[scene][corpus]")
 
     const viewer::runtime::LiveMap live = viewer::runtime::liveMap(built.installed, first.map_id);
     REQUIRE_FALSE(live.markers.empty());
-    viewer::buildScene(
-        built.installed,
-        live,
-        viewer::runtime::visibleNodes(built.installed.tree, built.states),
-        camera,
-        1.5f,
-        everyTexture(),
-        &built.scene);
+    viewer::buildScene(live, viewer::runtime::visibleNodes(built.installed.tree, built.states), camera, 1.5f, everyTexture(), &built.scene);
     CHECK_FALSE(built.scene.items.empty());
     for (const viewer::SceneItem& item : built.scene.items) {
         for (const glm::vec3& corner : item.corners) REQUIRE(std::isfinite(corner.x + corner.y + corner.z));

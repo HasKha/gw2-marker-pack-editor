@@ -56,6 +56,11 @@ std::vector<char> visibleNodes(const registry::CategoryTree& tree, const store::
     return visible;
 }
 
+size_t nodeOf(const Installed& installed, size_t pack_index, size_t category) {
+    const std::vector<size_t>& node_of = installed.packs[pack_index]->node_of;
+    return category < node_of.size() ? node_of[category] : pack::kNoIndex;
+}
+
 LiveMap liveMap(const Installed& installed, int map_id) {
     LiveMap live;
     live.map_id = map_id;
@@ -63,11 +68,11 @@ LiveMap liveMap(const Installed& installed, int map_id) {
 
     for (size_t p = 0; p < installed.packs.size(); ++p) {
         const BakedPathables& pathables = installed.packs[p]->loaded->pathables;
-        for (size_t i = 0; i < pathables.markers.size(); ++i) {
-            if (pathables.markers[i].map_id == map_id) live.markers.push_back({p, i});
+        for (const BakedMarker& marker : pathables.markers) {
+            if (marker.map_id == map_id) live.markers.push_back({p, nodeOf(installed, p, marker.category), marker, p});
         }
-        for (size_t i = 0; i < pathables.trails.size(); ++i) {
-            if (pathables.trails[i].map_id == map_id) live.trails.push_back({p, i});
+        for (const BakedTrail& trail : pathables.trails) {
+            if (trail.map_id == map_id) live.trails.push_back({p, nodeOf(installed, p, trail.category), trail, p});
         }
     }
     return live;

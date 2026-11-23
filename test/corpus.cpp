@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cstdlib>
+#include <fstream>
 
 #ifndef MPE_TEST_PACK_DIR_DEFAULT
     #define MPE_TEST_PACK_DIR_DEFAULT ""
@@ -105,6 +106,12 @@ TempDir::TempDir(const std::string& name) {
 TempDir::~TempDir() {
     std::error_code ec;
     std::filesystem::remove_all(path_, ec);
+}
+
+void writeFile(const std::filesystem::path& path, std::string_view text) {
+    std::error_code ec;
+    std::filesystem::create_directories(path.parent_path(), ec);
+    std::ofstream(path, std::ios::binary).write(text.data(), static_cast<std::streamsize>(text.size()));
 }
 
 } // namespace corpus

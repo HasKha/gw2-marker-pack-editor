@@ -4,7 +4,6 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <chrono>
-#include <fstream>
 #include <thread>
 
 #include "corpus.h"
@@ -12,10 +11,7 @@
 
 namespace {
 
-void writeFile(const std::filesystem::path& path, const std::string& text) {
-    std::filesystem::create_directories(path.parent_path());
-    std::ofstream(path, std::ios::binary) << text;
-}
+using corpus::writeFile;
 
 viewer::BakedCategory category(std::string id, size_t parent = pack::kNoIndex) {
     viewer::BakedCategory baked;

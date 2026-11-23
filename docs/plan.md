@@ -46,7 +46,7 @@ it, save it back, and the edited markers show correctly in Blish HUD.**
 | Settings | the Settings toggles, gizmo mode, which windows are open and where the browsers start, kept in `settings.json` |
 | Create pack | `New Pack...` builds an empty pack in memory; Save As writes the first zip |
 | Write | serializes the owned document; comments, order, spelling, BOM, CRLF and the file split survive. 947/947 files stable on rewrite |
-| Tests | `mpe_test`, 44 cases over the real pack corpus, the selection rules and the trail editing layer; `mpe_viewer_test`, 66 over the camera, the quad path, textures, settings, the bake, the registry, the ribbon, the scene and the GoodRender sink; and a check that nothing in `src/viewer/` includes the editor. All run by `ctest` |
+| Tests | `mpe_test`, 44 cases over the real pack corpus, the selection rules and the trail editing layer; `mpe_viewer_test`, 85 over the camera, the quad path, textures, settings, the bake, the registry, the ribbon, the scene, the GoodRender sink and the Lua scripts, those last over every scripted corpus pack; and a check that nothing in `src/viewer/` includes the editor. All run by `ctest` |
 
 A pack can be edited end to end, grown new branches, and started from nothing. The test
 row's claims are measured against the corpus in [testing.md](testing.md).
@@ -181,21 +181,32 @@ Not in it, and not needed for the pull: Pathing's view distance, marker scale, m
 combat fade settings, which come with the rest of Pathing's settings in milestone 4. Nor
 inheritance across packs — see [viewer.md](viewer.md#packs-across-packs).
 
-### 2. Lua
+### 2. Lua — done offline
 
-- The state, the sandbox, the call-style shim, the census.
-- The API table, filled in order of what the census reports most, starting from the table in
-  [viewer.md](viewer.md#the-census): `World`, `Mumble`, `I`, marker and trail members,
-  `Event:OnTick`, `Storage`, `Debug`, `Menu`, `User.SetClipboard`.
-- The script console: messages, errors with file and line, per-pack frame time.
-- **Done when** every corpus script loads and ticks without an error offline, and the census
-  is empty for Hero's pack and Teh's Trails.
+Built: Lua 5.4 through sol2, one state for every pack, reset with every live map; Pathing's
+sandbox and `os`; the call-style shim and the census; the API — `World`, `Mumble`, `I`,
+marker, trail and category members, `Event:OnTick`, `Storage` (in `kv.json`), `Debug`, `Menu`,
+`User.SetClipboard`, `Pack:Require` and `CreateMarker`, NeoLua's LSON; a per-call time budget;
+the script console (messages, watches, frame time per pack, the census) and the scripts' menu
+under the Markers window. "Run pack scripts" in the options turns it all off. Every corpus
+script loads and ticks on each of its maps without an error, and the census is empty for
+Hero's pack and Teh's Trails.
+
+**Left: one pull in game**, deciding these in advance:
+- With Hero's pack and Teh's Trails installed: does the console stay free of errors across
+  two map changes, and does each pack's frame time stay under a millisecond?
+- Does a script-driven marker in Hero's pack — one `World:MarkerByGuid` moves or retints —
+  look as it does in Blish HUD at the same spot?
+- Does LadyElyssa's menu entry copy to the clipboard, with its message shown?
+
+Not in it: Pathing's clipboard consent setting, which comes with the interaction settings in
+milestone 3; until then every copy is allowed, and announced.
 
 ### 3. Behaviors and interaction
 
 - Every filter and modifier except achievement and raid, each with its tests.
 - Behavior state across sessions; interaction (info, toggle, copy), with Pathing's clipboard
-  consent setting.
+  consent setting, which `User.SetClipboard` then honours too.
 - **First beta here**: local packs, scripts and behaviors all working.
 
 ### 4. Maps and screen

@@ -52,11 +52,11 @@ struct Scene {
 // marker, means it is not drawn this frame, as Pathing draws nothing without one.
 using TextureLookup = std::function<ImTextureID(size_t pack, const std::string& path)>;
 
-// Builds the scene from the live map. `camera` sorts and culls, and its `player` is what fades
+// Builds the scene from the live map: what is on it, not removed, in game and under a
+// visible category. `camera` sorts and culls, and its `player` is what fades
 // are measured from; `seconds` is the time trail textures scroll by; `visible` is
 // runtime::visibleNodes.
 void buildScene(
-    const runtime::Installed& installed,
     const runtime::LiveMap& live,
     const std::vector<char>& visible,
     const Camera& camera,

@@ -17,10 +17,8 @@ std::atomic<std::shared_ptr<const Scene>> latest;
 // Below this an item is invisible: under one step of an 8-bit alpha.
 constexpr float kInvisibleOpacity = 0.003f;
 
-bool categoryVisible(const runtime::InstalledPack& pack, size_t category, const std::vector<char>& visible) {
+bool categoryVisible(size_t node, const std::vector<char>& visible) {
     // A pathable whose type names no category has nothing to turn off, so it shows.
-    if (category == pack::kNoIndex || category >= pack.node_of.size()) return true;
-    const size_t node = pack.node_of[category];
     return node >= visible.size() || visible[node];
 }
 
@@ -32,7 +30,6 @@ float squaredDistance(const glm::vec3& a, const glm::vec3& b) {
 } // namespace
 
 void buildScene(
-    const runtime::Installed& installed,
     const runtime::LiveMap& live,
     const std::vector<char>& visible,
     const Camera& camera,
@@ -45,10 +42,9 @@ void buildScene(
     // that mean nothing over it.
     if (!camera.valid || camera.map_open) return;
 
-    for (const runtime::LiveMap::Ref& ref : live.markers) {
-        const runtime::InstalledPack& pack = *installed.packs[ref.pack];
-        const BakedMarker& marker = pack.loaded->pathables.markers[ref.index];
-        if (!categoryVisible(pack, marker.category, visible)) continue;
+    for (const runtime::LiveMarker& live_marker : live.markers) {
+        const BakedMarker& marker = live_marker.marker;
+        if (live_marker.removed || !marker.in_game_visibility || !categoryVisible(live_marker.node, visible)) continue;
 
         const float opacity =
             marker.alpha * fadeFactor(metresToInches(glm::distance(marker.position, camera.player)), marker.fade_near, marker.fade_far);
@@ -60,7 +56,7 @@ void buildScene(
         const float size = marker.icon_size * 2.0f;
         if (glm::dot(marker.position - camera.position, camera.front) < -size) continue;
 
-        const ImTextureID image = texture(ref.pack, marker.icon);
+        const ImTextureID image = texture(live_marker.texture_pack, marker.icon);
         if (!image) continue;
 
         SceneItem item;
@@ -87,12 +83,11 @@ void buildScene(
     // Kept between frames: the quads of one trail run are only needed until they are copied
     // into the scene.
     static std::vector<RibbonQuad> quads;
-    for (const runtime::LiveMap::Ref& ref : live.trails) {
-        const runtime::InstalledPack& pack = *installed.packs[ref.pack];
-        const BakedTrail& trail = pack.loaded->pathables.trails[ref.index];
-        if (!trail.geometry || !categoryVisible(pack, trail.category, visible)) continue;
+    for (const runtime::LiveTrail& live_trail : live.trails) {
+        const BakedTrail& trail = live_trail.trail;
+        if (live_trail.removed || !trail.in_game_visibility || !trail.geometry || !categoryVisible(live_trail.node, visible)) continue;
 
-        const ImTextureID image = texture(ref.pack, trail.texture);
+        const ImTextureID image = texture(live_trail.texture_pack, trail.texture);
         if (!image) continue;
 
         const float scroll = seconds * trail.anim_speed;

@@ -23,7 +23,7 @@ planned, not built.
 - **Scratch goes in `tmp/`**, gitignored, and nothing committed references it.
 - Build: `cmake -S . -B build && cmake --build build --config Release`, or `--config Debug` into
   `bin/Debug/`. A new file needs a configure pass.
-- Tests: `ctest --test-dir build -C Release --output-on-failure`, under two seconds, no game needed.
+- Tests: `ctest --test-dir build -C Release --output-on-failure`, a few seconds, no game needed.
 
 ## Docs
 

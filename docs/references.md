@@ -64,6 +64,7 @@ Scripts see more than Pathing's own code. What else defines the API they are wri
 |---|---|---|
 | **Blish HUD** | `github.com/blish-hud/Blish-HUD` — `Blish HUD/GameServices/Gw2MumbleService.cs`, `Blish HUD/GameServices/Gw2Mumble/` (`CurrentMap`, `PlayerCharacter`, `PlayerCamera`, `UI`, `Info`) | **every `Mumble.*` member.** `PathingGlobal` hands scripts Blish HUD's own `GameService.Gw2Mumble`, so its names, units and types are the API, not MumbleLink's |
 | **NeoLua** | `github.com/neolithos/neolua` | how a .NET object behaves in Lua: method calls with `.` or `:`, number and string conversions, `Int32`/`Float` arithmetic. What the call-style shim and the number notes in [viewer.md](viewer.md#lua) imitate |
+| **Gw2Sharp** | `github.com/Archomeda/Gw2Sharp` — `Gw2Sharp/Models/` (`ProfessionType`, `RaceType`, `UiSize`, `MapType`, `MountType`) | the enum names `Mumble.*` members return as strings, and their numbers |
 | **MonoGame 3.8** | `github.com/MonoGame/MonoGame` — `MonoGame.Framework/Vector3.cs`, `Color.cs`, `GameTime.cs` | the value types scripts hold: `Vector3`'s methods, `Color`'s constructors and channels, `GameTime` as `OnTick` hands it. Pathing pins 3.8.0.1641 |
 
 Other viewers, read for how, never copied from:

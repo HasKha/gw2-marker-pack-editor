@@ -54,7 +54,12 @@ src/
     bake.*         pack::Pack -> the runtime model: resolved attributes, grouped by map id
     runtime.*      the live map: visibility, fade state, behaviors' state, markers scripts made
     behaviors/     one file per filter and modifier, mirroring Pathing/Behavior/
-    script/        the Lua state, the sandbox, the Pathing API table, the call-style shim
+    script/        the Lua state and the Pathing API: engine.* (the state, loading, ticking),
+                   object.* (the member tables, the call-style shim, the census), values.cpp,
+                   world.cpp and globals.cpp (the API itself), os_library.cpp, lson.*,
+                   mumble.* (MumbleLink as Blish HUD names it), console.*
+    guid.*         Pathing's Guid: from the pack's base64, or an MD5 of any other text
+    identity.*     MumbleLink's identity JSON, read once per change
     scene.*        this frame's world quads, billboards and screen items, built from runtime
     render/        the sinks: good_render.* (moments) and overlay.* (Nexus render, draw list)
     map.*          the minimap and full map projection (Pathing's Entity/MapProjection.cs)
@@ -156,20 +161,38 @@ Lua almost as they are. The job is to present the same names and the same behavi
   shim, wrapped around every row, never a special case per member.
 - **.NET shows through, and is reproduced.** `Event:OnTick` hands an XNA `GameTime`, so
   scripts read `.TotalGameTime.TotalSeconds`; `Vector3` has `Length`, `Dot`, `Cross`,
-  `Normalize`; `I:Vector3`, `I:Color` (byte channels, alpha 255 by default), `I:Guid`, `I:Texture`, `I:Marker` and `I:Trail` construct.
+  `Normalize`; `I:Vector3`, `I:Color` (byte channels, alpha 255 by default), `I:Guid`,
+  `I:Texture` and `I:Marker` construct. `I:Trail` is not built: Pathing's throws, and no pack
+  calls it.
+- **.NET's conversions too.** A nil handed where .NET wants a value type is that type's
+  default — 0, a zero vector, transparent black, the empty Guid — as NeoLua converts it, and
+  Teh's Trails relies on it. Enums are Gw2Sharp's names as strings (`"Elementalist"`), a
+  number where the value has no name. A Guid is an interned userdata, so two lookups of the
+  same marker give keys a table sees as one; entity handles are cached by index the same way.
+- **Positions are Blish HUD's**, (x, z, y) of the file's and MumbleLink's (x, y, z). A
+  marker's `Position` leaves out its `heightOffset`, as Pathing's does.
 - **Numbers.** Pathing builds its state with Int32 integers and single floats
   (`new Lua(LuaIntegerType.Int32, LuaFloatType.Float)`); 5.4 has 64-bit integers and
-  doubles. The difference only shows on overflow and precision. Noted, and not imitated unless
-  a pack turns out to need it.
+  doubles. The difference only shows on overflow and precision, and in printing: NeoLua
+  prints a float 5 as `5`, 5.4 as `5.0`. Noted, and not imitated unless a pack turns out to
+  need it.
 - **The sandbox is Pathing's**, `Scripting/PathingGlobal.cs`: the base functions it replicates
-  and no others, the `os` subset in `Scripting/Lib/Std/LuaLibraryOS.cs`, and `require` resolved
-  through the pack's own files. No `io`, no loading from disk, no `debug`.
+  and no others — no `pcall`, `error`, `load`, `io`, `debug` or `package` — and `require`
+  resolved through the pack's own files. NeoLua's own extras (`rawmembers`, `mpairs`,
+  `bit32` and the rest) are left out until a pack calls one. Pathing's `os` is
+  `Scripting/Lib/Std/LuaLibraryOS.cs` with its quirks kept: `os.time` reads local time as
+  if it were UTC, `wday` counts from 0, and an impossible date returns nil and a message.
+  `table.ToLson`/`FromLson` are NeoLua's serialization, which Teh's Trails stores through.
 - **A script error never escapes.** sol2 with its safeties on, every call into Lua protected.
-  An error goes to the script console against its pack, file and line, and that script's
-  handlers stop; nothing else does.
+  An error goes to the script console against its pack, file and line, and that call stops;
+  nothing else does. A call that runs past `Host::call_budget` (two seconds) is stopped the
+  same way, from a count hook, so a loop that never ends costs a hitch and a message rather
+  than the game.
 - **Each pack's frame time is measured** and shown in the console, as Pathing measures it, so
   a slow script is named rather than felt.
-- `Storage` is one key-value store across all packs, as Pathing's `KvStates` is, and persisted.
+- `Storage` is one key-value store across all packs, as Pathing's `KvStates` is, keyed
+  `namespace\name` (`000` when a script gives none) and persisted in `kv.json`, written at
+  most every five seconds.
 
 ### The census
 
@@ -267,8 +290,10 @@ As in the rest of the repo: against the real corpus, offline, under `ctest`.
   for the same node. Two readings of inheritance would be two chances to disagree, so one is
   checked against the other.
 - **Behaviors**: each filter and modifier as a function of its inputs, a case per value.
-- **Lua**: every corpus script loads and ticks a number of frames on each of its maps against a
-  fake MumbleLink, with no errors; the census is empty for what is marked done.
+- **Lua**: every corpus script loads and ticks three frames on each of its maps against a
+  zeroed MumbleLink, with no errors; the census is empty for Hero's pack and Teh's Trails
+  (`script_corpus_test.cpp`). The API's rules each have a case over a small pack written to a
+  temp folder (`script_test.cpp`).
 - **Scene**: built through a recording sink, so what would be drawn is asserted without a
   device.
 

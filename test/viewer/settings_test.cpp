@@ -3,20 +3,12 @@
 
 #include <catch2/catch_test_macros.hpp>
 
-#include <fstream>
 #include <string>
 
 #include "corpus.h"
 #include "viewer/settings.h"
 
-namespace {
-
-void writeFile(const std::filesystem::path& path, const std::string& text) {
-    std::ofstream output(path, std::ios::trunc);
-    output << text;
-}
-
-} // namespace
+using corpus::writeFile;
 
 TEST_CASE("a new install starts with editing off", "[viewer][settings]") {
     const corpus::TempDir temp("settings_new");
@@ -54,14 +46,17 @@ TEST_CASE("a broken settings file leaves the defaults standing", "[viewer][setti
     CHECK(viewer::settings::load(temp.path()).enable_editing);
 }
 
-TEST_CASE("the Blish HUD folder is read unless it was turned off", "[viewer][settings]") {
+TEST_CASE("the Blish HUD folder is read, and scripts run, unless turned off", "[viewer][settings]") {
     const corpus::TempDir temp("settings_blish");
     CHECK(viewer::settings::load(temp.path()).read_blish_folder);
+    CHECK(viewer::settings::load(temp.path()).run_scripts);
 
     viewer::settings::Settings settings;
     settings.read_blish_folder = false;
+    settings.run_scripts = false;
     REQUIRE(viewer::settings::save(temp.path(), settings));
     CHECK_FALSE(viewer::settings::load(temp.path()).read_blish_folder);
+    CHECK_FALSE(viewer::settings::load(temp.path()).run_scripts);
 }
 
 TEST_CASE("no folder means nothing is read and nothing is written", "[viewer][settings]") {

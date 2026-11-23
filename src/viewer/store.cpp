@@ -41,4 +41,42 @@ bool CategoryStates::save(const std::filesystem::path& file) const {
     return json_file::write(file, out);
 }
 
+const std::string& KeyValues::upsert(const std::string& key, std::string value) {
+    auto [it, inserted] = values_.try_emplace(key);
+    if (inserted || it->second != value) {
+        it->second = std::move(value);
+        dirty_ = true;
+    }
+    return it->second;
+}
+
+std::optional<std::string> KeyValues::read(const std::string& key) const {
+    const auto it = values_.find(key);
+    if (it == values_.end()) return std::nullopt;
+    return it->second;
+}
+
+void KeyValues::erase(const std::string& key) {
+    if (values_.erase(key) > 0) dirty_ = true;
+}
+
+void KeyValues::load(const std::filesystem::path& file) {
+    values_.clear();
+    dirty_ = false;
+
+    const std::optional<nlohmann::json> parsed = json_file::readObject(file);
+    if (!parsed) return;
+    for (const auto& [key, value] : parsed->items()) {
+        if (value.is_string()) values_.emplace(key, value.get<std::string>());
+    }
+}
+
+bool KeyValues::save(const std::filesystem::path& file) {
+    nlohmann::json out = nlohmann::json::object();
+    for (const auto& [key, value] : values_) out[key] = value;
+    if (!json_file::write(file, out)) return false;
+    dirty_ = false;
+    return true;
+}
+
 } // namespace viewer::store

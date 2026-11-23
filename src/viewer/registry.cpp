@@ -71,6 +71,10 @@ LoadedPack loadPack(const std::filesystem::path& path) {
 
     loaded.pathables = bake(model);
     loaded.categories = bakeCategories(model);
+    loaded.declared.categories = std::move(model.categories);
+    loaded.declared.roots = std::move(model.roots);
+    // Their nodes point into documents that go with `model`.
+    for (pack::Category& category : loaded.declared.categories) category.declarations.clear();
 
     // Every trail's points, now, on the worker: the map a trail is on is in its .trl header
     // and nowhere else, and the live map has to know it the moment the player arrives. Two
@@ -108,6 +112,7 @@ std::vector<size_t> mergeCategories(CategoryTree* tree, const std::vector<BakedC
             node = tree->nodes.size();
             Category added;
             added.id = baked.id;
+            added.name = baked.name;
             added.label = baked.name;
             added.parent = baked.parent == pack::kNoIndex ? pack::kNoIndex : node_of[baked.parent];
             tree->nodes.push_back(std::move(added));

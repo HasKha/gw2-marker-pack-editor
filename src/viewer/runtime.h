@@ -57,21 +57,44 @@ void clear(Installed* installed);
 // Per node of `tree`, whether what is under it shows: it and every ancestor are on.
 std::vector<char> visibleNodes(const registry::CategoryTree& tree, const store::CategoryStates& states);
 
-// What of the installed packs is on one map, as indices into each pack's baked pathables.
+// A marker on the live map: a copy of its pack's, which scripts are free to change.
+struct LiveMarker {
+    size_t pack = 0; // into Installed::packs: the pack it, or the script that made it, came from
+    size_t node = pack::kNoIndex; // its category in the shared tree; kNoIndex when it has none
+    BakedMarker marker;
+
+    // Whose files `marker.icon` is read from: `pack`'s, unless a script handed it another
+    // pack's texture.
+    size_t texture_pack = 0;
+
+    // By a script. Left in place rather than erased, so that every index a script's handle
+    // holds stays valid until the map, and with it the script state, is thrown away.
+    bool removed = false;
+};
+
+struct LiveTrail {
+    size_t pack = 0;
+    size_t node = pack::kNoIndex;
+    BakedTrail trail; // its geometry shared with the pack's, not copied
+    size_t texture_pack = 0; // as LiveMarker's
+    bool removed = false;
+};
+
+// What of the installed packs is on one map, copied out of each pack's baked pathables, and
+// whatever scripts made of it since: Pathing's PackState.Entities.
 struct LiveMap {
     int map_id = kMapUnknown;
     uint64_t revision = 0; // the Installed::revision it was built from
 
-    struct Ref {
-        size_t pack = 0;
-        size_t index = 0;
-    };
-    std::vector<Ref> markers;
-    std::vector<Ref> trails;
+    std::vector<LiveMarker> markers;
+    std::vector<LiveTrail> trails;
 };
 
-// Scans every pack for `map_id`. Done on a map change or when the packs change, not per frame:
-// it walks every marker of every pack.
+// The node `category` of pack `pack_index` landed in, or kNoIndex.
+size_t nodeOf(const Installed& installed, size_t pack_index, size_t category);
+
+// Copies out every pack's markers and trails on `map_id`. Done on a map change or when the
+// packs change, not per frame: it walks every marker of every pack.
 LiveMap liveMap(const Installed& installed, int map_id);
 
 } // namespace viewer::runtime

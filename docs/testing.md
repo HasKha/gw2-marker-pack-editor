@@ -9,9 +9,9 @@ ctest --test-dir build -C Release --output-on-failure
 
 They assert the whole read → model → write → save round trip — every pack parses, the writer is stable,
 comments and BOM and CRLF survive, a save reopens as the same model — against the real packs rather than
-fixtures. No game needed, and a few seconds: about two and a half run one case at a time, which is how ctest
-runs by default, and half that with `-j8`. Nearly all of it is the corpus sweep in `corpus_test.cpp` and a
-process per case; `mpe_viewer_test` on its own takes milliseconds.
+fixtures. No game needed, and a few seconds: about four and a half run one case at a time, which is how ctest
+runs by default, and half that with `-j8`. Nearly all of it is three sweeps over the corpus — the format in
+`corpus_test.cpp`, the bake, and the scripts — and a process per case.
 
 **A fix comes with a case that fails before it.** A fix without one is a fix that comes back. Never verify
 pack-layer work by launching the game, or by hand.
@@ -78,7 +78,14 @@ the rest. A viewer test that needs an editor header does not compile, which is t
 needs a device: the quad path draws into a real `ImDrawList` made from a bare ImGui context, the texture
 cache runs against an `AddonAPI` whose one texture function is a fake, and the GoodRender sink submits to
 a moment whose `world_quad` records what it is handed. Rules get a small pack written to a temp folder;
-the pipeline as a whole gets `haskha_markers.zip`, loaded through the registry and built into a scene. `test/viewer/test_camera.h`
+the pipeline as a whole gets `haskha_markers.zip`, loaded through the registry and built into a scene.
+
+Scripts are tested the same two ways. `script_test.cpp` writes a pack with a `pack.lua` and asks the engine
+what a line of Lua prints, one case per rule of the API: call styles, the census, errors and the time
+budget, the sandbox, `os`, LSON, markers read and written. `script_corpus_test.cpp` runs every corpus pack
+that has a `pack.lua` on each of its maps — reset, load, three ticks a second apart — and fails on any error
+in the console; for Hero's pack and Teh's Trails it fails on any census entry too, listing them. A pack
+whose script starts failing after an API change shows up there with its file and line. `test/viewer/test_camera.h`
 is the camera whose projections can be written by hand, for any test that projects.
 
 ## Above the pack layer

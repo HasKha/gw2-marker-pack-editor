@@ -25,6 +25,13 @@ std::string stringOf(const pack::Pack& pack, const pack::Pathable& pathable, con
     return value ? *value : std::string();
 }
 
+// `guid` is the one identity attribute that inherits, as format.md says of every pathable
+// attribute in Pathing. Empty or missing gets a fresh one (Populate_Guid).
+Guid guidOf(const pack::Pack& pack, const pack::Pathable& pathable) {
+    const std::string* text = pack.effectiveValue(pathable, "guid");
+    return text && !text->empty() ? guidFromText(*text) : newGuid();
+}
+
 // rotate="x,y,z" with any number of components; Blish fills the rest with zero.
 void applyRotateList(std::string_view text, glm::vec3* out) {
     size_t component = 0;
@@ -98,6 +105,43 @@ bool markerTransform(const pack::Pack& pack, const pack::Pathable& pathable, Mar
     return true;
 }
 
+bool bakeMarker(const pack::Pack& pack, const pack::Pathable& pathable, BakedMarker* out) {
+    MarkerTransform transform;
+    if (!markerTransform(pack, pathable, &transform)) return false;
+
+    out->category = pathable.category;
+    out->map_id = pack.effectiveInt(pathable, "mapid");
+    out->position = transform.position;
+    out->height_offset = transform.height_offset;
+    out->has_rotation = transform.has_rotation;
+    out->rotation = transform.rotation;
+    out->icon_size = pack.effectiveFloat(pathable, "iconsize");
+    out->alpha = pack.effectiveFloat(pathable, "alpha");
+    out->min_size = pack.effectiveFloat(pathable, "minsize");
+    out->max_size = pack.effectiveFloat(pathable, "maxsize");
+    out->fade_near = pack.effectiveFloat(pathable, "fadenear");
+    out->fade_far = pack.effectiveFloat(pathable, "fadefar");
+    out->tint = tintOf(pack, pathable);
+    out->icon = stringOf(pack, pathable, "iconfile");
+    out->guid = guidOf(pack, pathable);
+    const std::string* tip_name = pack.effectiveValue(pathable, "tip-name");
+    if (tip_name) {
+        out->tip_name = *tip_name;
+    } else if (pathable.category != pack::kNoIndex) {
+        out->tip_name = pack.categories[pathable.category].displayName();
+    }
+    out->tip_description = stringOf(pack, pathable, "tip-description");
+    out->in_game_visibility = pack.effectiveBool(pathable, "ingamevisibility");
+    out->map_visibility = pack.effectiveBool(pathable, "mapvisibility");
+    out->minimap_visibility = pack.effectiveBool(pathable, "minimapvisibility");
+    // inforange is an alias, taken only while triggerrange is still the default.
+    out->trigger_range = pack.effectiveFloat(pathable, "triggerrange");
+    if (out->trigger_range == pack::defaultFloat("triggerrange")) {
+        if (const std::string* info_range = pack.effectiveValue(pathable, "inforange")) pack::parseFloat(*info_range, &out->trigger_range);
+    }
+    return true;
+}
+
 BakedPathables bake(const pack::Pack& pack) {
     BakedPathables out;
 
@@ -107,24 +151,9 @@ BakedPathables bake(const pack::Pack& pack) {
         if (pathable.type == pack::PathableType::Route) continue; // deprecated, never drawn
 
         if (pathable.type == pack::PathableType::Poi) {
-            MarkerTransform transform;
-            if (!markerTransform(pack, pathable, &transform)) continue;
-
             BakedMarker marker;
+            if (!bakeMarker(pack, pathable, &marker)) continue;
             marker.pathable = i;
-            marker.category = pathable.category;
-            marker.map_id = pack.effectiveInt(pathable, "mapid");
-            marker.position = transform.position;
-            marker.has_rotation = transform.has_rotation;
-            marker.rotation = transform.rotation;
-            marker.icon_size = pack.effectiveFloat(pathable, "iconsize");
-            marker.alpha = pack.effectiveFloat(pathable, "alpha");
-            marker.min_size = pack.effectiveFloat(pathable, "minsize");
-            marker.max_size = pack.effectiveFloat(pathable, "maxsize");
-            marker.fade_near = pack.effectiveFloat(pathable, "fadenear");
-            marker.fade_far = pack.effectiveFloat(pathable, "fadefar");
-            marker.tint = tintOf(pack, pathable);
-            marker.icon = stringOf(pack, pathable, "iconfile");
             out.markers.push_back(std::move(marker));
         } else {
             BakedTrail trail;
@@ -135,8 +164,13 @@ BakedPathables bake(const pack::Pack& pack) {
             trail.anim_speed = pack.effectiveFloat(pathable, "animspeed");
             trail.is_wall = pack.effectiveBool(pathable, "iswall");
             trail.tint = tintOf(pack, pathable);
+            if (pack.effectiveValue(pathable, "color") || pack.effectiveValue(pathable, "tint")) trail.sample_colour = trail.tint;
             trail.texture = stringOf(pack, pathable, "texture");
             trail.data = stringOf(pack, pathable, "traildata");
+            trail.guid = guidOf(pack, pathable);
+            trail.in_game_visibility = pack.effectiveBool(pathable, "ingamevisibility");
+            trail.map_visibility = pack.effectiveBool(pathable, "mapvisibility");
+            trail.minimap_visibility = pack.effectiveBool(pathable, "minimapvisibility");
 
             // Trails default to 700/900 where markers default to disabled, so the table's
             // marker defaults cannot be used here. See docs/format.md.

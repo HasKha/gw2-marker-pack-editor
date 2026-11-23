@@ -1,5 +1,6 @@
 #pragma once
 
+#include <functional>
 #include <string>
 
 #include "viewer/registry.h"
@@ -9,7 +10,13 @@
 namespace viewer::ui::category_menu {
 
 // Draws the window while `*open`, its close button clearing it. `status` is a line above the
-// tree — how the loading is going. True when a category was turned on or off this frame.
-bool draw(const registry::CategoryTree& tree, store::CategoryStates* states, bool* open, const std::string& status);
+// tree — how the loading is going — and `footer`, when given, draws below it: the scripts'
+// menu entries. True when a category was turned on or off this frame.
+bool draw(
+    const registry::CategoryTree& tree,
+    store::CategoryStates* states,
+    bool* open,
+    const std::string& status,
+    const std::function<void()>& footer = {});
 
 } // namespace viewer::ui::category_menu

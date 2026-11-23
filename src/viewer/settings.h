@@ -20,6 +20,9 @@ struct Settings {
     // over from Blish HUD keeps their packs without copying anything; off for one still
     // running Blish HUD, who would otherwise see every marker twice.
     bool read_blish_folder = true;
+
+    // Whether packs' Lua scripts run: Pathing's "Enable Lua Scripts", on by default as there.
+    bool run_scripts = true;
 };
 
 // Reads the settings in `folder`. Anything missing keeps its default — except

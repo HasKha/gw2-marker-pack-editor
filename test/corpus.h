@@ -58,4 +58,8 @@ private:
     std::filesystem::path path_;
 };
 
+// Writes `text` to `path` byte for byte, creating its folder first: how a test lays out a
+// small pack, or a settings file, of its own.
+void writeFile(const std::filesystem::path& path, std::string_view text);
+
 } // namespace corpus

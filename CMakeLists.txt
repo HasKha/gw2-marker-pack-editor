@@ -30,6 +30,7 @@ include(miniz)
 include(nfd)
 include(catch2)
 include(good_render)
+include(lua)
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${PROJECT_SOURCE_DIR}/bin/")
 
@@ -78,8 +79,10 @@ target_link_libraries(mpe_viewer PUBLIC
     nexus
     nlohmann_json::nlohmann_json
     good_render
+    sol2
     shell32  # SHGetKnownFolderPath
     ole32    # CoTaskMemFree
+    bcrypt   # BCryptHash, for Pathing's MD5 of a made-up guid
 )
 
 # ── mpe_editor ────────────────────────────────────────────────────────────────

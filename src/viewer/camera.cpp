@@ -1,13 +1,13 @@
 #include "viewer/camera.h"
 
-#include <nlohmann/json.hpp>
-
 #include <algorithm>
 #include <cmath>
 #include <string>
 
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtc/matrix_transform.hpp>
+
+#include "viewer/identity.h"
 
 namespace viewer {
 
@@ -19,39 +19,6 @@ glm::vec3 toGlm(const Vector3& v) {
 
 bool isFinite(const glm::vec3& v) {
     return std::isfinite(v.x) && std::isfinite(v.y) && std::isfinite(v.z);
-}
-
-// Nexus does not expose a parsed Mumble identity — there is no DL_MUMBLE_LINK_IDENTITY
-// and Nexus.h mentions Identity nowhere. So the FOV has to come from the raw identity
-// JSON that the game writes into Mumble::Data::Identity.
-//
-// Reparsing that every frame would be wasteful, so the last-seen string is cached and the
-// JSON is only touched when the game changes it.
-float parseFieldOfView(const wchar_t* identity, float fallback) {
-    static std::wstring cached_identity;
-    static float cached_fov = 0.0f;
-
-    if (!identity || identity[0] == L'\0') return fallback;
-
-    if (cached_identity == identity) return cached_fov > 0.0f ? cached_fov : fallback;
-
-    cached_identity = identity;
-    cached_fov = 0.0f;
-
-    // The identity JSON is ASCII in practice apart from the character name, and we only
-    // need a number out of it, so a narrowing copy is enough.
-    std::string narrow;
-    narrow.reserve(cached_identity.size());
-    for (wchar_t c : cached_identity) narrow.push_back(c < 128 ? static_cast<char>(c) : '?');
-
-    // Malformed identity must not take the addon down; the caller's fallback is fine.
-    nlohmann::json parsed = nlohmann::json::parse(narrow, nullptr, false);
-    if (parsed.is_discarded() || !parsed.is_object()) return fallback;
-
-    auto it = parsed.find("fov");
-    if (it != parsed.end() && it->is_number()) cached_fov = it->get<float>();
-
-    return cached_fov > 0.0f ? cached_fov : fallback;
 }
 
 } // namespace
@@ -238,7 +205,7 @@ Camera fromMumble(const Mumble::Data* mumble, const glm::vec2& viewport) {
 
     camera.viewport = viewport;
     camera.aspect = camera.viewport.x / camera.viewport.y;
-    camera.fov = parseFieldOfView(mumble->Identity, camera.fov);
+    if (const float fov = parseIdentity(mumble->Identity).fov; fov > 0.0f) camera.fov = fov;
 
     // Left-handed to match Mumble's coordinate system.
     camera.view = glm::lookAtLH(camera.position, camera.position + camera.front, camera.up);

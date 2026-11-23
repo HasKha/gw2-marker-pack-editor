@@ -2,7 +2,10 @@
 
 #include <imgui.h>
 
+#include <windows.h>
+
 #include <algorithm>
+#include <chrono>
 #include <memory>
 #include <string>
 #include <vector>
@@ -14,10 +17,13 @@
 #include "viewer/render/overlay.h"
 #include "viewer/runtime.h"
 #include "viewer/scene.h"
+#include "viewer/script/engine.h"
+#include "viewer/script/mumble.h"
 #include "viewer/settings.h"
 #include "viewer/store.h"
 #include "viewer/textures.h"
 #include "viewer/ui/category_menu.h"
+#include "viewer/ui/script_console.h"
 
 namespace viewer {
 
@@ -58,9 +64,68 @@ std::filesystem::path edit_requested;
 std::filesystem::path edit_applied;
 
 bool markers_window = false;
+bool console_window = false;
+
+// Scripts: one engine for every pack, built again with every live map, as Pathing's is with
+// every map. `scripts_stale` holds from the moment the live map is replaced until the engine
+// has been reset onto it — a script's handles are indices into the live map, so it must not
+// tick in between.
+std::unique_ptr<script::Engine> scripts;
+script::MumbleState mumble_state;
+store::KeyValues script_storage;
+bool scripts_stale = true;
+
+// What outlives the session is written at most this often, as Pathing flushes its states,
+// since a script may change them every tick.
+constexpr std::chrono::seconds kSaveInterval{5};
+std::chrono::steady_clock::time_point last_save;
+uint64_t saved_categories = 0; // the CategoryStates revision last written
 
 std::filesystem::path categoriesFile() {
     return folder.empty() ? folder : folder / store::CATEGORIES_FILE_NAME;
+}
+
+std::filesystem::path storageFile() {
+    return folder.empty() ? folder : folder / store::STORAGE_FILE_NAME;
+}
+
+void saveStates() {
+    if (category_states.revision() != saved_categories && category_states.save(categoriesFile()))
+        saved_categories = category_states.revision();
+    if (script_storage.dirty()) script_storage.save(storageFile());
+    last_save = std::chrono::steady_clock::now();
+}
+
+// User.SetClipboard. Pathing's consent setting, whose default lets packs copy, comes with the
+// rest of its interaction settings; until then every copy is allowed, and said.
+bool setClipboard(const std::string& text, const std::string& message) {
+    const int length = MultiByteToWideChar(CP_UTF8, 0, text.c_str(), -1, nullptr, 0);
+    if (length <= 0 || !OpenClipboard(nullptr)) return false;
+    EmptyClipboard();
+    bool copied = false;
+    if (HGLOBAL memory = GlobalAlloc(GMEM_MOVEABLE, static_cast<size_t>(length) * sizeof(wchar_t))) {
+        MultiByteToWideChar(CP_UTF8, 0, text.c_str(), -1, static_cast<wchar_t*>(GlobalLock(memory)), length);
+        GlobalUnlock(memory);
+        copied = SetClipboardData(CF_UNICODETEXT, memory) != nullptr;
+        if (!copied) GlobalFree(memory);
+    }
+    CloseClipboard();
+    if (copied && api) api->UI.SendAlert(message.c_str());
+    return copied;
+}
+
+// Where the scripts are: freshly reset onto the live map once every pack is in, as Pathing
+// runs them once a map's packs have loaded; then ticked every frame.
+void runScripts() {
+    if (!persisted.run_scripts) return;
+    if (scripts_stale) {
+        if (loader.busy()) return;
+        scripts->reset();
+        scripts->loadPacks();
+        scripts_stale = false;
+    }
+    const ImGuiIO& io = ImGui::GetIO();
+    scripts->tick(ImGui::GetTime(), io.DeltaTime);
 }
 
 // Every pack in our own folder and, unless turned off, in Blish HUD's.
@@ -88,6 +153,11 @@ void reloadPacks() {
     loader.stop();
     runtime::clear(&installed);
     discoverAndLoad();
+}
+
+void replaceLiveMap(int map_id) {
+    live = runtime::liveMap(installed, map_id);
+    scripts_stale = true;
 }
 
 // Takes what the loader has finished, and what the editor has taken or given back.
@@ -126,8 +196,12 @@ void preRender() {
     const Camera camera = fromMumble(mumble_link, glm::vec2(display.x, display.y));
 
     if (camera.valid && (live.map_id != static_cast<int>(camera.map_id) || live.revision != installed.revision)) {
-        live = runtime::liveMap(installed, static_cast<int>(camera.map_id));
+        replaceLiveMap(static_cast<int>(camera.map_id));
     }
+    mumble_state = script::mumbleState(mumble_link);
+    runScripts();
+    if (std::chrono::steady_clock::now() - last_save > kSaveInterval) saveStates();
+
     if (visible_revision != category_states.revision() || visible_tree != installed.revision) {
         visible = runtime::visibleNodes(installed.tree, category_states);
         visible_revision = category_states.revision();
@@ -146,7 +220,7 @@ void preRender() {
     };
 
     std::shared_ptr<Scene> next = spare_scene && spare_scene.use_count() == 1 ? spare_scene : std::make_shared<Scene>();
-    buildScene(installed, live, visible, camera, static_cast<float>(ImGui::GetTime()), texture, next.get());
+    buildScene(live, visible, camera, static_cast<float>(ImGui::GetTime()), texture, next.get());
     spare_scene = std::move(current_scene);
     current_scene = next;
     publish(std::move(next));
@@ -163,9 +237,12 @@ void render() {
         }
     }
 
-    if (ui::category_menu::draw(installed.tree, &category_states, &markers_window, loadingStatus())) {
-        category_states.save(categoriesFile());
-    }
+    const auto script_menu = [] {
+        if (persisted.run_scripts) ui::script_console::drawMenu(scripts.get());
+    };
+    // A player's own toggle is written at once, not with the scripts' changes.
+    if (ui::category_menu::draw(installed.tree, &category_states, &markers_window, loadingStatus(), script_menu)) saveStates();
+    ui::script_console::draw(*scripts, installed, &console_window);
 }
 
 void drawOptions() {
@@ -182,11 +259,21 @@ void drawOptions() {
     }
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("Turn off while Blish HUD is running, or every marker shows twice.");
 
+    if (ImGui::Checkbox("Run pack scripts", &persisted.run_scripts)) {
+        settings::save(folder, persisted);
+        // Off throws every handler away, and what scripts did to the map with them; on starts
+        // them again from pack.lua.
+        scripts->reset();
+        replaceLiveMap(live.map_id);
+    }
+
     if (ImGui::Button("Reload packs")) reloadPacks();
     ImGui::SameLine();
     ImGui::Text("%s", loadingStatus().c_str());
 
     ImGui::Checkbox("Markers window", &markers_window);
+    ImGui::SameLine();
+    ImGui::Checkbox("Script console", &console_window);
 
     if (editor.draw_options) {
         ImGui::Separator();
@@ -196,6 +283,7 @@ void drawOptions() {
 
 void drawQuickAccess() {
     if (ImGui::MenuItem("Markers")) markers_window = !markers_window;
+    if (ImGui::MenuItem("Script console")) console_window = !console_window;
 }
 
 void onMarkersKeybind(const char*, bool is_release) {
@@ -214,6 +302,21 @@ void load(AddonAPI* aApi, Mumble::Data* aMumbleLink) {
     persisted = settings::load(folder);
     editing_this_session = persisted.enable_editing;
     category_states.load(categoriesFile());
+    saved_categories = category_states.revision();
+    script_storage.load(storageFile());
+
+    script::Host host;
+    host.installed = &installed;
+    host.live = &live;
+    host.category_states = &category_states;
+    host.storage = &script_storage;
+    host.mumble = &mumble_state;
+    host.set_clipboard = setClipboard;
+    host.show_message = [](const std::string& text) {
+        if (api) api->UI.SendAlert(text.c_str());
+    };
+    scripts = std::make_unique<script::Engine>(host);
+    scripts_stale = true;
 
     discoverAndLoad();
     good_render_sink::load();
@@ -238,6 +341,8 @@ void unload() {
     api->InputBinds.Deregister(KEYBIND_MARKERS_ID);
 
     loader.stop();
+    saveStates();
+    scripts.reset();
     publish(nullptr);
     current_scene.reset();
     spare_scene.reset();

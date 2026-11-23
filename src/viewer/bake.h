@@ -12,6 +12,7 @@
 #include "pack/model.h"
 #include "pack/trl.h"
 #include "viewer/camera.h"
+#include "viewer/guid.h"
 
 // A pack resolved for drawing: every inherited attribute looked up once, so a frame never
 // walks the category chain.
@@ -48,6 +49,7 @@ struct BakedMarker {
     int map_id = 0;
 
     glm::vec3 position{0.0f}; // with heightOffset applied
+    float height_offset = 0.0f; // already in `position`; a script sees and sets the position without it
     bool has_rotation = false; // see MarkerTransform
     glm::vec3 rotation{0.0f}; // radians
 
@@ -59,6 +61,16 @@ struct BakedMarker {
     float fade_far = -1.0f; // inches
     ImU32 tint = IM_COL32_WHITE;
     std::string icon;
+
+    Guid guid; // random when the pack gives none, as Pathing's is
+    bool in_game_visibility = true;
+    bool map_visibility = true;
+    bool minimap_visibility = true;
+    float trigger_range = 2.0f; // triggerrange, or inforange standing in for it (StandardMarker_Focus.cs)
+
+    // What the marker's tooltip says: tip-name, else its category's display name.
+    std::string tip_name;
+    std::string tip_description;
 };
 
 // No real map has this id, so it is safe as "not resolved yet" — see BakedTrail::map_id.
@@ -85,6 +97,16 @@ struct BakedTrail {
     ImU32 tint = IM_COL32_WHITE;
     std::string texture;
     std::string data;
+
+    // The colour the trail is drawn with on the map: its tint when it has one, and white
+    // until then. Pathing samples the texture for a trail with no tint; that comes with the
+    // map (StandardTrail[texture].cs).
+    ImU32 sample_colour = IM_COL32_WHITE;
+
+    Guid guid;
+    bool in_game_visibility = true;
+    bool map_visibility = true;
+    bool minimap_visibility = true;
 
     // The points, when they were read up front. Null in the editor, which reads them through
     // its own cache so that an edit shows at once.
@@ -114,6 +136,11 @@ struct BakedCategory {
 // One entry per Pack::categories, in the same order, so a baked pathable's `category` indexes
 // this list too.
 std::vector<BakedCategory> bakeCategories(const pack::Pack& pack);
+
+// The marker `pathable` describes, resolved through `pack`'s categories. False for one that
+// cannot be placed — see markerTransform. `pathable` need not be one of `pack.pathables`: a
+// marker a script creates is baked against its pack's categories the same way.
+bool bakeMarker(const pack::Pack& pack, const pack::Pathable& pathable, BakedMarker* out);
 
 // Every live marker and trail of `pack`, in Pack::pathables order. Deleted pathables, routes
 // and POIs without a position are left out.
