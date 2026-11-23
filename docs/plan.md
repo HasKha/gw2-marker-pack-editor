@@ -345,7 +345,29 @@ Nexus's API, fixed — and asked for the shape below. Each step is a commit of i
 - Edit Marker Pack starts the editor and Ctrl+Z undoes an edit in it; closing its windows with
   no pack open gives Ctrl+Z back to the game.
 
-### 8. Later
+### 8. The second look
+
+Asked for after milestone 7, before its pull in game. Each step is a commit of its own.
+
+1. **The import speaks to the player** — done offline. One line on what it does, the packs to
+   tick, "You can open this window anytime from the addon options", and Import and Close at the
+   right. Pathing's category choices, storage and timers always come along.
+2. **The menu, as Blish HUD's.** Our icon opens it under the icon. Clicking a category's name
+   toggles it. Pathing's smart categories: what has nothing on this map is hidden, behind a row
+   that shows it. No separator of ours in Nexus's menu. The menu's own bind goes, as far as
+   Nexus allows: the icon's left click needs one. A new bind, unset, turns All Markers on or off.
+3. **Minimap and full map** are separate sections of the options.
+4. **Markers over the terrain.** With GoodRender, markers and trails draw over the world and
+   under the game's windows by default; behind the terrain is a setting, and an attribute of
+   ours lets a pack choose per category or marker.
+5. **The editor on its own.** "Open Editor..." in the menu; the editor's windows belong to its
+   main one, which closing ends the session, asking first when there is unsaved work; none of
+   them in the addon's options. It draws its pack itself, and the viewer goes on drawing every
+   installed pack, the edited one included.
+6. **Loading packs faster.**
+7. **Font Awesome icons**, as gw2-community-challenge-mode has them.
+
+### 9. Later
 
 - Achievement and raid filters, once the API key question is settled.
 - Pathing's per-pixel fades, with a shader of our own, if the per-quad version shows.

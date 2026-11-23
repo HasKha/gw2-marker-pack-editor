@@ -542,7 +542,7 @@ void openImport() {
     }
     import_found = blish_import::find(registry::blishMarkersFolder());
     import_choices = {};
-    import_status = import_found.empty() ? "Nothing to import: no Blish HUD markers folder, or nothing in it." : "";
+    import_status.clear();
     import_window = true;
 }
 
@@ -553,11 +553,11 @@ void startImport() {
         if (i < import_choices.packs.size() && import_choices.packs[i]) packs.push_back(import_found.packs[i]);
     }
     Imported chosen;
-    if (import_choices.categories) chosen.states.categories = import_found.categories;
-    if (import_choices.storage) chosen.states.storage = import_found.storage;
-    if (import_choices.timers) chosen.states.timers = import_found.timers;
+    chosen.states.categories = import_found.categories;
+    chosen.states.storage = import_found.storage;
+    chosen.states.timers = import_found.timers;
 
-    import_status = "Copying " + std::to_string(packs.size()) + " packs...";
+    import_status = "Importing...";
     import_job = std::make_unique<Background<Imported>>();
     import_job->start([packs, chosen, into = packsFolder()]() -> std::optional<Imported> {
         Imported done = chosen;
@@ -585,12 +585,11 @@ void finishImport() {
     }
     saveStates();
 
-    import_status = "Imported " + std::to_string(done->copied.copied) + " packs";
-    if (done->copied.kept > 0) import_status += ", kept " + std::to_string(done->copied.kept) + " already as new";
-    if (!done->states.categories.empty()) import_status += ", " + std::to_string(done->states.categories.size()) + " category choices";
-    import_status += ".";
+    // A pack kept because ours was as new is imported as far as the player can tell.
+    const size_t imported = done->copied.copied + done->copied.kept;
+    import_status = imported == 1 ? "Imported 1 marker pack." : "Imported " + std::to_string(imported) + " marker packs.";
     for (const std::string& error : done->copied.errors) {
-        import_status += "\nNot copied: " + error;
+        import_status += "\nCould not import " + error;
         api->Log(ELogLevel_WARNING, ADDON_NAME, ("Blish HUD import: " + error).c_str());
     }
     import_job.reset();

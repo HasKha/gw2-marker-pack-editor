@@ -9,14 +9,12 @@
 // first load when Blish HUD has anything, and from a button in the options.
 namespace viewer::ui::import_window {
 
+// Pathing's category choices, script storage and timers always come with the packs.
 struct Choices {
     std::vector<char> packs; // per Found::packs, whether to copy it
-    bool categories = true;
-    bool storage = true;
-    bool timers = true;
 };
 
-enum class Answer { None, Import, Later };
+enum class Answer { None, Import, Close };
 
 // Draws the window while `*open`. `status` is how the last import went; while `busy` one runs
 // and nothing can be asked. What was asked this frame.

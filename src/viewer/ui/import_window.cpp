@@ -16,16 +16,6 @@ bool button(const char* label, bool enabled) {
     return pressed && enabled;
 }
 
-// A box for one kind of thing Pathing kept, or a line saying there is none of it.
-void option(const char* label, bool available, bool* value) {
-    if (available) {
-        ImGui::Checkbox(label, value);
-    } else {
-        ImGui::TextDisabled("%s: none in Blish HUD's folder", label);
-        *value = false;
-    }
-}
-
 } // namespace
 
 Answer draw(const blish_import::Found& found, Choices* choices, const std::string& status, bool busy, bool* open) {
@@ -33,48 +23,41 @@ Answer draw(const blish_import::Found& found, Choices* choices, const std::strin
     if (!*open) return answer;
     choices->packs.resize(found.packs.size(), 1);
 
-    ImGui::SetNextWindowSize(ImVec2(ImGui::GetFontSize() * 30.0f, ImGui::GetFontSize() * 26.0f), ImGuiCond_FirstUseEver);
-    if (ImGui::Begin("Import from Blish HUD", open)) {
-        ImGui::TextWrapped(
-            "Copies Blish HUD's marker packs into this addon's folder, with what Pathing remembers about "
-            "them. Blish HUD's folder is left as it is, and is not drawn from: both drawing it would show "
-            "every marker twice.");
-        ImGui::Separator();
-
+    ImGui::SetNextWindowSize(ImVec2(ImGui::GetFontSize() * 26.0f, 0.0f), ImGuiCond_FirstUseEver);
+    if (ImGui::Begin("Import from Blish HUD", open, ImGuiWindowFlags_AlwaysAutoResize)) {
         if (found.packs.empty()) {
-            ImGui::TextDisabled("No packs in Blish HUD's folder.");
+            ImGui::TextWrapped("No marker packs found in Blish HUD.");
         } else {
-            ImGui::Text("Packs");
-            ImGui::SameLine();
-            if (ImGui::SmallButton("All")) std::fill(choices->packs.begin(), choices->packs.end(), 1);
-            ImGui::SameLine();
-            if (ImGui::SmallButton("None")) std::fill(choices->packs.begin(), choices->packs.end(), 0);
+            ImGui::TextWrapped("Import your marker packs from Blish HUD, with the categories you turned on or off.");
             const float height =
                 ImGui::GetTextLineHeightWithSpacing() * std::min<float>(8.0f, static_cast<float>(found.packs.size()) + 0.5f);
-            if (ImGui::BeginChild("##packs", ImVec2(0.0f, height), true)) {
+            if (ImGui::BeginChild("##packs", ImVec2(ImGui::GetFontSize() * 24.0f, height), true)) {
                 for (size_t i = 0; i < found.packs.size(); ++i) {
                     bool chosen = choices->packs[i] != 0;
                     ImGui::PushID(static_cast<int>(i));
-                    if (ImGui::Checkbox(found.packs[i].filename().string().c_str(), &chosen)) choices->packs[i] = chosen ? 1 : 0;
+                    if (ImGui::Checkbox(found.packs[i].stem().string().c_str(), &chosen)) choices->packs[i] = chosen ? 1 : 0;
                     ImGui::PopID();
                 }
             }
             ImGui::EndChild();
         }
 
-        option("Categories turned on or off", !found.categories.empty(), &choices->categories);
-        option("What pack scripts stored", !found.storage.empty(), &choices->storage);
-        option("Markers hidden until a time", !found.timers.empty(), &choices->timers);
-        ImGui::Separator();
-
         if (!status.empty()) ImGui::TextWrapped("%s", status.c_str());
-        if (button(busy ? "Importing..." : "Import", !busy)) answer = Answer::Import;
+        ImGui::TextDisabled("You can open this window anytime from the addon options.");
+
+        // Right-aligned by the buttons' width last frame: the first frame they stand at the left.
+        static float buttons_width = 0.0f;
+        const float right = ImGui::GetWindowContentRegionMax().x;
+        if (buttons_width > 0.0f) ImGui::SetCursorPosX(std::max(ImGui::GetCursorPosX(), right - buttons_width));
+        const float left = ImGui::GetCursorScreenPos().x;
+        const bool any_chosen = std::find(choices->packs.begin(), choices->packs.end(), 1) != choices->packs.end();
+        if (button(busy ? "Importing..." : "Import", !busy && any_chosen)) answer = Answer::Import;
         ImGui::SameLine();
-        if (button("Not now", !busy)) {
-            answer = Answer::Later;
+        if (button("Close", !busy)) {
+            answer = Answer::Close;
             *open = false;
         }
-        if (ImGui::IsItemHovered()) ImGui::SetTooltip("The options page has this again: Import from Blish HUD.");
+        buttons_width = ImGui::GetItemRectMax().x - left;
     }
     ImGui::End();
     return answer;
