@@ -54,7 +54,6 @@ src/
     bake.*         pack::Pack -> the runtime model: resolved attributes, grouped by map id
     runtime.*      the live map: visibility, fade state, behaviors' state, markers scripts made
     edited.*       the pack open in the editor as a live map of its own, baked per revision
-    edits.*        personal copies: where Edit takes a pack, and the copy into `edits`
     behaviors/     Pathing's Behavior/: attributes.* (what a pathable's behavior attributes say,
                    baked once), update.* (filters, focus, interaction, per frame), entity.* (what
                    one live pathable remembers), states.* (what `behavior` hid, timers.txt),
@@ -81,7 +80,7 @@ src/
     store.*        what outlives a session: category toggles, script Storage
     ui/            the category menu, the script console, interaction.* (info and prompt),
                    map_menu.* (the maps' tooltip and menu), options.* (Pathing's settings),
-                   pack_catalog.* (the catalog's window), pack_list.* (Packs, and Edit)
+                   pack_catalog.* (Marker Packs, the catalog's window)
   editor/          mpe_editor, links mpe_pack and mpe_viewer
 ```
 
@@ -329,8 +328,6 @@ Pathing's FlatMap and each pathable's `RenderToMiniMap`, in `map.*` and `map_sce
   session, as soon as the catalog answers, each of our packs it keeps updated that is stale is
   downloaded again. Blish HUD's copies are updated only when asked: Blish HUD updates those
   itself.
-- **A pack from the catalog is never edited in place**: the next update would overwrite the
-  edits. Edit offers a personal copy instead — see [The editor inside](#the-editor-inside).
 
 ## Packs across packs
 
@@ -351,13 +348,9 @@ bake moves after the merge.
 - **It applies at the next load.** Nexus holds its render mutex across every callback, so the
   options page cannot register the editor's callbacks from inside one, and unloading it there
   would drop unsaved edits. The page says so when the box and the session disagree.
-- **Edit, in the Packs window**, opens a pack in the editor. A pack in Blish HUD's folder or
-  ours came from the catalog, or may have, so it is never changed in place: Edit copies it into
-  `edits` on a worker and opens the copy. A pack in `edits` stands in for any other of the same
-  name, as ours does for Blish HUD's, so the copy is drawn instead of the original from then on,
-  and an update of the original cannot reach it. Deleting the copy brings the original back. A
-  folder pack outside `edits` is not copied — Blish HUD's markers folder is one when it holds
-  loose XML — and is opened from the editor's File menu, in place, as any pack can be.
+- **A pack is opened from the editor's File menu**, in place, wherever it is. A pack in our
+  folder that came from the catalog is overwritten by its next update, edits and all: the
+  catalog's Keep updated is the author's to turn off for it.
 - **Whatever the editor has open is drawn from its model.** The editor reports the pack every
   frame through `viewer::setEditedPack`, after the frame's edits: its path, the model, its
   revision and the tree's eye toggles. The viewer drops the installed pack at that path and

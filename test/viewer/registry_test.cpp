@@ -151,3 +151,17 @@ TEST_CASE("a stopped loader drops what it had and takes more", "[registry]") {
     REQUIRE(taken != nullptr);
     CHECK(taken->error.empty());
 }
+
+TEST_CASE("a tier of packs never hides its own", "[registry]") {
+    // A .zip and a .taco of one name in the same folder are both loaded, as Pathing loads both.
+    const std::vector<std::filesystem::path> merged = viewer::registry::mergeSources({{"ours/a.zip", "ours/A.taco"}, {"blish/a.zip"}});
+    CHECK(merged == std::vector<std::filesystem::path>{"ours/a.zip", "ours/A.taco"});
+}
+
+TEST_CASE("inside a folder is by path, not by name", "[registry]") {
+    CHECK(viewer::registry::isInside("C:/addons/packs/Hero.zip", "C:/addons/packs"));
+    CHECK(viewer::registry::isInside("C:/addons/packs/sub/../Hero.zip", "C:/addons/packs/"));
+    CHECK_FALSE(viewer::registry::isInside("C:/addons/packs2/Hero.zip", "C:/addons/packs"));
+    CHECK_FALSE(viewer::registry::isInside("C:/addons/Hero.zip", "C:/addons/packs"));
+    CHECK_FALSE(viewer::registry::isInside("C:/addons/Hero.zip", ""));
+}

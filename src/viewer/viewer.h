@@ -34,10 +34,6 @@ struct EditorHooks {
     // register one of its own beside the viewer's.
     void (*draw_options)() = nullptr;
 
-    // Opens the pack at `path` in the editor and shows its tree. Empty when it did, else why
-    // not: the pack open now has edits not saved, which changes nothing, or it would not read.
-    std::string (*open_pack)(const std::filesystem::path& path) = nullptr;
-
     // The editor's reads of its open pack's files, which see what is not saved yet: the edited
     // pack is drawn with these. Null draws it without images or trails.
     ImTextureID (*texture)(const std::string& path) = nullptr;

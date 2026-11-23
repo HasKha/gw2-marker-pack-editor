@@ -138,7 +138,7 @@ std::vector<Action> draw(const std::vector<Row>& rows, const std::string& status
     if (!*open) return actions;
 
     ImGui::SetNextWindowSize(ImVec2(ImGui::GetFontSize() * 36.0f, ImGui::GetFontSize() * 30.0f), ImGuiCond_FirstUseEver);
-    if (ImGui::Begin("Pack catalog", open)) {
+    if (ImGui::Begin("Marker Packs", open)) {
         ImGui::TextUnformatted(status.c_str());
         if (can_retry) {
             ImGui::SameLine();

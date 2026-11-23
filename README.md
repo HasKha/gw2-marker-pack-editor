@@ -34,17 +34,14 @@ options. With
 [GoodRender](https://github.com/HasKha/gw2-good-render) loaded, markers draw under the game's
 windows and hide behind walls; without it they draw over everything.
 
-**Pack catalog**, in the Nexus menu, lists the packs Blish HUD's Pathing offers: download one
+**Marker Packs**, in the Nexus menu, lists the packs Blish HUD's Pathing offers: download one
 into the addon's own folder, update it, open its page or delete it. Packs you keep updated
 update themselves when the addon loads.
 
 Editing is off on a fresh install. Turn on **Enable pack editing** in the addon's options in
 Nexus, then reload the addon; an install that already had the editor keeps it on.
 
-With editing on, the **Packs** window, in the Nexus menu, lists every pack drawn. **Edit a
-copy** copies one into the addon's `edits` folder, where it stands in for the original, so an
-update cannot overwrite your changes, and opens it in the editor. Whatever the editor has
-open is drawn as you edit it, exactly as a player will see it.
+Whatever the editor has open is drawn as you edit it, exactly as a player will see it.
 
 **File → Open Pack...** takes a `.zip`/`.taco`, **Open Folder...** takes an unzipped one,
 and **New Pack...** starts an empty pack from nothing. One pack is open at a time.

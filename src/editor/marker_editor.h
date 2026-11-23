@@ -19,8 +19,8 @@ void unload();
 // the page and draws this under its own, through viewer::EditorHooks.
 void drawOptions();
 
-// What the viewer reaches the editor through: the options above, opening a pack from the
-// viewer, the open pack's files, and what the editor draws over the world.
+// What the viewer reaches the editor through: the options above, the open pack's files, and
+// what the editor draws over the world.
 viewer::EditorHooks hooks();
 
 } // namespace marker_editor

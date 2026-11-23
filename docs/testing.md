@@ -115,8 +115,7 @@ bin/Release/mpe_viewer_test.exe "[.web]"
 The pack open in the editor is tested from the viewer's side, over a small pack written in the test:
 `edited_test.cpp` bakes its model into a live map of its own as the revision, the map, the tree's eye
 toggles and a trail's deferred read change, and checks the scene layer that carries its pathables to the
-editor's overlay; `map_scene_test.cpp` builds the maps over two live maps the same way. `edits_test.cpp` covers personal copies: where Edit takes a pack, the copy by way of
-`.part`, and a copy standing in for the original.
+editor's overlay; `map_scene_test.cpp` builds the maps over two live maps the same way.
 
 ## Above the pack layer
 

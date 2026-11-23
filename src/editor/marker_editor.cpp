@@ -1010,17 +1010,6 @@ void render() {
     reportToViewer();
 }
 
-// The viewer's Edit. Refused while the pack open now has edits not saved: those are the
-// author's to save or discard, in the editor's own prompt.
-std::string openFromViewer(const std::filesystem::path& path) {
-    if (state.dirty) return "The pack open in the editor has changes not saved: save or close it first.";
-    openPack(path);
-    if (!state.loaded) return status_message;
-    // The tree is where editing starts, wherever the windows were left.
-    ui::windows::visible(ui::windows::Id::Tree) = true;
-    return {};
-}
-
 void drawQuickAccess() {
     if (ImGui::MenuItem("Marker Pack Editor")) ui::windows::toggleAll();
 }
@@ -1056,7 +1045,6 @@ void drawOptions() {
 viewer::EditorHooks hooks() {
     viewer::EditorHooks hooks;
     hooks.draw_options = drawOptions;
-    hooks.open_pack = openFromViewer;
     hooks.texture = resources::texture;
     hooks.trail = [](const std::string& path, bool* deferred) { return resources::trail(path, deferred); };
     hooks.draw_overlay = [](const viewer::Camera& camera, const viewer::Scene& scene) { world::overlay::draw(state, camera, scene); };

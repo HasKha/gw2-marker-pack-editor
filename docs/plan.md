@@ -291,19 +291,17 @@ not offer).
 
 ### 6. Edit from the viewer — done offline
 
-Built: the **Packs** window, every pack drawn and why one did not load, with Edit. A pack in
-Blish HUD's folder or ours is copied into `edits` on a worker first, and the copy, which stands
-in for the original from then on, is what the editor opens; Delete on a copy brings the
-original back. Whatever the editor has open, however it was opened, the viewer draws from the
+Built: whatever the editor has open, however it was opened, the viewer draws from the
 editor's model, baked again per revision, as a live map of its own beside the installed
 packs': GoodRender, fades, filters and all, on the minimap and the full map as well. Its scripts do not run. The editor's renderer is
 gone; what only an editor draws — outlines, picking, point handles, a dot for a missing icon —
 draws over the viewer's scene through `EditorHooks::draw_overlay`, picking by the shapes the
 scene drew.
 
+A Packs window with Edit, and personal copies a catalog update could not overwrite, were
+built too, and dropped after the first look in game — see milestone 7.
+
 **Left: one pull in game**, deciding these in advance:
-- Edit a pack from Blish HUD's folder: is it copied, open in the editor, and drawn once, not
-  twice beside the original?
 - Drag a marker of Hero's pack with the gizmo, GoodRender loaded: does it follow without a
   hitch, and hide behind a wall as it moves?
 - Click a marker, then a trail point: is what is outlined what was clicked, with GoodRender
@@ -320,7 +318,7 @@ while editing.
 The first pull found the world drawing no installed pack — their textures were never given
 Nexus's API, fixed — and asked for the shape below. Each step is a commit of its own.
 
-1. **Fewer windows.** The Packs window, Edit from the viewer and personal copies go: the
+1. **Fewer windows** — done but for the Markers window, which goes with step 2. The Packs window, Edit from the viewer and personal copies go: the
    editor's own File menu is how a pack is opened, in place. The Markers window goes too: the
    menu below replaces it. "Pack catalog" becomes **Marker Packs**.
 2. **One menu, Blish HUD's.** At the top of the options page: show it in Nexus's menu (what is
