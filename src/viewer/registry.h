@@ -43,6 +43,8 @@ bool isInside(const std::filesystem::path& path, const std::filesystem::path& fo
 struct LoadedPack {
     std::filesystem::path path;
     std::string error; // why it did not load; empty when it did
+    // writtenAt(path) as the load began: a pack written since is read again.
+    std::filesystem::file_time_type written{};
 
     // Kept open: icons are read out of it as they come into view.
     std::unique_ptr<pack::DataSource> source;
@@ -54,6 +56,11 @@ struct LoadedPack {
     // a marker one of its scripts creates inherits from (Pack:CreateMarker).
     pack::Pack declared;
 };
+
+// When the pack at `path` was last written: an archive's own time, or for a folder the newest of
+// the .xml files directly in it, which is where a save writes and where nearly every pack keeps
+// its markers. The epoch for a pack that is not there.
+std::filesystem::file_time_type writtenAt(const std::filesystem::path& path);
 
 // Reads, bakes and drops the XML of the pack at `path`, and reads every trail's .trl. Slow —
 // seconds for the largest packs — so it belongs on a worker.

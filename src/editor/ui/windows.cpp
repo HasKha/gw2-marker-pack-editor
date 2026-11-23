@@ -13,7 +13,7 @@ constexpr size_t kCount = static_cast<size_t>(Id::Count);
 
 struct Definition {
     const char* title; // with the ##id suffix
-    const char* label; // what the View menu and the options page call it
+    const char* label; // what the View menu calls it
     const char* key; // what the settings file calls it
     bool visible_by_default;
 };
@@ -38,18 +38,8 @@ constexpr std::array<bool, kCount> defaultVisibility() {
 
 std::array<bool, kCount> shown = defaultVisibility();
 
-// What was on screen when everything was hidden, so the layout survives a toggle.
-std::array<bool, kCount> restore{};
-
 size_t indexOf(Id id) {
     return static_cast<size_t>(id);
-}
-
-void hideAll() {
-    for (size_t i = 0; i < kCount; ++i) {
-        restore[i] = shown[i];
-        shown[i] = false;
-    }
 }
 
 } // namespace
@@ -66,41 +56,10 @@ bool& visible(Id id) {
     return shown[indexOf(id)];
 }
 
-bool anyVisible() {
-    for (bool visible : shown) {
-        if (visible) return true;
-    }
-    return false;
-}
-
-void toggleAll() {
-    if (anyVisible()) {
-        hideAll();
-        return;
-    }
-
-    bool restored_any = false;
-    for (size_t i = 0; i < kCount; ++i) {
-        shown[i] = restore[i];
-        restored_any = restored_any || restore[i];
-    }
-
-    // Nothing to restore — first use, or the windows were closed one at a time rather than
-    // hidden together. Coming back to an empty screen would look like a broken keybind.
-    if (!restored_any) {
-        for (size_t i = 0; i < kCount; ++i) shown[i] = kWindows[i].visible_by_default;
-    }
-}
-
 void drawViewMenu() {
-    for (size_t i = 0; i < kCount; ++i) ImGui::MenuItem(kWindows[i].label, nullptr, &shown[i]);
-
-    ImGui::Separator();
-    if (ImGui::MenuItem("Hide all")) hideAll();
-}
-
-void drawOptions() {
-    for (size_t i = 0; i < kCount; ++i) ImGui::Checkbox(kWindows[i].label, &shown[i]);
+    for (size_t i = 0; i < kCount; ++i) {
+        if (static_cast<Id>(i) != Id::Tree) ImGui::MenuItem(kWindows[i].label, nullptr, &shown[i]);
+    }
 }
 
 } // namespace ui::windows

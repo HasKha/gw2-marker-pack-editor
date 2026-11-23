@@ -21,12 +21,8 @@ void unload();
 // Whether the editor runs now.
 bool running();
 
-// The editor's part of the addon's options page. Not registered with Nexus: the viewer owns
-// the page and draws this under its own, through viewer::EditorHooks.
-void drawOptions();
-
-// What the viewer reaches the editor through: the options above, the open pack's files, and
-// what the editor draws over the world.
+// What the viewer drives the editor through: starting it, its frame and its share of the game's
+// messages. Nothing else passes between them.
 viewer::EditorHooks hooks();
 
 } // namespace marker_editor

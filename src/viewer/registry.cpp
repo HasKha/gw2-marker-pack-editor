@@ -63,9 +63,29 @@ bool isInside(const std::filesystem::path& path, const std::filesystem::path& fo
     return !relative.empty() && *relative.begin() != "..";
 }
 
+std::filesystem::file_time_type writtenAt(const std::filesystem::path& path) {
+    std::error_code ec;
+    if (!std::filesystem::is_directory(path, ec)) {
+        const std::filesystem::file_time_type written = std::filesystem::last_write_time(path, ec);
+        return ec ? std::filesystem::file_time_type{} : written;
+    }
+    std::filesystem::file_time_type newest{};
+    for (const std::filesystem::directory_entry& entry : std::filesystem::directory_iterator(path, ec)) {
+        std::string extension = entry.path().extension().string();
+        std::transform(extension.begin(), extension.end(), extension.begin(), [](unsigned char c) {
+            return static_cast<char>(std::tolower(c));
+        });
+        if (extension != ".xml" || !entry.is_regular_file(ec)) continue;
+        const std::filesystem::file_time_type written = entry.last_write_time(ec);
+        if (!ec && written > newest) newest = written;
+    }
+    return newest;
+}
+
 LoadedPack loadPack(const std::filesystem::path& path) {
     LoadedPack loaded;
     loaded.path = path;
+    loaded.written = writtenAt(path);
 
     loaded.source = pack::open(path, &loaded.error);
     if (!loaded.source) return loaded;

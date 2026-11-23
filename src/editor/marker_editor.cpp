@@ -27,7 +27,10 @@
 #include "pack/writer.h"
 #include "pack/xml_reader.h"
 #include "viewer/camera.h"
+#include "viewer/edited.h"
 #include "viewer/registry.h"
+#include "viewer/render/overlay.h"
+#include "viewer/scene.h"
 #include "viewer/viewer.h"
 
 namespace marker_editor {
@@ -61,6 +64,11 @@ std::filesystem::path last_folder;
 std::filesystem::path last_image_folder;
 
 editor::State state;
+
+// The open pack as a live map, and the scene drawn from it this frame: the editor draws its pack
+// itself, over the world, whatever the viewer draws of the same file.
+viewer::edited::EditedLive edited_live;
+viewer::Scene scene;
 
 // This frame's camera, kept so the menu bar can reach the player position and map id
 // without every window that draws the bar having to be handed a camera.
@@ -101,7 +109,7 @@ DialogPurpose dialog_purpose = DialogPurpose::OpenFile;
 // The confirmation belongs to whichever window's menu asked for it. An ImGui popup is
 // scoped to the window that opened it, and the same menu bar is now drawn in every large
 // window, so without an owner three windows would fight over one popup id.
-enum class PendingAction { None, Close, Reload, NewPack };
+enum class PendingAction { None, Close, Reload, NewPack, CloseEditor };
 PendingAction pending_action = PendingAction::None;
 bool confirm_pending = false; // the action is waiting on the modal
 bool open_confirm_popup = false; // OpenPopup on the owner's next frame
@@ -307,18 +315,33 @@ std::string assetSummary(const pack::SaveResult& result) {
     return summary + ")";
 }
 
-// The viewer draws the open pack from its model, and lets go of the file it was read from so a
-// save can replace it. Every frame, after the frame's edits, so the viewer bakes what is there.
-void reportToViewer() {
+// Draws the open pack over the world, as a player would see it with every marker shown: its own
+// live map and scene, with the tree's eye toggles, and the editor's reads of its files, which see
+// what is not saved yet. Then what only an editor draws over it: outlines, handles, picking.
+void drawPack(const viewer::Camera& camera) {
     viewer::edited::Report report;
-    // Only while a pack is open: one that failed to open leaves the last path behind.
     if (state.loaded) {
         report.path = open_pack_path;
         report.pack = &state.pack;
         report.revision = state.revision;
         report.shown = &state.pathable_visible;
     }
-    viewer::setEditedPack(report);
+    const int map_id = camera.valid ? static_cast<int>(camera.map_id) : edited_live.live().map_id;
+    edited_live.update(report, map_id, [](const std::string& path, bool* deferred) { return resources::trail(path, deferred); });
+
+    scene.items.clear();
+    if (!state.loaded || !camera.valid || camera.map_open) return;
+    // Its markers belong to no node of the viewer's tree: the editor's tree decides what shows.
+    static const std::vector<char> kNoNodes;
+    const viewer::TextureLookup texture = [](size_t, const std::string& path) { return resources::texture(path); };
+    viewer::buildScene(
+        {viewer::SceneLayer{&edited_live.live(), &kNoNodes, texture, true}},
+        camera,
+        static_cast<float>(ImGui::GetTime()),
+        viewer::WorldOptions{},
+        &scene);
+    viewer::overlay::drawScene(ImGui::GetBackgroundDrawList(), camera, scene);
+    world::overlay::draw(state, camera, scene);
 }
 
 // Writes the pack back to `target`. A folder pack updates its changed .xml files in place;
@@ -566,6 +589,11 @@ void applyPendingAction() {
     // Needs answers before it can do anything, and a popup belongs to the window whose
     // menu asked — the same one the discard prompt would have used.
     case PendingAction::NewPack: open_new_pack_popup = true; break;
+    // The session ends with its main window: the pack goes, and every window with it.
+    case PendingAction::CloseEditor:
+        closePack();
+        ui::windows::visible(ui::windows::Id::Tree) = false;
+        break;
     case PendingAction::None: break;
     }
     pending_action = PendingAction::None;
@@ -656,8 +684,15 @@ void drawNewPackPopup(ui::windows::Id owner) {
 bool beginWindow(ui::windows::Id id, const ImVec2& first_size, bool with_menus) {
     if (!ui::windows::visible(id)) return false;
 
+    // The main window's close button ends the session, asking first when there is unsaved work,
+    // so it stays open until that is answered. The others only hide.
+    const bool main = id == ui::windows::Id::Tree;
+    bool open = true;
     ImGui::SetNextWindowSize(first_size, ImGuiCond_FirstUseEver);
-    if (!ImGui::Begin(ui::windows::title(id), &ui::windows::visible(id), with_menus ? ImGuiWindowFlags_MenuBar : 0)) {
+    const bool shown =
+        ImGui::Begin(ui::windows::title(id), main ? &open : &ui::windows::visible(id), with_menus ? ImGuiWindowFlags_MenuBar : 0);
+    if (!open) requestAction(PendingAction::CloseEditor, id);
+    if (!shown) {
         ImGui::End();
         return false;
     }
@@ -1005,7 +1040,9 @@ void stop() {
     pending_select_point = pack::kNoIndex;
     pending_deselect = false;
     world::overlay::clearHovered();
-    viewer::setEditedPack({});
+    closePack();
+    edited_live.clear();
+    scene.items.clear();
 }
 
 void render() {
@@ -1048,9 +1085,10 @@ void render() {
     const ImVec2 display = ImGui::GetIO().DisplaySize;
     const viewer::Camera camera = viewer::fromMumble(mumble_link, glm::vec2(display.x, display.y));
     frame_camera = camera;
-    // The viewer draws the pack, and the overlay over it, only while the world is on screen;
-    // otherwise nothing may stay hovered for a click to pick.
+    // The pack, and the overlay over it, only while the world is on screen; otherwise nothing
+    // may stay hovered for a click to pick.
     if (!state.loaded || !camera.valid || camera.map_open) world::overlay::clearHovered();
+    drawPack(camera);
 
     // After the markers so it draws over them, and so it can claim the click first.
     const bool gizmo_active = world::gizmo::draw(state, camera);
@@ -1080,29 +1118,21 @@ void render() {
     ui::tree_window::update(state);
 
     drawTreeWindow();
-    drawDetailsWindow();
-    drawToolbarWindow();
-    drawTrailEditorWindow();
-    drawResourcesWindow();
+    // The others belong to the main window, and are drawn only with it.
+    if (ui::windows::visible(ui::windows::Id::Tree)) {
+        drawDetailsWindow();
+        drawToolbarWindow();
+        drawTrailEditorWindow();
+        drawResourcesWindow();
+    }
 
     applyPendingAction();
-    reportToViewer();
 
     // A dialog's answer still has somewhere to go, so it keeps the editor running.
-    if (!state.loaded && !ui::windows::anyVisible() && !file_dialog::isPending()) stop();
+    if (!ui::windows::visible(ui::windows::Id::Tree) && !file_dialog::isPending()) stop();
 }
 
 } // namespace
-
-void drawOptions() {
-    if (!active) return;
-    ImGui::Separator();
-    // The way back once a window's close button has been used, short of the keybind or the
-    // menu's Open Editor.
-    ImGui::Text("Editor windows");
-    ui::windows::drawOptions();
-    ImGui::Text("The editor's keybind hides and restores all of them at once.");
-}
 
 bool running() {
     return active.load();
@@ -1110,15 +1140,9 @@ bool running() {
 
 viewer::EditorHooks hooks() {
     viewer::EditorHooks hooks;
-    hooks.draw_options = drawOptions;
     hooks.start = start;
     hooks.render = render;
     hooks.wnd_proc = onWndProc;
-    hooks.texture = resources::texture;
-    hooks.trail = [](const std::string& path, bool* deferred) { return resources::trail(path, deferred); };
-    hooks.draw_overlay = [](const viewer::Camera& camera, const viewer::Scene& scene) {
-        if (active.load()) world::overlay::draw(state, camera, scene);
-    };
     return hooks;
 }
 

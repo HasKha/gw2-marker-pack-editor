@@ -34,12 +34,10 @@ The invariants every change keeps. The sections below are why.
   [Saving serializes](#saving-serializes-it-does-not-diff).
 - **Every edit is an `undo::Step`** with the matching capture inside, or it is the one edit
   Ctrl+Z cannot take back. See [Undo](#undo-records-images-not-inverses).
-- **The editor reports its open pack to the viewer every frame**, through
-  `viewer::setEditedPack` at the end of `marker_editor::render`, after the frame's edits.
-  `render` is not a Nexus callback: the viewer's render calls it through `EditorHooks`, and it
-  does nothing while the editor does not run (see [viewer.md](viewer.md#the-editor-inside)). The
-  viewer draws the pack from that model, and would otherwise keep the zip open, which a save
-  renames over.
+- **The editor draws its own pack**, in `marker_editor::render`, from its model, and tells the
+  viewer nothing about it. `render` is not a Nexus callback: the viewer's render calls it
+  through `EditorHooks`, and it does nothing while the editor does not run (see
+  [viewer.md](viewer.md#the-editor-inside)).
 - **Nothing is erased from `Pack::categories` or `Pack::pathables`**, and nothing is inserted
   into their middle: delete tombstones, add appends. Every index into them stays valid. A new
   category also grows the per-category indexes, through `State::categoryAdded` alone.
@@ -129,7 +127,7 @@ src/
   viewer/              — mpe_viewer; see viewer.md for what it grows into
   editor/              — mpe_editor
     marker_editor.*    lifecycle, the windows and the shared menu bar, save/open, WndProc,
-                       the editor's part of the options page
+                       drawing the open pack
     pathable_edit.*    creating and deleting markers and categories
     undo.*             the undo/redo stack: before/after images of what changed
     trail_edit.*       the open trail's working copy, shared by its window and the gizmo
@@ -140,7 +138,7 @@ src/
                        the images through viewer::TextureCache
     settings.*         the few things that outlive a session, as settings.json
     ui/
-      windows.*        the window registry: titles, visibility, View menu, options page
+      windows.*        the window registry: titles, visibility, View menu
       tree_window.*    category tree, selection (ctrl / shift range), per-node eye toggles
       property_panel.* attribute form + "add attribute" + inherited values
       resource_window.* the pack's images, what references them, add / remove
@@ -160,11 +158,11 @@ test/
 
 Three mechanisms that exist for non-obvious reasons.
 
-**The open pack is baked per `State::revision`, by the viewer.** Resolving inherited
+**The open pack is baked per `State::revision`.** Resolving inherited
 attributes walks the category chain, and the largest pack tested has 55,887 markers — doing
 that per marker per frame is not viable inside the render callback. Any edit calls
 `State::touch()`, which bumps the revision, and `viewer/edited.*` bakes again. Visibility
-toggles deliberately do *not* bump it: they are view state, not edits, and the viewer compares
+toggles deliberately do *not* bump it: they are view state, not edits, and `edited.*` compares
 the flags themselves.
 
 **`resources` decodes at most a few assets per frame.** Arriving on a map with hundreds of
@@ -192,12 +190,13 @@ closable, each remembering its own place:
 | Resources | the pack's images: folder tree, references, preview, add / remove |
 
 `editor/ui/windows.*` is the registry: one table row per window with its title, its menu label
-and its default visibility, and everything else — the View menu, the Nexus options
-checkboxes, the keybind's hide-and-restore — is generated from that table. Adding a window
+and its default visibility, and everything else — the View menu, the settings file — is
+generated from that table. The Tree is the main window: closing it ends the session, and the
+others are drawn only while it is open. Adding a window
 is one row plus its draw function, and an `update` if it needs one — see
 [A window that is not drawing](#a-window-that-is-not-drawing).
 
-Two consequences of every window being closable:
+Two consequences of every other window being closable:
 
 - **The menu bar is drawn in each large window**, from one shared `drawMenuBar`, so File
   and View are reachable from whichever one is open. The Toolbar has no menu bar; a bar
@@ -260,10 +259,8 @@ draw signatures genuinely differ (a camera here, a returned request there, the T
 no module at all), so a shared virtual would either widen every signature or keep the side
 channels that motivated it.
 
-The Nexus options page carries a checkbox per window while the editor runs, because a window
-closed with its X would otherwise only come back through a keybind that is unbound by default. The page itself
-is the viewer's — Nexus shows one options callback per addon — and the editor's part is
-`marker_editor::drawOptions`, drawn under it through `viewer::EditorHooks`.
+A window closed with its X comes back from the main window's View menu. The addon's options
+page is the viewer's alone; the editor has nothing on it.
 
 ## One trail, one working copy
 
@@ -637,11 +634,10 @@ than being dropped, so a broken `type` is visible instead of silent.
 
 ## Rendering
 
-The editor does not draw its pack: the viewer does, from the editor's model, as it draws every
-other pack — through GoodRender, or its own overlay sink without it (viewer.md, *The editor
-inside*). What only an editor draws — the outline, the picking, the point handles, a dot where
-an icon is missing, the gizmo — is `editor/world/`, over the viewer's scene, through
-`EditorHooks::draw_overlay`. The camera is `viewer/camera.*`, and clipping, subdividing and
+The editor draws its pack with the viewer's code but on its own: a live map and a scene of its
+own, drawn through the viewer's overlay sink, over everything (viewer.md, *The editor inside*).
+What only an editor draws — the outline, the picking, the point handles, a dot where an icon is
+missing, the gizmo — is `editor/world/`, over that scene. The camera is `viewer/camera.*`, and clipping, subdividing and
 emitting a textured quad, which the overlay sink and the outlines both use, is
 `viewer/render/overlay.*`. What follows is how that overlay path works.
 

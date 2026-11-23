@@ -360,7 +360,7 @@ Asked for after milestone 7, before its pull in game. Each step is a commit of i
 4. **Markers over the terrain** — done offline. With GoodRender, markers and trails draw over the world and
    under the game's windows by default; behind the terrain is a setting, and an attribute of
    ours lets a pack choose per category or marker.
-5. **The editor on its own.** "Open Editor..." in the menu; the editor's windows belong to its
+5. **The editor on its own** — done offline. "Open Editor..." in the menu; the editor's windows belong to its
    main one, which closing ends the session, asking first when there is unsaved work; none of
    them in the addon's options. It draws its pack itself, and the viewer goes on drawing every
    installed pack, the edited one included.

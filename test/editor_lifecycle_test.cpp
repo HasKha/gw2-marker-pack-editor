@@ -83,11 +83,9 @@ TEST_CASE("the editor binds nothing until it starts, and lets go once closed", "
     frames.run(hooks);
     CHECK(marker_editor::running()); // its tree is on screen
 
-    // Its last window closed, with no pack open, the editor is closed.
+    // Its main window gone, the editor is closed, whatever else was open.
     ui::windows::visible(ui::windows::Id::Tree) = false;
-    ui::windows::visible(ui::windows::Id::Details) = false;
-    ui::windows::visible(ui::windows::Id::Toolbar) = false;
-    REQUIRE_FALSE(ui::windows::anyVisible());
+    REQUIRE(ui::windows::visible(ui::windows::Id::Details));
     frames.run(hooks);
     CHECK_FALSE(marker_editor::running());
     CHECK(bound.empty());

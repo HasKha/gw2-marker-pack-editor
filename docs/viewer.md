@@ -47,14 +47,14 @@ src/
   entry.cpp        AddonDefinition; loads the viewer, and the editor when the setting is on
   pack/            mpe_pack — unchanged. The format, nothing else
   viewer/          mpe_viewer, links mpe_pack
-    viewer.*       lifecycle, the addon's name and folder, its options page, EditorHooks
+    viewer.*       lifecycle, the addon's name and folder, its options page, EditorHooks: start, render, WndProc
     settings.*     viewer.json: the menu's places, and Pathing's settings by its names
     json_file.*    lenient reads and writes of small JSON files, the editor's too
     registry.*     installed packs: discovery, enable/disable, loading on a worker, the merged tree
     blish_import.* what Blish HUD's Pathing has — packs, category choices, Storage, timers
     bake.*         pack::Pack -> the runtime model: resolved attributes, grouped by map id
     runtime.*      the live map: visibility, fade state, behaviors' state, markers scripts made
-    edited.*       the pack open in the editor as a live map of its own, baked per revision
+    edited.*       a pack model that changes as a live map of its own, baked per revision: the editor's
     behaviors/     Pathing's Behavior/: attributes.* (what a pathable's behavior attributes say,
                    baked once), update.* (filters, focus, interaction, per frame), entity.* (what
                    one live pathable remembers), states.* (what `behavior` hid, timers.txt),
@@ -376,13 +376,15 @@ one between addons already.
 
 ## The editor inside
 
-- **It runs on demand.** The menu's Open Editor starts it at any time; it stops once it has no pack open and none of its windows on screen. Until then nothing
-  of it runs: no windows, no settings read, no binds.
-- **The viewer drives it.** `marker_editor::load` registers nothing with Nexus: the viewer's
-  render and `WndProc` call the editor's through `EditorHooks::render` and `wnd_proc`, which do
-  nothing while it does not run. Nexus holds its render mutex across every callback, so a render
-  callback of the editor's own could only be registered at load, which is why editing was once a
-  setting applied at the next load.
+- **It runs on demand.** The menu's Open Editor starts it at any time, and it runs until its
+  main window is closed, which ends the session: the pack and every other window go with it,
+  after asking when there are unsaved changes. Until then nothing of it runs: no windows, no
+  settings read, no binds. Its windows are not on the addon's options page.
+- **The viewer drives it, and that is all.** `marker_editor::load` registers nothing with Nexus:
+  the viewer's render and `WndProc` call the editor's through `EditorHooks::render` and
+  `wnd_proc`, which do nothing while it does not run. Nexus holds its render mutex across every
+  callback, so a render callback of the editor's own could only be registered at load, which is
+  why editing was once a setting applied at the next load. Nothing else passes between them.
 - **Undo and redo are bound only while it runs**, so Ctrl+Z and Ctrl+Y are the game's otherwise.
   Registering a bind from inside a render callback is safe: Nexus's binds have a lock of their
   own, and Nexus runs their handlers on a thread of its own, so the editor's only raise a flag
@@ -390,31 +392,19 @@ one between addons already.
 - **A pack is opened from the editor's File menu**, in place, wherever it is. A pack in our
   folder that came from the catalog is overwritten by its next update, edits and all: the
   catalog's Keep updated is the author's to turn off for it.
-- **Whatever the editor has open is drawn from its model.** The editor reports the pack every
-  frame through `viewer::setEditedPack`, after the frame's edits: its path, the model, its
-  revision and the tree's eye toggles. The viewer drops the installed pack at that path and
-  closes its file — a save renames over it — and reads it again once the editor lets go, if it
-  was one of the installed packs.
-- **It is a live map of its own** (`edited.*`), baked again whenever `State::revision` moves,
-  not part of the installed packs' live map. A gizmo drag is a revision every frame, and
-  rebuilding the installed packs' would reset their scripts and behaviors every frame. Its
-  markers belong to no node of the shared tree: the editor's tree decides what shows, and the
-  menu's All Markers does not list its categories meanwhile. The scene draws both maps sorted
-  together: **what the author sees is what a player sees**, fades and filters and all.
-- **Its scripts are paused**: they never load, since the engine runs the installed packs. A
-  script that moves markers would fight the gizmo. A toggle to run them anyway is not built.
-- **Its behaviors run, but say nothing**: filters hide and bounce lifts, but its info text and
-  interact prompt go to a screen of their own that is not drawn, since a prompt indexes the
-  live map it came from.
-- **Its images and trails are the editor's** (`EditorHooks::texture`, `trail`), which see an
-  image added or a trail edited before it is saved.
-- **The editor's overlay draws over the world** through `EditorHooks::draw_overlay`, at Nexus's
-  render: outlines, handles, missing images, from the scene — see Drawing.
-- **Save** writes the zip as before; the pack stays drawn from the model until the editor
-  closes it, then goes back to the registry as a normal one.
-- **On the maps too.** The minimap and the full map are built over both live maps, as the
-  world is, each with its own trail lines, kept per build of its live map; the tooltip reads
-  either. The menu, which hides a category of the shared tree, has nothing to offer for it.
+- **The editor draws its pack itself**, over the world at Nexus's render, from its model: a live
+  map of its own (`edited.*`), baked again whenever `State::revision` moves, built into a scene
+  of its own with the tree's eye toggles and drawn with `render/overlay.*`. Its outlines, handles
+  and picking work on that scene. Its images and trails are the editor's reads, which see an
+  image added or a trail edited before it is saved. Its scripts and behaviors do not run: the
+  author sees every marker.
+- **The viewer goes on drawing every installed pack**, the one open in the editor included, as
+  it is on disk. Editing an installed pack shows it twice, the saved copy and the edited one.
+- **Save replaces a file the viewer has open.** An archive is opened sharing deletion
+  (`pack/zip.cpp`), so a save can move it aside while the viewer reads from it. The viewer
+  reads a pack again once its file is newer than what it read (`registry::writtenAt`, checked
+  every two seconds), and the new copy replaces the old when it arrives. A folder pack counts
+  as written when any `.xml` directly in it is.
 
 A gizmo drag is a revision every frame, and each is a bake of the whole pack, as the editor's
 own renderer did before. If a 55k-marker pack hitches under a drag, the bake narrows to the

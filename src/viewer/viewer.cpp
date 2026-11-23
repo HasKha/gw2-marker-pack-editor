@@ -22,7 +22,6 @@
 #include "viewer/camera.h"
 #include "viewer/catalog.h"
 #include "viewer/downloads.h"
-#include "viewer/edited.h"
 #include "viewer/game_binds.h"
 #include "viewer/map.h"
 #include "viewer/map_scene.h"
@@ -106,21 +105,10 @@ Recycled<Scene> scenes;
 map::Catalog maps;
 map_scene::FadeIn map_fade;
 map_scene::TrailCache map_trails;
-map_scene::TrailCache edited_map_trails;
 Recycled<map_scene::MapScene> map_scenes;
 
-// What the editor has open, as last reported, and what the viewer has acted on.
-std::filesystem::path edit_requested;
-std::filesystem::path edit_applied;
-
-// The pack open in the editor, drawn from its model. Its behaviors run, with no scripts and a
-// screen of their own that is not drawn: a marker's info and prompt index the live map it is
-// in, and the one the player sees belongs to the installed packs'.
-edited::Report edited_report;
-edited::EditedLive edited_live;
-behaviors::Screen edited_screen;
-// Its markers belong to no node of the shared tree: the editor's tree decided what is in it.
-const std::vector<char> kNoNodes;
+// When packs were last checked for a write since they were read.
+std::chrono::steady_clock::time_point last_change_check{};
 
 bool console_window = false;
 bool catalog_window = false;
@@ -333,10 +321,7 @@ void syncPacks() {
 
     std::vector<std::filesystem::path> added;
     for (const std::filesystem::path& path : discovered) {
-        if (runtime::isInstalled(installed, path) || registry::samePack(path, edit_applied) || registry::samePack(path, edit_requested)) {
-            continue;
-        }
-        added.push_back(path);
+        if (!runtime::isInstalled(installed, path)) added.push_back(path);
     }
     loader.add(std::move(added));
 }
@@ -406,11 +391,6 @@ void runBehaviors() {
     const behaviors::Frame frame = behaviorFrame();
     behaviors::update(&live, visible, host, frame);
 
-    behaviors::Host edited_host = host;
-    edited_host.script = nullptr;
-    edited_host.screen = &edited_screen;
-    behaviors::update(&edited_live.live(), kNoNodes, edited_host, frame);
-
     // Not while typing — in chat, or in one of our own text fields.
     const bool typing = mumble_state.is_text_input_focused || ImGui::GetIO().WantTextInput;
     if (interact_pressed.exchange(false) && !typing) behaviors::interact(&live, host, frame);
@@ -418,20 +398,27 @@ void runBehaviors() {
     if (escape_released.exchange(false)) screen.info.clear();
 }
 
-// Takes what the loader has finished, and what the editor has taken or given back.
+// Takes what the loader has finished. A pack read again replaces its copy only now, so it is
+// drawn all the while.
 void updatePacks() {
     while (std::unique_ptr<registry::LoadedPack> loaded = loader.take()) {
-        // Opened in the editor while it was loading: the editor has it now. Or loaded twice,
-        // having been handed back by the editor before its first load came in.
-        if (registry::samePack(loaded->path, edit_applied) || runtime::isInstalled(installed, loaded->path)) continue;
         if (!loaded->error.empty()) api->Log(ELogLevel_WARNING, ADDON_NAME, (loaded->path.string() + ": " + loaded->error).c_str());
+        runtime::uninstall(&installed, loaded->path);
         runtime::install(&installed, std::move(loaded));
     }
+}
 
-    if (edit_requested == edit_applied) return;
-    if (!edit_applied.empty() && isDiscovered(edit_applied)) loader.add({edit_applied});
-    if (!edit_requested.empty()) runtime::uninstall(&installed, edit_requested);
-    edit_applied = edit_requested;
+// Reads again every pack written since it was read: saved by the editor, or by anything else.
+// Every few seconds, not every frame, and not while the loader is reading.
+void reloadChangedPacks() {
+    const auto now = std::chrono::steady_clock::now();
+    if (now - last_change_check < std::chrono::seconds(2) || loader.busy()) return;
+    last_change_check = now;
+    std::vector<std::filesystem::path> changed;
+    for (const std::unique_ptr<runtime::InstalledPack>& pack : installed.packs) {
+        if (registry::writtenAt(pack->loaded->path) != pack->loaded->written) changed.push_back(pack->loaded->path);
+    }
+    if (!changed.empty()) loader.add(std::move(changed));
 }
 
 // Puts each download that arrived in place of its old copy. Not while the loader is busy: the
@@ -441,10 +428,6 @@ void installDownloads() {
     bool any = false;
     for (const catalog::Downloads::Finished& finished : downloads.take()) {
         any = true;
-        if (registry::samePack(finished.target, edit_applied)) {
-            downloads.fail(finished, "it is open in the editor: close it and download again");
-            continue;
-        }
         // An installed pack keeps its archive open, and Windows will not replace an open file.
         runtime::uninstall(&installed, finished.target);
         if (!MoveFileExW(finished.part.c_str(), finished.target.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_COPY_ALLOWED)) {
@@ -456,7 +439,6 @@ void installDownloads() {
 
 // Deletes one of our packs from disk.
 void deletePack(const std::filesystem::path& path) {
-    if (registry::samePack(path, edit_applied)) return;
     runtime::uninstall(&installed, path);
     std::error_code ec;
     std::filesystem::remove(path, ec);
@@ -728,14 +710,11 @@ map_scene::Options mapOptions() {
 
 // What the minimap or the full map shows this frame. Nothing on a map the API has not
 // described, as in Pathing.
-void buildMapScene(const TextureLookup& texture, const TextureLookup& edited_texture) {
+void buildMapScene(const TextureLookup& texture) {
     const std::shared_ptr<map_scene::MapScene> next = map_scenes.take();
     const float fade = map_fade.update(mumble_state, ImGui::GetTime());
     if (const map::MapDetails* details = mumble_state.available ? maps.find(mumble_state.map_id) : nullptr) {
-        const std::vector<map_scene::Layer> layers{
-            map_scene::Layer{&live, &visible, texture, &map_trails},
-            map_scene::Layer{&edited_live.live(), &kNoNodes, edited_texture, &edited_map_trails},
-        };
+        const std::vector<map_scene::Layer> layers{map_scene::Layer{&live, &visible, texture, &map_trails}};
         map_scene::build(layers, *details, mumble_state, mapOptions(), fade, uiScale(), next.get());
     } else {
         *next = map_scene::MapScene{};
@@ -755,7 +734,7 @@ void drawMapMenu() {
     ui::map_menu::Context context;
     context.scene = scene.get();
     context.view = &*view;
-    context.live = {&live, &edited_live.live()};
+    context.live = {&live};
     context.tree = &installed.tree;
     context.states = &category_states;
     context.player = mumble_state.player_position;
@@ -769,6 +748,7 @@ void drawMapMenu() {
 // anything slow there stalls the game.
 void preRender() {
     updatePacks();
+    reloadChangedPacks();
     installDownloads();
     if (sync_pending) syncPacks();
     autoUpdate();
@@ -779,12 +759,6 @@ void preRender() {
     if (camera.valid && (live.map_id != static_cast<int>(camera.map_id) || live.revision != installed.revision)) {
         replaceLiveMap(static_cast<int>(camera.map_id));
     }
-    const edited::TrailLookup edited_trail = [](const std::string& path, bool* deferred) {
-        return editor.trail ? editor.trail(path, deferred) : nullptr;
-    };
-    const int edited_map = camera.valid ? static_cast<int>(camera.map_id) : edited_live.live().map_id;
-    // What the old entities put on screen goes with them, as with the installed packs' live map.
-    if (edited_live.update(edited_report, edited_map, edited_trail)) edited_screen = behaviors::Screen{};
     mumble_state = mumbleState(mumble_link);
     runScripts();
 
@@ -811,20 +785,14 @@ void preRender() {
         return installed_pack.textures.get(pack::normalizePath(path), texture_budget, read).texture;
     };
 
-    const TextureLookup edited_texture = [](size_t, const std::string& path) -> ImTextureID {
-        return editor.texture ? editor.texture(path) : nullptr;
-    };
-    const std::vector<SceneLayer> layers{
-        SceneLayer{&live, &visible, texture, false},
-        SceneLayer{&edited_live.live(), &kNoNodes, edited_texture, true},
-    };
+    const std::vector<SceneLayer> layers{SceneLayer{&live, &visible, texture, false}};
 
     const std::shared_ptr<Scene> next = scenes.take();
     buildScene(layers, camera, static_cast<float>(ImGui::GetTime()), worldOptions(), next.get());
     scenes.keep(next);
     publish(next);
 
-    buildMapScene(texture, edited_texture);
+    buildMapScene(texture);
 }
 
 void render() {
@@ -838,8 +806,6 @@ void render() {
     if (scene && camera.valid && !(drawn.terrain && drawn.over)) {
         overlay::drawScene(ImGui::GetBackgroundDrawList(), camera, *scene, !drawn.terrain, !drawn.over);
     }
-    // Over the world however it was drawn: the editor's outlines, handles and missing images.
-    if (editor.draw_overlay && scene && camera.valid && !camera.map_open) editor.draw_overlay(camera, *scene);
     if (!drawn.map) {
         map_scene::drawPublished(ImGui::GetBackgroundDrawList(), mumble_link, glm::vec2(display.x, display.y));
     }
@@ -943,8 +909,6 @@ void drawOptions() {
     ImGui::Checkbox("Script console", &console_window);
     ImGui::SameLine();
     ImGui::Checkbox("Marker Packs", &catalog_window);
-
-    if (editor.draw_options) editor.draw_options();
 }
 
 } // namespace
@@ -1042,13 +1006,7 @@ void unload() {
     map_scene::publish(nullptr);
     map_scenes.clear();
     map_trails = map_scene::TrailCache{};
-    edited_map_trails = map_scene::TrailCache{};
     live = runtime::LiveMap{};
-    edited_live.clear();
-    edited_report = {};
-    edit_requested.clear();
-    edit_applied.clear();
-    edited_screen = behaviors::Screen{};
     installed = runtime::Installed{};
     editor = {};
     api = nullptr;
@@ -1056,11 +1014,6 @@ void unload() {
 
 void connectEditor(const EditorHooks& hooks) {
     editor = hooks;
-}
-
-void setEditedPack(const edited::Report& report) {
-    edited_report = report;
-    edit_requested = report.path;
 }
 
 } // namespace viewer

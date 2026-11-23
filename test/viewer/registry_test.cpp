@@ -41,6 +41,31 @@ TEST_CASE("every archive under a folder is a pack, and the folder is one when it
     CHECK(found[2] == temp.path());
 }
 
+TEST_CASE("a pack was written when its archive was, or a folder's newest top-level xml", "[registry]") {
+    using namespace std::chrono_literals;
+    const corpus::TempDir temp("registry_written");
+    const std::filesystem::path archive = temp / "pack.zip";
+    writeFile(archive, "zip");
+    const std::filesystem::file_time_type then = std::filesystem::last_write_time(archive);
+    CHECK(viewer::registry::writtenAt(archive) == then);
+    std::filesystem::last_write_time(archive, then + 1h);
+    CHECK(viewer::registry::writtenAt(archive) == then + 1h);
+
+    const std::filesystem::path folder = temp / "folder";
+    std::filesystem::create_directories(folder / "data");
+    writeFile(folder / "a.xml", "<OverlayData/>");
+    writeFile(folder / "B.XML", "<OverlayData/>");
+    writeFile(folder / "icon.png", "png");
+    writeFile(folder / "data" / "deep.xml", "<OverlayData/>");
+    std::filesystem::last_write_time(folder / "a.xml", then);
+    std::filesystem::last_write_time(folder / "B.XML", then + 2h);
+    std::filesystem::last_write_time(folder / "icon.png", then + 5h);
+    std::filesystem::last_write_time(folder / "data" / "deep.xml", then + 5h);
+    CHECK(viewer::registry::writtenAt(folder) == then + 2h);
+
+    CHECK(viewer::registry::writtenAt(temp / "missing.zip") == std::filesystem::file_time_type{});
+}
+
 TEST_CASE("a folder that is not there holds no packs", "[registry]") {
     CHECK(viewer::registry::discoverPacks("Z:/no/such/folder").empty());
 }

@@ -110,6 +110,25 @@ TEST_CASE("saving twice produces the same archive contents", "[save]") {
     }
 }
 
+TEST_CASE("a pack open for reading can be saved over, and still reads what it opened", "[save][regression]") {
+    // The viewer keeps every installed pack open while the editor saves the same file: the save
+    // moves it aside, which Windows refuses while any handle does not share deletion.
+    const TempDir temp("save_over_open");
+    const std::filesystem::path target = temp / "pack.zip";
+    pack::Pack created = pack::createPack("markers.xml", "first", "First");
+    saveTo(created, nullptr, target);
+
+    const Loaded open = load(target);
+    pack::Pack changed = pack::createPack("markers.xml", "second", "Second");
+    saveTo(changed, nullptr, target);
+
+    CHECK(load(target).model.findCategory("second") != nullptr);
+    std::vector<uint8_t> bytes;
+    std::string error;
+    CHECK(open.source->read("markers.xml", &bytes, &error));
+    CHECK(std::string(bytes.begin(), bytes.end()).find("first") != std::string::npos);
+}
+
 TEST_CASE("a pack built from nothing saves and reopens", "[save]") {
     // A pack created in the editor has no DataSource at all, so this is the one save path
     // that writes an archive out of the model alone.

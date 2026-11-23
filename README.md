@@ -48,16 +48,17 @@ into the addon's own folder, update it, open its page or delete it. Packs you ke
 update themselves when the addon loads.
 
 The editor runs only when you ask for it: **Open Editor...** in the menu starts it at any
-time. Close its windows with no pack open and it is gone again,
-**Ctrl+Z** and **Ctrl+Y** with it.
+time. Closing its main window ends the session — it asks first if there are unsaved changes —
+and **Ctrl+Z** and **Ctrl+Y** go back to the game with it.
 
-Whatever the editor has open is drawn as you edit it, exactly as a player will see it.
+Whatever the editor has open is drawn as you edit it, with every marker shown. The addon keeps
+drawing your installed packs too, and reads a pack again as soon as you save it.
 
 **File → Open Pack...** takes a `.zip`/`.taco`, **Open Folder...** takes an unzipped one,
 and **New Pack...** starts an empty pack from nothing. One pack is open at a time.
 
-The editor is five windows rather than one — Tree, Details, Toolbar, Trail editor,
-Resources — each shown or hidden from the **View** menu.
+The editor is five windows rather than one: the main one, with the pack's tree, and Details,
+Toolbar, Trail editor and Resources, each shown or hidden from its **View** menu.
 
 **Save** writes the pack back where it came from. A folder is written in place; a zip is
 rebuilt beside itself and swapped in, keeping the previous file as `.bak`.

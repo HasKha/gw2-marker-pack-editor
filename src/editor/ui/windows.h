@@ -3,8 +3,9 @@
 namespace ui::windows {
 
 // The editor is several small windows rather than one big one, so the 3D viewport is not
-// held hostage by a panel the user is not looking at. Each one is independently closable;
-// the View menu and the Nexus options page are how they come back.
+// held hostage by a panel the user is not looking at. The tree is the main one: the session
+// lasts as long as it is open, and the others are drawn only with it. Each of the others is
+// closable on its own, and the main window's View menu is how it comes back.
 enum class Id { Tree, Details, Toolbar, TrailEditor, Resources, Count };
 
 // Window title, including the ##id suffix that keeps ImGui's state per window.
@@ -15,18 +16,8 @@ const char* key(Id id);
 
 bool& visible(Id id);
 
-// Whether any of the windows is on screen.
-bool anyVisible();
-
-// Hides everything, or brings back whatever was last hidden. What the keybind and the
-// quick access item do: the editor as a whole goes away and comes back with its layout.
-void toggleAll();
-
-// The contents of the View menu. Call between BeginMenu and EndMenu.
+// The contents of the View menu: every window but the main one. Call between BeginMenu and
+// EndMenu.
 void drawViewMenu();
-
-// Checkboxes for the Nexus options page, so a closed window is always recoverable even
-// with no keybind bound.
-void drawOptions();
 
 } // namespace ui::windows

@@ -12,14 +12,13 @@
 #include "viewer/bake.h"
 #include "viewer/runtime.h"
 
-// The pack open in the editor, drawn from the editor's live model rather than from disk, so
-// that what the author sees is what a player sees once it is saved.
+// A pack drawn from a model that changes as it is drawn, rather than from disk: the editor's open
+// pack, which the editor draws itself, with the same bake every installed pack goes through.
 namespace viewer::edited {
 
-// What the editor says about the pack it has open, once a frame.
+// The model as it stands this frame.
 struct Report {
-    // Where it was opened from or last saved; empty for a pack never saved. The viewer drops
-    // the installed pack at this path while it is open, and reads it again once it is not.
+    // Where it was opened from or last saved; empty for a pack never saved.
     std::filesystem::path path;
 
     // The live model, null when no pack is open. Read only on the render thread, where the
@@ -38,12 +37,11 @@ struct Report {
 // file, or, with `*deferred` set, when this frame's reads are spent: try again next frame.
 using TrailLookup = std::function<std::shared_ptr<const pack::trl::Trail>(const std::string& path, bool* deferred)>;
 
-// The edited pack as a live map of its own, apart from the installed packs': an edit, which a
-// gizmo drag makes every frame, never rebuilds theirs or restarts their scripts. Its own scripts
-// never load, so they are paused while it is edited.
+// The model as a live map of its own, apart from the installed packs': an edit, which a gizmo
+// drag makes every frame, rebuilds only this. Its scripts never load.
 //
-// Its markers and trails have no node in the shared tree: the editor's tree decides what shows,
-// through Report::shown.
+// Its markers and trails have no node in the viewer's tree: the editor's tree decides what
+// shows, through Report::shown.
 class EditedLive
 {
 public:
