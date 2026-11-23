@@ -8,8 +8,8 @@ so far, and the order the rest is built in, is [plan.md](plan.md#the-viewer); th
 
 A Nexus-native replacement for Blish HUD's Pathing module. It loads every installed pack,
 draws the current map's markers and trails into the game's own frame through
-[GoodRender](https://github.com/HasKha/gw2-good-render) — under the game's windows, and
-hidden behind walls and characters — and runs packs' behaviors and Lua scripts the way
+[GoodRender](https://github.com/HasKha/gw2-good-render) — under the game's HUD and windows,
+and hidden behind walls and characters — and runs packs' behaviors and Lua scripts the way
 Pathing does.
 
 **The compatibility target is Pathing.** A pack that works in Pathing should work here, and
@@ -129,8 +129,8 @@ What goes where, through GoodRender:
 
 | What | How | Moment |
 |---|---|---|
-| markers and trails over the terrain, the default | `draw_list`, through `render/overlay.*` with the moment's camera | `BEFORE_WINDOWS` |
 | markers and trails behind the terrain | `world_quad`, the corners the overlay would draw | `WORLD_FINISHED` |
+| markers and trails over the terrain, the default | `draw_list`, through `render/overlay.*` with the moment's camera; drawn after the quads | `WORLD_FINISHED` |
 | the minimap and the full map | `draw_list`, projected from MumbleLink's map fields as the moment reads them, over the world's | `BEFORE_WINDOWS` |
 | info text, the interact prompt, the map's tooltip and menu | ImGui windows | Nexus's render, over everything |
 
@@ -139,9 +139,13 @@ not the camera's plane, and its size is clamped on its projected corners; GoodRe
 takes a centre and half sizes and faces it its own way. Building the corners ourselves keeps
 both sinks drawing the one shape `itemCorners` in `scene.*` gives them.
 
-`BEFORE_WINDOWS` is the point of all of it: over the game's HUD and nameplates, under its
-windows and tooltips. **Over the terrain is the default**, as Blish HUD draws every marker:
-the world never hides one. Behind the terrain is the player's choice, **Hide markers behind
+**The world's markers go under the game's whole UI**: its HUD, nameplates and damage numbers
+as well as its windows, where Blish HUD draws over all of it. So both halves of the world are
+drawn at `WORLD_FINISHED`, and only the map waits for `BEFORE_WINDOWS`, over the HUD as the
+game's own map markers are. A draw list at `WORLD_FINISHED` has no depth, which is what over
+the terrain needs, and GoodRender draws it after the moment's quads, so an item over the terrain
+always lands on one behind it, whatever the scene's order. **Over the terrain is the default**,
+as Blish HUD draws every marker: the world never hides one. Behind the terrain is the player's choice, **Hide markers behind
 terrain** in the options, and a pack's per category or marker with `render-layer`, our own
 attribute (see [format.md](format.md#render-layer-ours)), which wins over the player's. There,
 `world_quad` does the occlusion: each pixel is hidden behind what the game drew in front of it,

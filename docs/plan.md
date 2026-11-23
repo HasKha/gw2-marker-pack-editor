@@ -14,7 +14,7 @@ Sibling docs — keep this file free of their content:
 Two halves of one Nexus addon:
 
 - **The viewer** (planned — see [The viewer](#the-viewer)): loads every installed pack and
-  draws it into the game's frame through GoodRender, under the game's windows, with packs'
+  draws it into the game's frame through GoodRender, under the game's HUD and windows, with packs'
   behaviors and Lua scripts working as they do in Blish HUD's Pathing. What most players run.
 - **The editor** (released): opens a GW2 marker pack, shows its contents as an editable
   tree, draws every marker and trail in the world at its real position, lets you drag them
@@ -358,7 +358,7 @@ Asked for after milestone 7, before its pull in game. Each step is a commit of i
    Nexus allows: the icon's left click needs one. A new bind, unset, turns All Markers on or off.
 3. **Minimap and full map** — done offline. They are separate sections of the options.
 4. **Markers over the terrain** — done offline. With GoodRender, markers and trails draw over the world and
-   under the game's windows by default; behind the terrain is a setting, and an attribute of
+   under the game's HUD and windows by default, all at `WORLD_FINISHED`; behind the terrain is a setting, and an attribute of
    ours lets a pack choose per category or marker.
 5. **The editor on its own** — done offline. "Open Editor..." in the menu; the editor's windows belong to its
    main one, which closing ends the session, asking first when there is unsaved work; none of
@@ -390,9 +390,9 @@ Asked for after milestone 7, before its pull in game. Each step is a commit of i
 - **Whether `world_quad` samples with wrap.** A trail texture repeats along its length; with
   clamping, every repeat has to be its own quad. The ribbon keeps each quad's v near zero
   either way, and one look at a long trail segment in the pull answers it.
-- **Whether the full map counts as a window** at `BEFORE_WINDOWS`, i.e. whether markers drawn
-  there land over it or under it. One pull answers it. Under it, the full map moves to
-  `UI_FINISHED` and the minimap stays.
+- **Whether the full map counts as a window** at `BEFORE_WINDOWS`, i.e. whether the map's
+  markers drawn there land over it or under it. One pull answers it. Under it, the full map
+  moves to `UI_FINISHED` and the minimap stays.
 - **Texture memory with every pack loaded.** Nexus never releases a texture, which was fine
   for one pack; with all of them, a long session accumulates every icon it has seen.
 

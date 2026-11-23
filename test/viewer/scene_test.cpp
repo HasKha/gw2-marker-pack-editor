@@ -430,7 +430,7 @@ TEST_CASE("the GoodRender sink submits what the overlay would draw", "[good_rend
     imageless.texture = nullptr;
     scene.items.push_back(imageless);
 
-    // Over the terrain: drawn at BEFORE_WINDOWS, into the draw list, and not here.
+    // Over the terrain: drawn into the draw list, and not here.
     viewer::SceneItem over = quad;
     over.behind_terrain = false;
     scene.items.push_back(over);
@@ -461,7 +461,7 @@ TEST_CASE("the GoodRender sink submits what the overlay would draw", "[good_rend
     CHECK(submitted[2][1] == quad.corners[1]);
 }
 
-TEST_CASE("over the terrain goes into BEFORE_WINDOWS's draw list, and only that", "[good_render]") {
+TEST_CASE("over the terrain goes into the draw list, and only that", "[good_render]") {
     const viewer::Camera camera = test_camera::axisCamera();
     viewer::Scene scene;
     viewer::SceneItem quad;
@@ -476,7 +476,7 @@ TEST_CASE("over the terrain goes into BEFORE_WINDOWS's draw list, and only that"
     viewer::test::DrawListFixture fixture;
     const good_render::Camera moment_camera = momentCamera(camera);
     good_render::Moment moment{};
-    moment.moment = good_render::MOMENT_BEFORE_WINDOWS;
+    moment.moment = good_render::MOMENT_WORLD_FINISHED;
     moment.width = static_cast<uint32_t>(test_camera::kWidth);
     moment.height = static_cast<uint32_t>(test_camera::kHeight);
     moment.pixels_per_window_pixel = 1.0f;
@@ -489,6 +489,61 @@ TEST_CASE("over the terrain goes into BEFORE_WINDOWS's draw list, and only that"
     scene.items[0].behind_terrain = false;
     viewer::good_render_sink::drawOver(moment, scene);
     CHECK(fixture.list().VtxBuffer.Size == 4);
+}
+
+TEST_CASE("the whole world is drawn at WORLD_FINISHED, under the game's HUD", "[good_render]") {
+    const viewer::Camera camera = test_camera::axisCamera();
+    auto scene = std::make_shared<viewer::Scene>();
+    viewer::SceneItem behind;
+    behind.texture = fakeTexture();
+    behind.behind_terrain = true;
+    behind.corners[0] = {0, 0, 1};
+    behind.corners[1] = {1, 0, 1};
+    behind.corners[2] = {1, 1, 1};
+    behind.corners[3] = {0, 1, 1};
+    scene->items.push_back(behind);
+    viewer::SceneItem over = behind;
+    over.behind_terrain = false;
+    scene->items.push_back(over);
+    viewer::publish(scene);
+    viewer::good_render_sink::takeDrawn();
+
+    const good_render::Camera moment_camera = momentCamera(camera);
+    auto momentOf = [&](good_render::MomentId id, viewer::test::DrawListFixture& fixture) {
+        good_render::Moment moment{};
+        moment.moment = id;
+        moment.width = static_cast<uint32_t>(test_camera::kWidth);
+        moment.height = static_cast<uint32_t>(test_camera::kHeight);
+        moment.pixels_per_window_pixel = 1.0f;
+        moment.camera = &moment_camera;
+        moment.draw_list = &fixture.list();
+        if (id <= good_render::MOMENT_WORLD_FINISHED) moment.world_quad = recordQuad;
+        return moment;
+    };
+
+    // A frame's two moments, in order: the world's quads and its draw list both at the first.
+    {
+        viewer::test::DrawListFixture world;
+        submitted.clear();
+        const good_render::Moment world_moment = momentOf(good_render::MOMENT_WORLD_FINISHED, world);
+        viewer::good_render_sink::onMoment(&world_moment);
+        CHECK(submitted.size() == 1);
+        CHECK(world.list().VtxBuffer.Size == 4);
+    }
+
+    // Nothing of the world over the HUD; no map published, so nothing at all.
+    {
+        viewer::test::DrawListFixture ui;
+        const good_render::Moment ui_moment = momentOf(good_render::MOMENT_BEFORE_WINDOWS, ui);
+        viewer::good_render_sink::onMoment(&ui_moment);
+        CHECK(ui.list().VtxBuffer.Size == 0);
+    }
+
+    const viewer::good_render_sink::Drawn drawn = viewer::good_render_sink::takeDrawn();
+    CHECK(drawn.terrain);
+    CHECK(drawn.over);
+
+    viewer::publish(nullptr);
 }
 
 TEST_CASE("a real pack draws on its own map, and only there", "[scene][corpus]") {

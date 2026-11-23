@@ -18,7 +18,7 @@ struct Settings {
     bool allow_auto_hide = true; // "Allow Markers to Automatically Hide"
     bool allow_animation = true; // "Allow Markers to Animate": bounce
     // Ours: with GoodRender, what a pack leaves to the player is hidden behind the terrain.
-    // Off draws it over the world and under the game's windows, as Blish HUD draws everything.
+    // Off draws it over the world and under the game's UI; Blish HUD draws everything over both.
     bool behind_terrain = false;
     bool smart_categories = true; // "Enable Smart Categories": the menu leaves out other maps'
     bool show_interact_prompt = true; // "Allow Markers to Show Interact Gear On-Screen"

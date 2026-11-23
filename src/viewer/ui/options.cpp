@@ -32,7 +32,7 @@ bool drawPack(settings::Settings* settings, bool* show_hidden) {
     if (ImGui::IsItemHovered()) {
         ImGui::SetTooltip(
             "With GoodRender: walls and hills hide markers and trails behind them.\n"
-            "Off, they draw over the world and under the game's windows.\n"
+            "Off, they draw over the world and under the game's HUD.\n"
             "A pack can choose for its own markers.");
     }
 

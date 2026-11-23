@@ -49,7 +49,7 @@ bool markerTransform(const pack::Pack& pack, const pack::Pathable& pathable, Mar
 // leaves it to the player's setting (WorldOptions::behind_terrain).
 enum class RenderLayer : uint8_t {
     Default,
-    Windows, // "windows": over the world, under the game's windows
+    Windows, // "windows": over the world, under the game's UI. Named when that UI was only its windows
     Terrain, // "terrain": behind whatever of the world is in front of it
 };
 

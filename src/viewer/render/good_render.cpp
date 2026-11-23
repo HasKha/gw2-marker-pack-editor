@@ -28,33 +28,34 @@ glm::vec2 windowSize(const good_render::Moment& moment) {
     return glm::vec2(moment.width / scale, moment.height / scale);
 }
 
+} // namespace
+
 void onMoment(const good_render::Moment* moment) {
-    // In the game's UI, over its HUD: the world's markers over the terrain, then the map, where
-    // the game draws its own map markers.
+    // In the game's UI, over its HUD: the map, where the game draws its own map markers.
     if (moment->moment == good_render::MOMENT_BEFORE_WINDOWS && moment->draw_list) {
-        if (moment->camera) {
-            if (const std::shared_ptr<const Scene> scene = published()) {
-                drawOver(*moment, *scene);
-                over_drawn = true;
-            }
-        }
         map_scene::drawPublished(moment->draw_list, mumble_link, windowSize(*moment));
         map_drawn = true;
         return;
     }
 
-    // The finished world, before any UI: what is behind the terrain. Null world_quad or camera
-    // means no world to draw into this frame — leave it to the fallback.
-    if (moment->moment != good_render::MOMENT_WORLD_FINISHED || !moment->world_quad || !moment->camera) return;
+    // The finished world, before any UI, so the game's HUD and nameplates go over every marker:
+    // what is behind the terrain through world_quad, the rest into the draw list, which the
+    // service draws after the quads. No camera means no world to draw into this frame — leave it
+    // to the fallback.
+    if (moment->moment != good_render::MOMENT_WORLD_FINISHED || !moment->camera) return;
 
     const std::shared_ptr<const Scene> scene = published();
     if (!scene) return;
 
-    submit(*moment, *scene);
-    terrain_drawn = true;
+    if (moment->world_quad) {
+        submit(*moment, *scene);
+        terrain_drawn = true;
+    }
+    if (moment->draw_list) {
+        drawOver(*moment, *scene);
+        over_drawn = true;
+    }
 }
-
-} // namespace
 
 void load(const Mumble::Data* mumble) {
     mumble_link = mumble;

@@ -46,8 +46,8 @@ struct SceneItem {
 
     float depth = 0.0f; // squared distance from the camera it was sorted with
 
-    // With GoodRender, hidden behind what of the world is in front of it, at WORLD_FINISHED;
-    // otherwise over the world and under the game's windows, at BEFORE_WINDOWS.
+    // With GoodRender, both at WORLD_FINISHED and under the game's UI: hidden behind what of the
+    // world is in front of it, or otherwise over the whole world.
     bool behind_terrain = false;
 
     // For the pack open in the editor, the pathable this draws, into its Pack::pathables, and

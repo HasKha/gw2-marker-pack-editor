@@ -360,7 +360,7 @@ inherited from categories like any other.
 
 | Value | Drawn |
 |---|---|
-| `windows` | over the world, under the game's windows: what Blish HUD does with every marker |
+| `windows` | over the world, under the game's HUD and windows: Blish HUD draws every marker over the world too, but over the game's UI as well |
 | `terrain` | behind what of the world is in front of it: walls, hills, characters |
 | absent, or anything else | as the player's **Hide markers behind terrain** says, over the world unless it is on |
 

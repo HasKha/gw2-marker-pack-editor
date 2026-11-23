@@ -8,10 +8,10 @@
 #include "viewer/camera.h"
 #include "viewer/scene.h"
 
-// The sink that draws the published scenes into the game's own frame through GoodRender. What is
-// behind the terrain at MOMENT_WORLD_FINISHED, each pixel hidden behind what the game drew in
-// front of it; the rest of the world, then the map, at MOMENT_BEFORE_WINDOWS, over the HUD and
-// under the windows.
+// The sink that draws the published scenes into the game's own frame through GoodRender. The
+// world at MOMENT_WORLD_FINISHED, under the game's whole UI: what is behind the terrain through
+// world_quad, each pixel hidden behind what the game drew in front of it, then the rest over it
+// through the draw list. The map at MOMENT_BEFORE_WINDOWS, over the HUD and under the windows.
 //
 // GoodRender is optional. Subscribing costs nothing while no service is loaded, and every
 // frame no moment draws a scene — no service, a loading screen, the full map for the world —
@@ -35,6 +35,10 @@ struct Drawn {
 };
 Drawn takeDrawn();
 
+// The callback load() subscribes: the published scenes into whichever moment this is. Apart so a
+// test can run a frame's moments of its own.
+void onMoment(const good_render::Moment* moment);
+
 // A moment's camera as our own, for the projection min/max size needs. `viewport` is in window
 // pixels, the space minSize and maxSize are in.
 Camera cameraFromMoment(const good_render::Camera& camera, glm::vec2 viewport);
@@ -44,7 +48,8 @@ Camera cameraFromMoment(const good_render::Camera& camera, glm::vec2 viewport);
 // moment of its own.
 void submit(const good_render::Moment& moment, const Scene& scene);
 
-// Draws the rest of `scene` into the moment's draw list: BEFORE_WINDOWS's world.
+// Draws the rest of `scene` into the moment's draw list, which GoodRender draws after the
+// quads: WORLD_FINISHED's other half.
 void drawOver(const good_render::Moment& moment, const Scene& scene);
 
 } // namespace viewer::good_render_sink
