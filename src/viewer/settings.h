@@ -23,6 +23,16 @@ struct Settings {
 
     // Whether packs' Lua scripts run: Pathing's "Enable Lua Scripts", on by default as there.
     bool run_scripts = true;
+
+    // Pathing's pack settings for behaviors (ModuleSettings.cs), with its defaults.
+    bool allow_auto_hide = true; // "Allow Markers to Automatically Hide"
+    bool allow_animation = true; // "Allow Markers to Animate": bounce
+    bool show_interact_prompt = true; // "Allow Markers to Show Interact Gear On-Screen"
+    int clipboard_consent = 0; // behaviors::ClipboardConsent: Always
+
+    // The key that interacts with a focused marker: Blish HUD's own interact binding, F
+    // unless changed, since neither it nor Nexus can read the game's. A Windows virtual key.
+    int interact_key = 'F';
 };
 
 // Reads the settings in `folder`. Anything missing keeps its default — except

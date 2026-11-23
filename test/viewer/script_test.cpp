@@ -8,10 +8,10 @@
 #include <string>
 
 #include "corpus.h"
+#include "viewer/mumble.h"
 #include "viewer/registry.h"
 #include "viewer/runtime.h"
 #include "viewer/script/engine.h"
-#include "viewer/script/mumble.h"
 #include "viewer/store.h"
 
 namespace {
@@ -76,7 +76,7 @@ struct Scripted {
     viewer::runtime::LiveMap live;
     viewer::store::CategoryStates states;
     viewer::store::KeyValues storage;
-    viewer::script::MumbleState mumble;
+    viewer::MumbleState mumble;
     std::string clipboard;
     std::unique_ptr<viewer::script::Engine> engine;
 };

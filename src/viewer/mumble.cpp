@@ -1,10 +1,13 @@
-#include "viewer/script/mumble.h"
+#include "viewer/mumble.h"
 
 #include <Mumble.h>
 
+#include <cctype>
+#include <span>
+
 #include "viewer/identity.h"
 
-namespace viewer::script {
+namespace viewer {
 
 namespace {
 
@@ -43,11 +46,23 @@ constexpr const char* kMounts[] = {
 };
 constexpr const char* kUiSizes[] = {"Small", "Normal", "Large", "Larger"};
 
-// A value the enum has no name for is its number, which is what .NET prints for one.
-template <size_t N>
-std::string nameOf(const char* const (&names)[N], int value) {
-    const bool named = value >= 0 && static_cast<size_t>(value) < N && names[value];
-    return named ? names[value] : std::to_string(value);
+std::span<const char* const> namesOf(Gw2Enum type) {
+    switch (type) {
+    case Gw2Enum::MapType: return kMapTypes;
+    case Gw2Enum::Profession: return kProfessions;
+    case Gw2Enum::Race: return kRaces;
+    case Gw2Enum::Mount: return kMounts;
+    case Gw2Enum::UiSize: return kUiSizes;
+    }
+    return {};
+}
+
+bool equalsIgnoringCase(std::string_view a, std::string_view b) {
+    if (a.size() != b.size()) return false;
+    for (size_t i = 0; i < a.size(); ++i) {
+        if (std::tolower(static_cast<unsigned char>(a[i])) != std::tolower(static_cast<unsigned char>(b[i]))) return false;
+    }
+    return true;
 }
 
 glm::vec3 toBlish(const Vector3& v) {
@@ -55,6 +70,20 @@ glm::vec3 toBlish(const Vector3& v) {
 }
 
 } // namespace
+
+std::string enumName(Gw2Enum type, int value) {
+    const std::span<const char* const> names = namesOf(type);
+    const bool named = value >= 0 && static_cast<size_t>(value) < names.size() && names[value];
+    return named ? names[value] : std::to_string(value);
+}
+
+int enumValue(Gw2Enum type, std::string_view name) {
+    const std::span<const char* const> names = namesOf(type);
+    for (size_t value = 0; value < names.size(); ++value) {
+        if (names[value] && equalsIgnoringCase(names[value], name)) return static_cast<int>(value);
+    }
+    return 0;
+}
 
 MumbleState mumbleState(const Mumble::Data* data) {
     MumbleState state;
@@ -67,19 +96,19 @@ MumbleState mumbleState(const Mumble::Data* data) {
     state.tick = static_cast<int>(data->UITick);
 
     state.map_id = static_cast<int>(context.MapID);
-    state.map_type = nameOf(kMapTypes, static_cast<int>(context.MapType));
+    state.map_type = static_cast<int>(context.MapType);
     state.is_competitive = context.IsCompetitive;
 
     state.player_position = toBlish(data->AvatarPosition);
     state.player_forward = toBlish(data->AvatarFront);
     state.name = identity.name;
-    state.profession = nameOf(kProfessions, identity.profession);
-    state.race = nameOf(kRaces, identity.race);
+    state.profession = identity.profession;
+    state.race = identity.race;
     state.specialization = identity.specialization;
     state.team_color_id = identity.team_color_id;
     state.is_commander = identity.commander;
     state.is_in_combat = context.IsInCombat;
-    state.mount = nameOf(kMounts, static_cast<int>(context.MountIndex));
+    state.mount = static_cast<int>(context.MountIndex);
 
     state.camera_position = toBlish(data->CameraPosition);
     state.camera_forward = toBlish(data->CameraFront);
@@ -93,7 +122,7 @@ MumbleState mumbleState(const Mumble::Data* data) {
     state.is_map_open = context.IsMapOpen;
     state.map_scale = context.Compass.Scale;
     state.is_text_input_focused = context.IsTextboxFocused;
-    state.ui_size = nameOf(kUiSizes, identity.ui_size);
+    state.ui_size = identity.ui_size;
 
     state.build_id = static_cast<int>(context.BuildID);
     state.is_game_focused = context.IsGameFocused;
@@ -102,4 +131,4 @@ MumbleState mumbleState(const Mumble::Data* data) {
     return state;
 }
 
-} // namespace viewer::script
+} // namespace viewer

@@ -52,15 +52,17 @@ struct Scene {
 // marker, means it is not drawn this frame, as Pathing draws nothing without one.
 using TextureLookup = std::function<ImTextureID(size_t pack, const std::string& path)>;
 
-// Builds the scene from the live map: what is on it, not removed, in game and under a
-// visible category. `camera` sorts and culls, and its `player` is what fades
-// are measured from; `seconds` is the time trail textures scroll by; `visible` is
-// runtime::visibleNodes.
+// Builds the scene from the live map: what is on it, not removed, in game, under a visible
+// category and not filtered by its behaviors. `camera` sorts and culls, and its `player` is
+// what fades are measured from; `seconds` is the time trail textures scroll by and markers
+// bounce by; `visible` is runtime::visibleNodes. With `show_hidden`, what behaviors filter
+// is drawn after all — a marker at half opacity, as Pathing draws its ghosts.
 void buildScene(
     const runtime::LiveMap& live,
     const std::vector<char>& visible,
     const Camera& camera,
     float seconds,
+    bool show_hidden,
     const TextureLookup& texture,
     Scene* out);
 

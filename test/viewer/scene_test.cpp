@@ -67,7 +67,7 @@ struct Built {
 
     void build(const viewer::Camera& camera, const viewer::TextureLookup& textures = everyTexture(), float seconds = 0.0f) {
         const viewer::runtime::LiveMap live = viewer::runtime::liveMap(installed, kMap);
-        viewer::buildScene(live, viewer::runtime::visibleNodes(installed.tree, states), camera, seconds, textures, &scene);
+        viewer::buildScene(live, viewer::runtime::visibleNodes(installed.tree, states), camera, seconds, false, textures, &scene);
     }
 };
 
@@ -189,6 +189,29 @@ TEST_CASE("the scene leaves out what is off, faded out or has no icon", "[scene]
     built.build(camera);
     REQUIRE(built.scene.items.size() == 1);
     CHECK(built.scene.items[0].centre.z == Approx(5.0f));
+}
+
+TEST_CASE("what behaviors filter is left out, or shown at half opacity, and a bounce lifts", "[scene]") {
+    Built built;
+    viewer::BakedPathables pathables;
+    pathables.markers = {marker({0, 0, 5}, 0), marker({0, 0, 6}, 0)};
+    auto bounce = std::make_shared<viewer::behaviors::Behaviors>();
+    bounce->bounce = viewer::behaviors::Bounce{viewer::behaviors::BounceMode::Rise, 0.0f, 2.0f, 1.0f};
+    pathables.markers[1].behaviors = bounce;
+    viewer::runtime::install(&built.installed, loadedPack("pack", pathables));
+    viewer::runtime::LiveMap live = viewer::runtime::liveMap(built.installed, kMap);
+    live.markers[0].behavior.filtered = true;
+    live.markers[1].behavior.bounce.phase = viewer::behaviors::BounceState::Phase::Rising;
+
+    const viewer::Camera camera = test_camera::axisCamera();
+    const std::vector<char> visible = viewer::runtime::visibleNodes(built.installed.tree, built.states);
+    viewer::buildScene(live, visible, camera, 5.0f, false, everyTexture(), &built.scene);
+    REQUIRE(built.scene.items.size() == 1);
+    CHECK(built.scene.items[0].centre.y == Approx(2.0f)); // risen all the way
+
+    viewer::buildScene(live, visible, camera, 5.0f, true, everyTexture(), &built.scene);
+    REQUIRE(built.scene.items.size() == 2);
+    CHECK((built.scene.items[1].colour >> IM_COL32_A_SHIFT & 0xFF) == 128);
 }
 
 TEST_CASE("the scene is back to front, billboards and quads together", "[scene]") {
@@ -318,7 +341,14 @@ TEST_CASE("a real pack draws on its own map, and only there", "[scene][corpus]")
 
     const viewer::runtime::LiveMap live = viewer::runtime::liveMap(built.installed, first.map_id);
     REQUIRE_FALSE(live.markers.empty());
-    viewer::buildScene(live, viewer::runtime::visibleNodes(built.installed.tree, built.states), camera, 1.5f, everyTexture(), &built.scene);
+    viewer::buildScene(
+        live,
+        viewer::runtime::visibleNodes(built.installed.tree, built.states),
+        camera,
+        1.5f,
+        false,
+        everyTexture(),
+        &built.scene);
     CHECK_FALSE(built.scene.items.empty());
     for (const viewer::SceneItem& item : built.scene.items) {
         for (const glm::vec3& corner : item.corners) REQUIRE(std::isfinite(corner.x + corner.y + corner.z));

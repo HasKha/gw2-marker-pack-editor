@@ -297,10 +297,11 @@ uint32_t toColor(lua_State* L, const sol::object& value, const char* what) {
 Guid toGuid(lua_State* L, const sol::object& value, const char* what) {
     if (value.is<GuidValue>()) return value.as<GuidValue>().guid;
     if (value.get_type() == sol::type::lua_nil) return Guid{};
-    if (value.get_type() == sol::type::string) return guidFromText(value.as<std::string>());
-    raise(
-        L,
-        std::string("bad argument to '") + what + "' (Guid expected, got " + lua_typename(L, static_cast<int>(value.get_type())) + ")");
+    // Anything else as .NET hands it to a string parameter, which is what World's lookups
+    // take: its ToString(). Hero's LAA_Fade passes markers to MarkerByGuid this way, and finds
+    // nothing, as it does in Pathing.
+    (void)what;
+    return guidFromText(valueString(L, value));
 }
 
 glm::vec3 toBlish(const glm::vec3& file) {

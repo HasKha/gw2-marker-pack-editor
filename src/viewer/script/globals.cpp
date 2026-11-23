@@ -5,12 +5,12 @@
 #include <cmath>
 
 #include "pack/attributes.h"
+#include "viewer/mumble.h"
 #include "viewer/registry.h"
 #include "viewer/runtime.h"
 #include "viewer/script/api.h"
 #include "viewer/script/context.h"
 #include "viewer/script/lson.h"
-#include "viewer/script/mumble.h"
 #include "viewer/store.h"
 
 namespace viewer::script {
@@ -30,6 +30,12 @@ std::string textOf(lua_State* L, const sol::object& value) {
 template <class Api, auto Field>
 Member<Api> mumbleField(const char* name) {
     return {.name = name, .get = [](sol::state_view lua, Api&) { return sol::make_object(lua, mumble(lua).*Field); }};
+}
+
+// An enum property, which a script sees by its name.
+template <class Api, auto Field, Gw2Enum Type>
+Member<Api> mumbleEnum(const char* name) {
+    return {.name = name, .get = [](sol::state_view lua, Api&) { return sol::make_object(lua, enumName(Type, mumble(lua).*Field)); }};
 }
 
 template <class Api, auto Field>
@@ -66,7 +72,7 @@ struct MumbleApi {
 
 const Member<CurrentMapApi> kCurrentMapMembers[] = {
     mumbleField<CurrentMapApi, &MumbleState::map_id>("Id"),
-    mumbleField<CurrentMapApi, &MumbleState::map_type>("Type"),
+    mumbleEnum<CurrentMapApi, &MumbleState::map_type, Gw2Enum::MapType>("Type"),
     mumbleField<CurrentMapApi, &MumbleState::is_competitive>("IsCompetitiveMode"),
 };
 
@@ -74,13 +80,13 @@ const Member<PlayerCharacterApi> kPlayerCharacterMembers[] = {
     mumbleVector<PlayerCharacterApi, &MumbleState::player_position>("Position"),
     mumbleVector<PlayerCharacterApi, &MumbleState::player_forward>("Forward"),
     mumbleField<PlayerCharacterApi, &MumbleState::name>("Name"),
-    mumbleField<PlayerCharacterApi, &MumbleState::profession>("Profession"),
-    mumbleField<PlayerCharacterApi, &MumbleState::race>("Race"),
+    mumbleEnum<PlayerCharacterApi, &MumbleState::profession, Gw2Enum::Profession>("Profession"),
+    mumbleEnum<PlayerCharacterApi, &MumbleState::race, Gw2Enum::Race>("Race"),
     mumbleField<PlayerCharacterApi, &MumbleState::specialization>("Specialization"),
     mumbleField<PlayerCharacterApi, &MumbleState::team_color_id>("TeamColorId"),
     mumbleField<PlayerCharacterApi, &MumbleState::is_commander>("IsCommander"),
     mumbleField<PlayerCharacterApi, &MumbleState::is_in_combat>("IsInCombat"),
-    mumbleField<PlayerCharacterApi, &MumbleState::mount>("CurrentMount"),
+    mumbleEnum<PlayerCharacterApi, &MumbleState::mount, Gw2Enum::Mount>("CurrentMount"),
 };
 
 const Member<PlayerCameraApi> kPlayerCameraMembers[] = {
@@ -99,7 +105,7 @@ const Member<UiApi> kUiMembers[] = {
     mumbleField<UiApi, &MumbleState::is_map_open>("IsMapOpen"),
     mumbleField<UiApi, &MumbleState::map_scale>("MapScale"),
     mumbleField<UiApi, &MumbleState::is_text_input_focused>("IsTextInputFocused"),
-    mumbleField<UiApi, &MumbleState::ui_size>("UISize"),
+    mumbleEnum<UiApi, &MumbleState::ui_size, Gw2Enum::UiSize>("UISize"),
 };
 
 const Member<InfoApi> kInfoMembers[] = {

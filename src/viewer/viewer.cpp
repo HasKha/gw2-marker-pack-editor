@@ -5,24 +5,29 @@
 #include <windows.h>
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <memory>
 #include <string>
 #include <vector>
 
 #include "pack/source.h"
+#include "viewer/behaviors/festivals.h"
+#include "viewer/behaviors/states.h"
+#include "viewer/behaviors/update.h"
 #include "viewer/camera.h"
+#include "viewer/mumble.h"
 #include "viewer/registry.h"
 #include "viewer/render/good_render.h"
 #include "viewer/render/overlay.h"
 #include "viewer/runtime.h"
 #include "viewer/scene.h"
 #include "viewer/script/engine.h"
-#include "viewer/script/mumble.h"
 #include "viewer/settings.h"
 #include "viewer/store.h"
 #include "viewer/textures.h"
 #include "viewer/ui/category_menu.h"
+#include "viewer/ui/interaction.h"
 #include "viewer/ui/script_console.h"
 
 namespace viewer {
@@ -71,9 +76,25 @@ bool console_window = false;
 // has been reset onto it — a script's handles are indices into the live map, so it must not
 // tick in between.
 std::unique_ptr<script::Engine> scripts;
-script::MumbleState mumble_state;
+MumbleState mumble_state;
 store::KeyValues script_storage;
 bool scripts_stale = true;
+
+// Behaviors: what they hid and until when, what they show on screen, and the festivals on.
+behaviors::BehaviorStates behavior_states;
+behaviors::Screen screen;
+behaviors::FestivalFetcher festivals;
+std::vector<std::string> festivals_on;
+
+// Pathing's "Temporarily Show Ghost Markers", which it turns off at every start: so a session
+// setting, never saved.
+bool show_hidden = false;
+
+// The interact key, heard in the window procedure, which runs on the game's window thread
+// while the frame runs on its render thread.
+std::atomic<int> interact_key{'F'};
+std::atomic<bool> interact_pressed{false};
+std::atomic<bool> escape_released{false};
 
 // What outlives the session is written at most this often, as Pathing flushes its states,
 // since a script may change them every tick.
@@ -89,15 +110,27 @@ std::filesystem::path storageFile() {
     return folder.empty() ? folder : folder / store::STORAGE_FILE_NAME;
 }
 
+std::filesystem::path timersFile() {
+    return folder.empty() ? folder : folder / behaviors::TIMERS_FILE_NAME;
+}
+
+behaviors::UtcMillis utcNow() {
+    using namespace std::chrono;
+    return duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count();
+}
+
+// Every few seconds: what changed is written, and timers that ran out are dropped.
 void saveStates() {
     if (category_states.revision() != saved_categories && category_states.save(categoriesFile()))
         saved_categories = category_states.revision();
     if (script_storage.dirty()) script_storage.save(storageFile());
+    behavior_states.expire(utcNow());
+    if (behavior_states.dirty()) behavior_states.save(timersFile());
     last_save = std::chrono::steady_clock::now();
 }
 
-// User.SetClipboard. Pathing's consent setting, whose default lets packs copy, comes with the
-// rest of its interaction settings; until then every copy is allowed, and said.
+// The clipboard, for a `copy` marker and User.SetClipboard alike, telling the player with
+// `message`. Whether a pack may copy at all is the caller's to ask.
 bool setClipboard(const std::string& text, const std::string& message) {
     const int length = MultiByteToWideChar(CP_UTF8, 0, text.c_str(), -1, nullptr, 0);
     if (length <= 0 || !OpenClipboard(nullptr)) return false;
@@ -156,8 +189,68 @@ void reloadPacks() {
 }
 
 void replaceLiveMap(int map_id) {
+    // ReappearOnMapChange waits for the map, not for the packs to change under it.
+    if (map_id != live.map_id) behavior_states.mapChanged();
     live = runtime::liveMap(installed, map_id);
     scripts_stale = true;
+    // Every entity is new, and what the old ones put on screen goes with them, as Pathing
+    // unloads its entities.
+    screen = behaviors::Screen{};
+}
+
+behaviors::Host behaviorHost() {
+    behaviors::Host host;
+    host.states = &behavior_states;
+    host.categories = &category_states;
+    host.tree = &installed.tree;
+    host.screen = &screen;
+    host.copy = setClipboard;
+    // Script.Update waits until every pack is in, and so do the engine's handles.
+    if (persisted.run_scripts && !scripts_stale) {
+        host.script = [](const behaviors::ScriptCall& call, behaviors::Entity entity, behaviors::Hook hook, bool flag) {
+            return scripts->callBehavior(call, entity, hook, flag);
+        };
+    }
+    host.options.auto_hide = persisted.allow_auto_hide;
+    host.options.animate = persisted.allow_animation;
+    host.options.show_hidden = show_hidden;
+    host.options.clipboard = static_cast<behaviors::ClipboardConsent>(persisted.clipboard_consent);
+    return host;
+}
+
+behaviors::Frame behaviorFrame() {
+    return behaviors::Frame{&mumble_state, utcNow(), ImGui::GetTime(), &festivals_on};
+}
+
+// The interact key's name as the keyboard writes it, for the prompt.
+std::string keyName(int virtual_key) {
+    const LONG scan = static_cast<LONG>(MapVirtualKeyW(static_cast<UINT>(virtual_key), MAPVK_VK_TO_VSC)) << 16;
+    char name[64] = {};
+    if (GetKeyNameTextA(scan, name, static_cast<int>(sizeof(name))) > 0) return name;
+    return "?";
+}
+
+// Hears the interact key and Escape, and passes both on: the game interacts with what it has
+// in front of it as well, as it does with Blish HUD running.
+UINT onWndProc(HWND, UINT message, WPARAM key, LPARAM flags) {
+    const bool first_press = (flags & (LPARAM{1} << 30)) == 0;
+    if (message == WM_KEYDOWN && first_press && static_cast<int>(key) == interact_key.load()) interact_pressed = true;
+    if (message == WM_KEYUP && key == VK_ESCAPE) escape_released = true;
+    return message;
+}
+
+// One frame of behaviors, after the scripts have ticked.
+void runBehaviors() {
+    festivals_on = festivals.active();
+    const behaviors::Host host = behaviorHost();
+    const behaviors::Frame frame = behaviorFrame();
+    behaviors::update(&live, visible, host, frame);
+
+    // Not while typing — in chat, or in one of our own text fields.
+    const bool typing = mumble_state.is_text_input_focused || ImGui::GetIO().WantTextInput;
+    if (interact_pressed.exchange(false) && !typing) behaviors::interact(&live, host, frame);
+    // UiStates clears the info on Escape.
+    if (escape_released.exchange(false)) screen.info.clear();
 }
 
 // Takes what the loader has finished, and what the editor has taken or given back.
@@ -198,15 +291,20 @@ void preRender() {
     if (camera.valid && (live.map_id != static_cast<int>(camera.map_id) || live.revision != installed.revision)) {
         replaceLiveMap(static_cast<int>(camera.map_id));
     }
-    mumble_state = script::mumbleState(mumble_link);
+    mumble_state = mumbleState(mumble_link);
     runScripts();
-    if (std::chrono::steady_clock::now() - last_save > kSaveInterval) saveStates();
 
-    if (visible_revision != category_states.revision() || visible_tree != installed.revision) {
+    // Behaviors see what scripts did this frame, and the scene what both did.
+    const auto updateVisible = [] {
+        if (visible_revision == category_states.revision() && visible_tree == installed.revision) return;
         visible = runtime::visibleNodes(installed.tree, category_states);
         visible_revision = category_states.revision();
         visible_tree = installed.revision;
-    }
+    };
+    updateVisible();
+    runBehaviors();
+    updateVisible();
+    if (std::chrono::steady_clock::now() - last_save > kSaveInterval) saveStates();
 
     texture_budget.reset();
     const TextureLookup texture = [](size_t pack, const std::string& path) -> ImTextureID {
@@ -220,7 +318,7 @@ void preRender() {
     };
 
     std::shared_ptr<Scene> next = spare_scene && spare_scene.use_count() == 1 ? spare_scene : std::make_shared<Scene>();
-    buildScene(live, visible, camera, static_cast<float>(ImGui::GetTime()), texture, next.get());
+    buildScene(live, visible, camera, static_cast<float>(ImGui::GetTime()), show_hidden, texture, next.get());
     spare_scene = std::move(current_scene);
     current_scene = next;
     publish(std::move(next));
@@ -243,6 +341,50 @@ void render() {
     // A player's own toggle is written at once, not with the scripts' changes.
     if (ui::category_menu::draw(installed.tree, &category_states, &markers_window, loadingStatus(), script_menu)) saveStates();
     ui::script_console::draw(*scripts, installed, &console_window);
+
+    const ImVec2 display = ImGui::GetIO().DisplaySize;
+    const Camera camera = fromMumble(mumble_link, glm::vec2(display.x, display.y));
+    if (camera.valid && !camera.map_open &&
+        ui::interaction::draw(screen, keyName(persisted.interact_key), persisted.show_interact_prompt)) {
+        behaviors::interactWith(&live, screen.prompt->marker, behaviorHost(), behaviorFrame());
+    }
+}
+
+// The behavior settings, Pathing's pack settings by its own names.
+void drawBehaviorOptions() {
+    bool changed = false;
+    changed |= ImGui::Checkbox("Allow markers to hide themselves", &persisted.allow_auto_hide);
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Off shows every marker, whatever festival, character or interaction would hide it.");
+    changed |= ImGui::Checkbox("Allow markers to animate", &persisted.allow_animation);
+    changed |= ImGui::Checkbox("Show what interacting does", &persisted.show_interact_prompt);
+
+    static constexpr const char* kConsents[] = {"Always", "Only when I interact", "Never"};
+    ImGui::SetNextItemWidth(ImGui::GetFontSize() * 12.0f);
+    changed |= ImGui::Combo("Markers may copy to the clipboard", &persisted.clipboard_consent, kConsents, IM_ARRAYSIZE(kConsents));
+
+    // A letter, as the game's own interact key is one; F unless the player moved it.
+    int letter = persisted.interact_key >= 'A' && persisted.interact_key <= 'Z' ? persisted.interact_key - 'A' : 'F' - 'A';
+    ImGui::SetNextItemWidth(ImGui::GetFontSize() * 4.0f);
+    if (ImGui::Combo(
+            "Interact key",
+            &letter,
+            [](void*, int index, const char** text) {
+                static char letters[26][2];
+                letters[index][0] = static_cast<char>('A' + index);
+                *text = letters[index];
+                return true;
+            },
+            nullptr,
+            26)) {
+        persisted.interact_key = 'A' + letter;
+        interact_key = persisted.interact_key;
+        changed = true;
+    }
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("The game's interact key: the addon cannot read the game's binding.");
+
+    ImGui::Checkbox("Show hidden markers faded, to unhide them", &show_hidden);
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("For this session only, as in Pathing.");
+    if (changed) settings::save(folder, persisted);
 }
 
 void drawOptions() {
@@ -266,6 +408,8 @@ void drawOptions() {
         scripts->reset();
         replaceLiveMap(live.map_id);
     }
+
+    drawBehaviorOptions();
 
     if (ImGui::Button("Reload packs")) reloadPacks();
     ImGui::SameLine();
@@ -304,6 +448,9 @@ void load(AddonAPI* aApi, Mumble::Data* aMumbleLink) {
     category_states.load(categoriesFile());
     saved_categories = category_states.revision();
     script_storage.load(storageFile());
+    behavior_states.load(timersFile());
+    interact_key = persisted.interact_key;
+    festivals.start();
 
     script::Host host;
     host.installed = &installed;
@@ -311,7 +458,10 @@ void load(AddonAPI* aApi, Mumble::Data* aMumbleLink) {
     host.category_states = &category_states;
     host.storage = &script_storage;
     host.mumble = &mumble_state;
-    host.set_clipboard = setClipboard;
+    // User.SetClipboard: only "Never" stops a script, as in Pathing's Lib/User.cs.
+    host.set_clipboard = [](const std::string& text, const std::string& message) {
+        return persisted.clipboard_consent != static_cast<int>(behaviors::ClipboardConsent::Never) && setClipboard(text, message);
+    };
     host.show_message = [](const std::string& text) {
         if (api) api->UI.SendAlert(text.c_str());
     };
@@ -324,6 +474,7 @@ void load(AddonAPI* aApi, Mumble::Data* aMumbleLink) {
     api->Renderer.Register(ERenderType_PreRender, preRender);
     api->Renderer.Register(ERenderType_Render, render);
     api->Renderer.Register(ERenderType_OptionsRender, drawOptions);
+    api->WndProc.Register(onWndProc);
     api->QuickAccess.AddContextMenu(QUICKACCESS_ID, nullptr, drawQuickAccess);
     // "(null)": no default bind; the player sets one in Nexus.
     api->InputBinds.RegisterWithString(KEYBIND_MARKERS_ID, onMarkersKeybind, "(null)");
@@ -337,12 +488,15 @@ void unload() {
     api->Renderer.Deregister(preRender);
     api->Renderer.Deregister(render);
     api->Renderer.Deregister(drawOptions);
+    api->WndProc.Deregister(onWndProc);
     api->QuickAccess.RemoveContextMenu(QUICKACCESS_ID);
     api->InputBinds.Deregister(KEYBIND_MARKERS_ID);
 
     loader.stop();
+    festivals.stop();
     saveStates();
     scripts.reset();
+    screen = behaviors::Screen{};
     publish(nullptr);
     current_scene.reset();
     spare_scene.reset();

@@ -93,7 +93,7 @@ const std::vector<AttributeDef>& table() {
         // both are dead attributes.
         {"behavior", "behavior", kInt, kAppliesPoi, true, "0", "TacO behavior id controlling when the marker hides."},
         {"invertbehavior", "invertBehavior", kBool, kAppliesPoi, true, "0", "Invert the behavior's show/hide sense."},
-        {"triggerrange", "triggerRange", kFloat, kAppliesPoi, true, "2", "Range (inches) at which the marker triggers."},
+        {"triggerrange", "triggerRange", kFloat, kAppliesPoi, true, "2", "Range (metres) at which the marker triggers."},
         {"autotrigger", "autoTrigger", kBool, kAppliesPoi, true, "0", "Trigger on approach rather than on interact."},
         {"resetlength", "resetLength", kFloat, kAppliesPoi, true, "0", "Seconds before a triggered marker returns."},
         {"resetguid", "resetGuid", kGuid, kAppliesPoi, true, "", "Marker whose trigger also resets this one."},
@@ -106,7 +106,7 @@ const std::vector<AttributeDef>& table() {
         {"copy", "copy", kStr, kAppliesCategory | kAppliesPoi, true, "", "Text copied to the clipboard on interact."},
         {"copy-message", "copy-message", kStr, kAppliesCategory | kAppliesPoi, true, "", "Confirmation shown after a copy."},
         {"info", "info", kStr, kAppliesPoi, true, "", "Text shown when in range."},
-        {"inforange", "infoRange", kFloat, kAppliesPoi, true, "", "Range (inches) at which info shows."},
+        {"inforange", "infoRange", kFloat, kAppliesPoi, true, "", "Range (metres) at which info shows; triggerrange wins."},
 
         // ── Labels ────────────────────────────────────────────────────────────
         {"title", "title", kStr, kAppliesPoi, true, "", "Label drawn with the marker."},
@@ -130,7 +130,7 @@ const std::vector<AttributeDef>& table() {
         {"specialization", "specialization", kEnum, kAppliesPathable, true, "", "Only show for these specializations."},
         {"raid", "raid", kStr, kAppliesPathable, true, "", "Tie visibility to raid encounter completion."},
         {"schedule", "schedule", kStr, kAppliesPathable, true, "", "Cron expression controlling when the marker shows."},
-        {"schedule-duration", "schedule-duration", kFloat, kAppliesPathable, true, "", "Seconds the schedule window stays open."},
+        {"schedule-duration", "schedule-duration", kFloat, kAppliesPathable, true, "", "Minutes the schedule window stays open."},
 
         // ── Scripting (Blish HUD) ─────────────────────────────────────────────
         {"bounce", "bounce", kEnum, kAppliesPoi, true, "", "Bounce animation mode."},

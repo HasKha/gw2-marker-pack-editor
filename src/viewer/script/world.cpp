@@ -4,11 +4,11 @@
 #include <optional>
 #include <type_traits>
 
+#include "viewer/mumble.h"
 #include "viewer/registry.h"
 #include "viewer/runtime.h"
 #include "viewer/script/api.h"
 #include "viewer/script/context.h"
-#include "viewer/script/mumble.h"
 #include "viewer/store.h"
 
 namespace viewer::script {
@@ -134,6 +134,159 @@ Member<Handle> field(const char* name) {
             },
     };
 }
+
+// ── Behaviors ─────────────────────────────────────────────────────────────────
+
+struct BehaviorKind {
+    const char* name; // the class's, as GetType().Name gives it
+    Behavior::Kind kind;
+    bool (*present)(const behaviors::Behaviors&);
+};
+
+// In StandardMarker_Behaviors' order, which is the order GetBehavior searches in.
+constexpr BehaviorKind kBehaviorKinds[] = {
+    {"FestivalFilter", Behavior::Kind::FestivalFilter, [](const behaviors::Behaviors& b) { return b.festivals.has_value(); }},
+    {"MountFilter", Behavior::Kind::MountFilter, [](const behaviors::Behaviors& b) { return b.mounts.has_value(); }},
+    {"ProfessionFilter", Behavior::Kind::ProfessionFilter, [](const behaviors::Behaviors& b) { return b.professions.has_value(); }},
+    {"RaceFilter", Behavior::Kind::RaceFilter, [](const behaviors::Behaviors& b) { return b.races.has_value(); }},
+    {"SpecializationFilter",
+     Behavior::Kind::SpecializationFilter,
+     [](const behaviors::Behaviors& b) { return b.specializations.has_value(); }},
+    {"MapTypeFilter", Behavior::Kind::MapTypeFilter, [](const behaviors::Behaviors& b) { return b.map_types.has_value(); }},
+    {"ScheduleFilter", Behavior::Kind::ScheduleFilter, [](const behaviors::Behaviors& b) { return b.schedule.has_value(); }},
+    {"StandardBehaviorFilter", Behavior::Kind::StandardBehaviorFilter, [](const behaviors::Behaviors& b) { return b.mode > 0; }},
+    {"InfoModifier", Behavior::Kind::InfoModifier, [](const behaviors::Behaviors& b) { return b.info.has_value(); }},
+    {"BounceModifier", Behavior::Kind::BounceModifier, [](const behaviors::Behaviors& b) { return b.bounce.has_value(); }},
+    {"CopyModifier", Behavior::Kind::CopyModifier, [](const behaviors::Behaviors& b) { return b.copy.has_value(); }},
+    {"ToggleModifier", Behavior::Kind::ToggleModifier, [](const behaviors::Behaviors& b) { return !b.toggle.empty(); }},
+    {"ResetGuidModifier", Behavior::Kind::ResetGuidModifier, [](const behaviors::Behaviors& b) { return b.reset_guids.has_value(); }},
+    {"ShowHideModifier",
+     Behavior::Kind::ShowHideModifier,
+     [](const behaviors::Behaviors& b) { return !b.show.empty() || !b.hide.empty(); }},
+    {"Script", Behavior::Kind::Script, [](const behaviors::Behaviors& b) { return b.scripted; }},
+};
+
+std::shared_ptr<const behaviors::Behaviors>& behaviorsOf(lua_State* L, bool trail, size_t index) {
+    return trail ? live(L).trails.at(index).trail.behaviors : live(L).markers.at(index).marker.behaviors;
+}
+
+// GetBehavior(name): the first of the pathable's behaviors of that class, ignoring case, or nil.
+sol::object behaviorNamed(sol::state_view lua, bool trail, size_t index, const sol::variadic_args& args) {
+    const std::string wanted = lowercase(argString(lua, args, 0, "GetBehavior"));
+    const std::shared_ptr<const behaviors::Behaviors>& behaviors = behaviorsOf(lua, trail, index);
+    if (!behaviors) return sol::make_object(lua, sol::lua_nil);
+    for (const BehaviorKind& kind : kBehaviorKinds) {
+        if (lowercase(kind.name) == wanted && kind.present(*behaviors)) return sol::make_object(lua, Behavior{trail, index, kind.kind});
+    }
+    return sol::make_object(lua, sol::lua_nil);
+}
+
+// The live pathable's behaviors, made its own first: the baked ones are its pack's, and a
+// script setting InfoValue on one marker changes that marker only.
+behaviors::Behaviors& writableBehaviors(lua_State* L, const Behavior& self) {
+    std::shared_ptr<const behaviors::Behaviors>& shared = behaviorsOf(L, self.trail, self.index);
+    auto own = std::make_shared<behaviors::Behaviors>(*shared);
+    shared = own;
+    return *own;
+}
+
+const behaviors::Behaviors& readBehaviors(lua_State* L, const Behavior& self) {
+    return *behaviorsOf(L, self.trail, self.index);
+}
+
+const behaviors::EntityState& behaviorState(lua_State* L, const Behavior& self) {
+    return self.trail ? live(L).trails.at(self.index).behavior : live(L).markers.at(self.index).behavior;
+}
+
+// IsFiltered(): the filter asked now, against this frame's player, as each filter's own
+// IsFiltered is; the timed and scripted ones say what the last frame decided.
+bool behaviorFiltered(lua_State* L, const Behavior& self) {
+    const behaviors::Behaviors& b = readBehaviors(L, self);
+    const MumbleState& mumble = *context(L).host.mumble;
+    const auto lacks = [](const std::optional<std::vector<int>>& values, int value) {
+        return values && std::find(values->begin(), values->end(), value) == values->end();
+    };
+    const behaviors::EntityState& state = behaviorState(L, self);
+    switch (self.kind) {
+    case Behavior::Kind::MountFilter: return lacks(b.mounts, mumble.mount);
+    case Behavior::Kind::ProfessionFilter: return lacks(b.professions, mumble.profession);
+    case Behavior::Kind::RaceFilter: return lacks(b.races, mumble.race);
+    case Behavior::Kind::SpecializationFilter: return lacks(b.specializations, mumble.specialization);
+    case Behavior::Kind::MapTypeFilter: return lacks(b.map_types, mumble.map_type);
+    case Behavior::Kind::ScheduleFilter: return state.schedule.filtered;
+    case Behavior::Kind::FestivalFilter: return state.reason == behaviors::FilterKind::Festival;
+    case Behavior::Kind::StandardBehaviorFilter: return state.reason == behaviors::FilterKind::Behavior;
+    case Behavior::Kind::Script: return state.reason == behaviors::FilterKind::Script;
+    default: return false;
+    }
+}
+
+// BounceModifier's numbers; nil on any other behavior, whose class has no such member, and
+// set on a bounce only.
+sol::object bounceField(sol::state_view lua, const Behavior& self, float behaviors::Bounce::* field) {
+    const behaviors::Behaviors& b = readBehaviors(lua, self);
+    if (self.kind != Behavior::Kind::BounceModifier || !b.bounce) return sol::make_object(lua, sol::lua_nil);
+    return sol::make_object(lua, (*b.bounce).*field);
+}
+
+void setBounceField(sol::state_view lua, const Behavior& self, float behaviors::Bounce::* field, const sol::object& value) {
+    if (self.kind != Behavior::Kind::BounceModifier) return;
+    const float number = valueFloat(lua, value, "a number");
+    (*writableBehaviors(lua, self).bounce).*field = number;
+}
+
+const Member<Behavior> kBehaviorMembers[] = {
+    {.name = "IsFiltered",
+     .call = [](sol::state_view lua, Behavior& self, sol::variadic_args) { return sol::make_object(lua, behaviorFiltered(lua, self)); }},
+    {.name = "InfoValue",
+     .get =
+         [](sol::state_view lua, Behavior& self) {
+             const behaviors::Behaviors& b = readBehaviors(lua, self);
+             return self.kind == Behavior::Kind::InfoModifier && b.info ? sol::make_object(lua, *b.info)
+                                                                        : sol::make_object(lua, sol::lua_nil);
+         },
+     .set =
+         [](sol::state_view lua, Behavior& self, const sol::object& value) {
+             if (self.kind == Behavior::Kind::InfoModifier) writableBehaviors(lua, self).info = valueString(lua, value);
+         }},
+    {.name = "CopyValue",
+     .get =
+         [](sol::state_view lua, Behavior& self) {
+             const behaviors::Behaviors& b = readBehaviors(lua, self);
+             return self.kind == Behavior::Kind::CopyModifier && b.copy ? sol::make_object(lua, b.copy->value)
+                                                                        : sol::make_object(lua, sol::lua_nil);
+         },
+     .set =
+         [](sol::state_view lua, Behavior& self, const sol::object& value) {
+             if (self.kind == Behavior::Kind::CopyModifier) writableBehaviors(lua, self).copy->value = valueString(lua, value);
+         }},
+    {.name = "CopyMessage",
+     .get =
+         [](sol::state_view lua, Behavior& self) {
+             const behaviors::Behaviors& b = readBehaviors(lua, self);
+             return self.kind == Behavior::Kind::CopyModifier && b.copy ? sol::make_object(lua, b.copy->message)
+                                                                        : sol::make_object(lua, sol::lua_nil);
+         },
+     .set =
+         [](sol::state_view lua, Behavior& self, const sol::object& value) {
+             if (self.kind == Behavior::Kind::CopyModifier) writableBehaviors(lua, self).copy->message = valueString(lua, value);
+         }},
+    {.name = "BounceHeight",
+     .get = [](sol::state_view lua, Behavior& self) { return bounceField(lua, self, &behaviors::Bounce::height); },
+     .set = [](sol::state_view lua,
+               Behavior& self,
+               const sol::object& value) { setBounceField(lua, self, &behaviors::Bounce::height, value); }},
+    {.name = "BounceDelay",
+     .get = [](sol::state_view lua, Behavior& self) { return bounceField(lua, self, &behaviors::Bounce::delay); },
+     .set = [](sol::state_view lua,
+               Behavior& self,
+               const sol::object& value) { setBounceField(lua, self, &behaviors::Bounce::delay, value); }},
+    {.name = "BounceDuration",
+     .get = [](sol::state_view lua, Behavior& self) { return bounceField(lua, self, &behaviors::Bounce::duration); },
+     .set = [](sol::state_view lua,
+               Behavior& self,
+               const sol::object& value) { setBounceField(lua, self, &behaviors::Bounce::duration, value); }},
+};
 
 // ── StandardMarker ────────────────────────────────────────────────────────────
 
@@ -275,6 +428,12 @@ const Member<Marker> kMarkerMembers[] = {
              liveMarker(lua, self).removed = true;
              return sol::object(sol::lua_nil);
          }},
+    field<Marker, bakedMarker, &BakedMarker::reset_length>("ResetLength"),
+    // Within its trigger range, as behaviors last saw it.
+    {.name = "Focused",
+     .get = [](sol::state_view lua, Marker& self) { return sol::make_object(lua, liveMarker(lua, self).behavior.focused); }},
+    {.name = "GetBehavior",
+     .call = [](sol::state_view lua, Marker& self, sol::variadic_args args) { return behaviorNamed(lua, false, self.index, args); }},
 };
 
 // ── StandardTrail ─────────────────────────────────────────────────────────────
@@ -327,6 +486,8 @@ const Member<Trail> kTrailMembers[] = {
              liveTrail(lua, self).removed = true;
              return sol::object(sol::lua_nil);
          }},
+    {.name = "GetBehavior",
+     .call = [](sol::state_view lua, Trail& self, sol::variadic_args args) { return behaviorNamed(lua, true, self.index, args); }},
 };
 
 // ── PathingCategory ───────────────────────────────────────────────────────────
@@ -520,6 +681,10 @@ std::span<const Member<Trail>> Trail::members() {
     return kTrailMembers;
 }
 
+std::span<const Member<Behavior>> Behavior::members() {
+    return kBehaviorMembers;
+}
+
 std::span<const Member<Category>> Category::members() {
     return kCategoryMembers;
 }
@@ -544,6 +709,7 @@ sol::object pushCategory(sol::state_view lua, size_t node) {
 void bindWorld(sol::state_view lua) {
     bindType<Marker>(lua);
     bindType<Trail>(lua);
+    bindType<Behavior>(lua);
     bindType<Category>(lua);
     bindType<World>(lua);
     context(lua).env["World"] = World{};

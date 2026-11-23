@@ -53,20 +53,25 @@ src/
     registry.*     installed packs: discovery, enable/disable, loading on a worker, the merged tree
     bake.*         pack::Pack -> the runtime model: resolved attributes, grouped by map id
     runtime.*      the live map: visibility, fade state, behaviors' state, markers scripts made
-    behaviors/     one file per filter and modifier, mirroring Pathing/Behavior/
-    script/        the Lua state and the Pathing API: engine.* (the state, loading, ticking),
-                   object.* (the member tables, the call-style shim, the census), values.cpp,
-                   world.cpp and globals.cpp (the API itself), os_library.cpp, lson.*,
-                   mumble.* (MumbleLink as Blish HUD names it), console.*
+    behaviors/     Pathing's Behavior/: attributes.* (what a pathable's behavior attributes say,
+                   baked once), update.* (filters, focus, interaction, per frame), entity.* (what
+                   one live pathable remembers), states.* (what `behavior` hid, timers.txt),
+                   cron.* (`schedule`), festivals.* (which festivals are on)
+    script/        the Lua state and the Pathing API: engine.* (the state, loading, ticking,
+                   script-* calls), object.* (the member tables, the call-style shim, the
+                   census), values.cpp, world.cpp and globals.cpp (the API itself),
+                   os_library.cpp, lson.*, console.*
     guid.*         Pathing's Guid: from the pack's base64, or an MD5 of any other text
     identity.*     MumbleLink's identity JSON, read once per change
     scene.*        this frame's world quads, billboards and screen items, built from runtime
     render/        the sinks: good_render.* (moments) and overlay.* (Nexus render, draw list)
     map.*          the minimap and full map projection (Pathing's Entity/MapProjection.cs)
     camera.*       MumbleLink -> view/projection
+    mumble.*       MumbleLink as Blish HUD names it, for scripts and behaviors; Gw2Sharp's enums
+    http.*         HTTPS GETs on a worker, through WinHTTP: festivals, then the catalog
     textures.*     budgeted texture decoding: LoadBudget, TextureCache
     catalog.*      the public pack catalog: list, download, update
-    store.*        what outlives a session: category toggles, behavior state, script Storage
+    store.*        what outlives a session: category toggles, script Storage
     ui/            the category menu, pack manager, settings, script console
   editor/          mpe_editor, links mpe_pack and mpe_viewer
 ```
@@ -215,23 +220,47 @@ On objects, the most touched members are `InGameVisibility`, `Position`, `Size`,
 
 ## Behaviors
 
-One file per filter and modifier under `behaviors/`, mirroring `Pathing/Behavior/`:
+What Pathing's `Behavior/` does, in `behaviors/`, as plain functions over the live map.
 
-- **Filters**: achievement, festival, map type, mount, profession, race, raid, schedule,
-  specialization.
-- **Modifiers**: bounce, copy, info, reset guid, show/hide, toggle; plus the `behavior`
-  attribute's own values (`StandardPathableBehavior.cs`).
+- **Read once, at the bake.** A pathable's behavior attributes become one `Behaviors`, through
+  its categories as every attribute is, or null — and most markers are null, so a frame skips
+  them at the cost of a pointer. A walk up the category chain looking for any behavior key
+  comes first: reading 35 attributes one inherited lookup at a time for every one of 56k
+  markers was a third of the bake. Pathing's parsing is kept to its quirks: enum lists are not
+  trimmed, so `"Thief, Mesmer"` names no Mesmer; `invertbehavior="yes"` is false; a
+  `script-*` argument list is split at every comma.
+- **Run in Pathing's order** (`StandardMarker_Behaviors.cs`), since a later behavior's prompt
+  replaces an earlier one's: the filters, then info, bounce, copy, toggle, reset guid,
+  show/hide, the script. A category that is off runs nothing and loses focus, as
+  `PathingEntity.Update` does.
+- **The live pathable owns its state** (`behaviors::EntityState`, beside the copy of the baked
+  pathable): focus, filtered and why, the schedule's window, the bounce's tween. A script that
+  sets `InfoValue` or `BounceHeight` gets that marker its own copy of its behaviors; the
+  pack's baked ones stay what the file says.
+- **A script may create markers mid-update**, which moves every live marker, so nothing in the
+  live map is held by reference across a call into Lua.
+- **What `behavior` hid is `BehaviorStates`**: until the map changes, until an instance
+  changes, until a time. Only the timers outlive the session, in `timers.txt` in Pathing's own
+  layout. It is our file, not Pathing's: a player coming from Blish HUD starts with nothing
+  hidden. A timer counts until it runs out; Pathing's counts until its five-second sweep.
+- **Festivals** come from the GW2 API's daily achievement group, and from Blish HUD's own
+  service when the API lists every festival at once, as Blish HUD's `FestivalContext` does —
+  once per load, on a worker. Until the answer is in, no festival is on.
+- **`schedule` is a subset of Cronos**: numbers, `*`, `?`, ranges, steps, lists and names, day
+  of month and day of week both required to match. No pack uses `L`, `W` or `#`, and an
+  expression with one is no schedule.
+- **Achievement and raid filters** need the GW2 API with `account` and `progression`, which
+  Nexus does not provide — see [plan.md](plan.md#open-questions). A pathable carrying one is
+  not filtered by it.
 
-Each is a plain function of the marker, the runtime's state, MumbleLink and the clock, so
-each is testable offline. Mount, profession, race and specialization come from MumbleLink's
-identity (Nexus shares it as `DL_MUMBLE_LINK_IDENTITY`). Achievement and raid filters need
-the GW2 API with `account` and `progression`, which Nexus does not provide — see
-[plan.md](plan.md#open-questions). State that outlives a session, such as "hidden until the
-daily reset", lives in `store.*`.
-
-Interaction — info, toggle, copy — is triggered by the game's interact key in Pathing. Nexus
-can press a game bind and say whether it is bound, but not which key it is bound to, so how
-the viewer hears it is open too.
+**Interaction.** Pathing interacts on Blish HUD's own interact binding, F unless changed,
+because it cannot read the game's; the viewer does the same, with the key a setting. It is
+heard in Nexus's WndProc and passed on, so the game still interacts with whatever is in front
+of the player, as it does with Blish HUD running, and it is ignored while the game's chat or
+one of our text fields has the keyboard. The info text and the prompt ("Copy '…' to clipboard
+[F]") are plain ImGui windows where Pathing puts its InfoWindow and gear; clicking the prompt
+interacts. A hidden marker, while hidden markers are shown faded, says why it is hidden, and
+interacting unhides it — removing its filters, its script with them, as Pathing does.
 
 ## Packs
 
@@ -289,10 +318,13 @@ As in the rest of the repo: against the real corpus, offline, under `ctest`.
 - **Bake**: every pack in the corpus bakes; a baked value equals the editor's effective value
   for the same node. Two readings of inheritance would be two chances to disagree, so one is
   checked against the other.
-- **Behaviors**: each filter and modifier as a function of its inputs, a case per value.
+- **Behaviors**: each filter and modifier against a small pack and a hand-set MumbleLink, a
+  case per rule (`behavior_test.cpp`); what they are read from — attributes, cron, timers,
+  festivals — on its own (`behavior_data_test.cpp`).
 - **Lua**: every corpus script loads and ticks three frames on each of its maps against a
-  zeroed MumbleLink, with no errors; the census is empty for Hero's pack and Teh's Trails
-  (`script_corpus_test.cpp`). The API's rules each have a case over a small pack written to a
+  zeroed MumbleLink, and every `script-*` function its pathables name is called as a player
+  walking the map would set it off, with no errors but the packs' own; the census is empty for
+  Hero's pack and Teh's Trails (`script_corpus_test.cpp`). The API's rules each have a case over a small pack written to a
   temp folder (`script_test.cpp`).
 - **Scene**: built through a recording sink, so what would be drawn is asserted without a
   device.

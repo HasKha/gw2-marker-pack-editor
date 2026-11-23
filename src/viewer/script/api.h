@@ -82,6 +82,33 @@ struct Trail {
     static std::span<const Member<Trail>> members();
 };
 
+// One of a marker's or trail's behaviors, as GetBehavior hands it over by its class name in
+// Pathing: what the script reads and sets on it reaches the live pathable's own behaviors.
+struct Behavior {
+    enum class Kind : uint8_t {
+        FestivalFilter,
+        MountFilter,
+        ProfessionFilter,
+        RaceFilter,
+        SpecializationFilter,
+        MapTypeFilter,
+        ScheduleFilter,
+        StandardBehaviorFilter,
+        InfoModifier,
+        BounceModifier,
+        CopyModifier,
+        ToggleModifier,
+        ResetGuidModifier,
+        ShowHideModifier,
+        Script,
+    };
+    bool trail = false;
+    size_t index = 0; // into LiveMap::markers or ::trails
+    Kind kind = Kind::Script;
+    static constexpr const char* kName = "Behavior";
+    static std::span<const Member<Behavior>> members();
+};
+
 // A node of the shared category tree, or the root above every pack's top level, which
 // Pathing has as a category of its own (World.RootCategory).
 struct Category {
@@ -118,7 +145,7 @@ sol::object pushMenu(sol::state_view lua, size_t index);
 // A value a script passes where a .NET method wants one of these. Raises otherwise.
 glm::vec3 toVector(lua_State* L, const sol::object& value, const char* what);
 uint32_t toColor(lua_State* L, const sol::object& value, const char* what); // an ImU32
-Guid toGuid(lua_State* L, const sol::object& value, const char* what); // a Guid, or base64 text
+Guid toGuid(lua_State* L, const sol::object& value, const char* what); // a Guid, or any value as its text
 
 // Between the pack files' space (Y up) and Blish's (Z up): the swap TmfLib makes on reading.
 glm::vec3 toBlish(const glm::vec3& file);

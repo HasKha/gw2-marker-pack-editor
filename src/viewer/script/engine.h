@@ -6,10 +6,12 @@
 #include <functional>
 #include <map>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
 
+#include "viewer/behaviors/attributes.h"
 #include "viewer/script/console.h"
 
 namespace viewer::runtime {
@@ -27,9 +29,11 @@ class KeyValues;
 // handlers called every frame after. See docs/viewer.md#lua.
 //
 // sol2 stays behind this header: whoever runs scripts sees none of it.
-namespace viewer::script {
-
+namespace viewer {
 struct MumbleState;
+}
+
+namespace viewer::script {
 
 // The Pathing version scripts are told they run under, from the Pathing checkout the API was
 // read from (its manifest.json). Hero's pack refuses to load below 1.9.0, and its fractal
@@ -108,6 +112,13 @@ public:
 
     const std::map<std::string, std::string>& watches() const; // Debug:Watch, as text
     const std::vector<std::string>& info() const; // User.ShowInfo
+
+    // A script-* behavior's function, called as Pathing's ScriptEngine.CallFunction calls it:
+    // a global looked up ignoring case, handed `entity`, then what `hook` adds — `flag` for
+    // Focus and Trigger, the last tick's GameTime for Tick — then the attribute's arguments.
+    // What it returned first, as Convert.ToBoolean reads it; nothing when it returned
+    // nothing, does not exist, or failed, which goes to the console.
+    std::optional<bool> callBehavior(const behaviors::ScriptCall& call, behaviors::Entity entity, behaviors::Hook hook, bool flag);
 
     // Seconds pack `pack`'s scripts took per frame, over the last ten frames, as Pathing
     // averages its FrameExecutionTime — but per pack, so that a slow script is named.

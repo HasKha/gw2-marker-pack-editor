@@ -23,7 +23,11 @@ every pack in Blish HUD's markers folder unless **Read Blish HUD's packs** is tu
 the addon's options — turn it off while Blish HUD is running, or every marker shows twice.
 **Markers**, in the Nexus menu or on a keybind you set, turns categories on and off.
 Packs' Lua scripts run as they do in Pathing; **Script console**, beside it, shows what they
-print and any error, and **Run pack scripts** in the options turns them off. With
+print and any error, and **Run pack scripts** in the options turns them off. Markers behave as
+they do there too: they hide by festival, character, schedule or once you have used them, show
+what they are about when you walk up, and **F** — or the key you pick in the options —
+interacts, copying a waypoint or toggling a category. The options also hold Pathing's choices
+for whether markers may hide themselves, animate or copy to the clipboard. With
 [GoodRender](https://github.com/HasKha/gw2-good-render) loaded, markers draw under the game's
 windows and hide behind walls; without it they draw over everything.
 

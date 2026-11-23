@@ -6,6 +6,7 @@
 #include <string>
 #include <vector>
 
+#include "viewer/behaviors/entity.h"
 #include "viewer/registry.h"
 #include "viewer/store.h"
 #include "viewer/textures.h"
@@ -70,6 +71,8 @@ struct LiveMarker {
     // By a script. Left in place rather than erased, so that every index a script's handle
     // holds stays valid until the map, and with it the script state, is thrown away.
     bool removed = false;
+
+    behaviors::EntityState behavior; // what its behaviors remember, fresh with every live map
 };
 
 struct LiveTrail {
@@ -78,6 +81,7 @@ struct LiveTrail {
     BakedTrail trail; // its geometry shared with the pack's, not copied
     size_t texture_pack = 0; // as LiveMarker's
     bool removed = false;
+    behaviors::EntityState behavior;
 };
 
 // What of the installed packs is on one map, copied out of each pack's baked pathables, and

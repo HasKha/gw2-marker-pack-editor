@@ -11,6 +11,7 @@
 
 #include "pack/model.h"
 #include "pack/trl.h"
+#include "viewer/behaviors/attributes.h"
 #include "viewer/camera.h"
 #include "viewer/guid.h"
 
@@ -67,10 +68,14 @@ struct BakedMarker {
     bool map_visibility = true;
     bool minimap_visibility = true;
     float trigger_range = 2.0f; // triggerrange, or inforange standing in for it (StandardMarker_Focus.cs)
+    float reset_length = 0.0f; // seconds a ReappearAfterTimer marker hides for; scripts set it
 
     // What the marker's tooltip says: tip-name, else its category's display name.
     std::string tip_name;
     std::string tip_description;
+
+    // Its filters and modifiers; null for the many markers that have none.
+    std::shared_ptr<const behaviors::Behaviors> behaviors;
 };
 
 // No real map has this id, so it is safe as "not resolved yet" — see BakedTrail::map_id.
@@ -107,6 +112,8 @@ struct BakedTrail {
     bool in_game_visibility = true;
     bool map_visibility = true;
     bool minimap_visibility = true;
+
+    std::shared_ptr<const behaviors::Behaviors> behaviors; // filters and script only; null for none
 
     // The points, when they were read up front. Null in the editor, which reads them through
     // its own cache so that an edit shows at once.

@@ -139,6 +139,8 @@ bool bakeMarker(const pack::Pack& pack, const pack::Pathable& pathable, BakedMar
     if (out->trigger_range == pack::defaultFloat("triggerrange")) {
         if (const std::string* info_range = pack.effectiveValue(pathable, "inforange")) pack::parseFloat(*info_range, &out->trigger_range);
     }
+    out->reset_length = pack.effectiveFloat(pathable, "resetlength");
+    out->behaviors = behaviors::bakeBehaviors(pack, pathable, true);
     return true;
 }
 
@@ -171,6 +173,7 @@ BakedPathables bake(const pack::Pack& pack) {
             trail.in_game_visibility = pack.effectiveBool(pathable, "ingamevisibility");
             trail.map_visibility = pack.effectiveBool(pathable, "mapvisibility");
             trail.minimap_visibility = pack.effectiveBool(pathable, "minimapvisibility");
+            trail.behaviors = behaviors::bakeBehaviors(pack, pathable, false);
 
             // Trails default to 700/900 where markers default to disabled, so the table's
             // marker defaults cannot be used here. See docs/format.md.

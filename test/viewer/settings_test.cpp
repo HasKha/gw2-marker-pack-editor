@@ -59,6 +59,30 @@ TEST_CASE("the Blish HUD folder is read, and scripts run, unless turned off", "[
     CHECK_FALSE(viewer::settings::load(temp.path()).run_scripts);
 }
 
+TEST_CASE("behavior settings start at Pathing's defaults and are kept", "[viewer][settings]") {
+    const corpus::TempDir temp("settings_behaviors");
+    const viewer::settings::Settings defaults = viewer::settings::load(temp.path());
+    CHECK(defaults.allow_auto_hide);
+    CHECK(defaults.allow_animation);
+    CHECK(defaults.show_interact_prompt);
+    CHECK(defaults.clipboard_consent == 0);
+    CHECK(defaults.interact_key == 'F');
+
+    viewer::settings::Settings settings;
+    settings.allow_auto_hide = false;
+    settings.allow_animation = false;
+    settings.show_interact_prompt = false;
+    settings.clipboard_consent = 2;
+    settings.interact_key = 'G';
+    REQUIRE(viewer::settings::save(temp.path(), settings));
+    const viewer::settings::Settings loaded = viewer::settings::load(temp.path());
+    CHECK_FALSE(loaded.allow_auto_hide);
+    CHECK_FALSE(loaded.allow_animation);
+    CHECK_FALSE(loaded.show_interact_prompt);
+    CHECK(loaded.clipboard_consent == 2);
+    CHECK(loaded.interact_key == 'G');
+}
+
 TEST_CASE("no folder means nothing is read and nothing is written", "[viewer][settings]") {
     CHECK_FALSE(viewer::settings::load({}).enable_editing);
     CHECK_FALSE(viewer::settings::save({}, viewer::settings::Settings{true}));

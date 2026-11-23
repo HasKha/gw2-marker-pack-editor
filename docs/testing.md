@@ -9,7 +9,7 @@ ctest --test-dir build -C Release --output-on-failure
 
 They assert the whole read → model → write → save round trip — every pack parses, the writer is stable,
 comments and BOM and CRLF survive, a save reopens as the same model — against the real packs rather than
-fixtures. No game needed, and a few seconds: about four and a half run one case at a time, which is how ctest
+fixtures. No game needed, and a few seconds: about five and a half run one case at a time, which is how ctest
 runs by default, and half that with `-j8`. Nearly all of it is three sweeps over the corpus — the format in
 `corpus_test.cpp`, the bake, and the scripts — and a process per case.
 
@@ -83,9 +83,18 @@ the pipeline as a whole gets `haskha_markers.zip`, loaded through the registry a
 Scripts are tested the same two ways. `script_test.cpp` writes a pack with a `pack.lua` and asks the engine
 what a line of Lua prints, one case per rule of the API: call styles, the census, errors and the time
 budget, the sandbox, `os`, LSON, markers read and written. `script_corpus_test.cpp` runs every corpus pack
-that has a `pack.lua` on each of its maps — reset, load, three ticks a second apart — and fails on any error
-in the console; for Hero's pack and Teh's Trails it fails on any census entry too, listing them. A pack
-whose script starts failing after an API change shows up there with its file and line. `test/viewer/test_camera.h`
+that has a `pack.lua` on each of its maps — reset, load, three ticks a second apart — then calls every
+`script-*` function the map's pathables name: every once, tick and filter first, as a first frame would,
+then each marker focused, triggered and let go. It fails on any error in the console; for Hero's pack and
+Teh's Trails it fails on any census entry too, listing them. A pack whose script starts failing after an
+API change shows up there with its file and line, each distinct error once.
+
+An error that is the pack's own — one Pathing raises too, read off the pack's files — goes in that test's
+`kPackBugs` with the reason, by pack and the error's text, rather than loosening the check.
+
+Behaviors are tested the same way: `behavior_test.cpp` writes a pack of POIs a hundred metres apart and
+walks a hand-set MumbleLink between them, a case per rule; `behavior_data_test.cpp` covers what they read —
+attributes with Pathing's parsing quirks, cron schedules, `timers.txt`, the festival answers — on its own. `test/viewer/test_camera.h`
 is the camera whose projections can be written by hand, for any test that projects.
 
 ## Above the pack layer

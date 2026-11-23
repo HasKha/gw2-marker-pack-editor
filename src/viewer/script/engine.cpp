@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <chrono>
 #include <numeric>
+#include <unordered_map>
+#include <variant>
 
 #include "pack/source.h"
 #include "viewer/registry.h"
@@ -58,6 +60,36 @@ sol::protected_function_result timedCall(Context& ctx, size_t pack, const sol::p
     ctx.deadline = Clock::time_point::max();
     if (pack < ctx.frame_seconds.size()) ctx.frame_seconds[pack] += std::chrono::duration<double>(Clock::now() - start).count();
     return result;
+}
+
+// LuaResult.ToBoolean, which is Convert.ToBoolean: nil is false, a number is whether it is
+// not zero, a string whether it says "true"; a table or anything else is false here, where
+// .NET would throw.
+bool dotNetBoolean(const sol::object& value) {
+    switch (value.get_type()) {
+    case sol::type::boolean: return value.as<bool>();
+    case sol::type::number: return value.as<double>() != 0.0;
+    case sol::type::string: {
+        std::string text = lowercase(value.as<std::string>());
+        const size_t first = text.find_first_not_of(" \t\r\n");
+        const size_t last = text.find_last_not_of(" \t\r\n");
+        return first != std::string::npos && text.substr(first, last - first + 1) == "true";
+    }
+    default: return false;
+    }
+}
+
+sol::object scriptArgument(sol::state_view lua, const behaviors::ScriptArg& argument) {
+    return std::visit(
+        [&](const auto& value) -> sol::object {
+            using T = std::decay_t<decltype(value)>;
+            if constexpr (std::is_same_v<T, std::monostate>) {
+                return sol::make_object(lua, sol::lua_nil);
+            } else {
+                return sol::make_object(lua, value);
+            }
+        },
+        argument);
 }
 
 // ScriptEngine.LoadScript, for text already in hand: compiled as `file` of `pack`, with `Pack`
@@ -142,6 +174,11 @@ struct Engine::State {
     // reference into this state.
     sol::state lua;
     Context context;
+
+    // script-* functions found by name, so a lookup that ignores case is paid once. Only
+    // what was found is kept: a script may define a function later.
+    std::unordered_map<std::string, sol::protected_function> behavior_functions;
+    GameTime last_tick; // what script-tick hands its function: the GameTime of the last tick
 };
 
 Engine::Engine(Host host)
@@ -186,7 +223,8 @@ bool Engine::run(size_t pack, std::string_view file, std::string_view source) {
 
 void Engine::tick(double total_seconds, double elapsed_seconds) {
     Context& ctx = state_->context;
-    const sol::object game_time = sol::make_object(state_->lua, GameTime{total_seconds, elapsed_seconds});
+    state_->last_tick = GameTime{total_seconds, elapsed_seconds};
+    const sol::object game_time = sol::make_object(state_->lua, state_->last_tick);
 
     // The handlers there were when the tick began; one registered by a handler waits for the
     // next. Event.Update does the same with ToArray.
@@ -237,6 +275,50 @@ const std::map<std::string, std::string>& Engine::watches() const {
 
 const std::vector<std::string>& Engine::info() const {
     return state_->context.info;
+}
+
+std::optional<bool> Engine::callBehavior(const behaviors::ScriptCall& call, behaviors::Entity entity, behaviors::Hook hook, bool flag) {
+    State& state = *state_;
+    Context& ctx = state.context;
+    sol::state& lua = state.lua;
+
+    // CallMemberDirect with ignoreCase: the exact name first, then any that matches but for case.
+    auto found = state.behavior_functions.find(call.name);
+    if (found == state.behavior_functions.end()) {
+        sol::object function = ctx.env[call.name];
+        if (function.get_type() != sol::type::function) {
+            const std::string wanted = lowercase(call.name);
+            for (const auto& [key, value] : ctx.env) {
+                if (key.get_type() == sol::type::string && value.get_type() == sol::type::function &&
+                    lowercase(key.as<std::string>()) == wanted) {
+                    function = value;
+                    break;
+                }
+            }
+        }
+        if (function.get_type() != sol::type::function) return std::nullopt;
+        found = state.behavior_functions.emplace(call.name, sol::protected_function(function)).first;
+    }
+
+    const runtime::LiveMap& live = *host_.live;
+    const bool known = entity.trail ? entity.index < live.trails.size() : entity.index < live.markers.size();
+    if (!known) return std::nullopt;
+    const size_t pack = entity.trail ? live.trails[entity.index].pack : live.markers[entity.index].pack;
+
+    std::vector<sol::object> arguments;
+    arguments.push_back(entity.trail ? pushTrail(lua, entity.index) : pushMarker(lua, entity.index));
+    if (hook == behaviors::Hook::Focus || hook == behaviors::Hook::Trigger) arguments.push_back(sol::make_object(lua, flag));
+    if (hook == behaviors::Hook::Tick) arguments.push_back(sol::make_object(lua, state.last_tick));
+    for (const behaviors::ScriptArg& argument : call.args) arguments.push_back(scriptArgument(lua, argument));
+
+    const sol::protected_function_result result = timedCall(ctx, pack, found->second, sol::as_args(arguments));
+    if (!result.valid()) {
+        const std::string source = pack < ctx.frame_seconds.size() ? packLabel(ctx, pack) : "system";
+        ctx.console.push(Level::Error, source, call.name + ": " + errorText(result));
+        return std::nullopt;
+    }
+    if (result.return_count() == 0) return std::nullopt;
+    return dotNetBoolean(result.get<sol::object>(0));
 }
 
 double Engine::frameSeconds(size_t pack) const {

@@ -82,7 +82,7 @@ target_link_libraries(mpe_viewer PUBLIC
     sol2
     shell32  # SHGetKnownFolderPath
     ole32    # CoTaskMemFree
-    bcrypt   # BCryptHash, for Pathing's MD5 of a made-up guid
+    bcrypt winhttp   # BCryptHash, for Pathing's MD5 of a made-up guid
 )
 
 # ── mpe_editor ────────────────────────────────────────────────────────────────

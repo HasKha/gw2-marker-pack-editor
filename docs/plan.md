@@ -46,7 +46,7 @@ it, save it back, and the edited markers show correctly in Blish HUD.**
 | Settings | the Settings toggles, gizmo mode, which windows are open and where the browsers start, kept in `settings.json` |
 | Create pack | `New Pack...` builds an empty pack in memory; Save As writes the first zip |
 | Write | serializes the owned document; comments, order, spelling, BOM, CRLF and the file split survive. 947/947 files stable on rewrite |
-| Tests | `mpe_test`, 44 cases over the real pack corpus, the selection rules and the trail editing layer; `mpe_viewer_test`, 85 over the camera, the quad path, textures, settings, the bake, the registry, the ribbon, the scene, the GoodRender sink and the Lua scripts, those last over every scripted corpus pack; and a check that nothing in `src/viewer/` includes the editor. All run by `ctest` |
+| Tests | `mpe_test`, 44 cases over the real pack corpus, the selection rules and the trail editing layer; `mpe_viewer_test`, 119 over the camera, the quad path, textures, settings, the bake, the registry, the ribbon, the scene, the GoodRender sink, the Lua scripts and the behaviors, the scripts over every scripted corpus pack; and a check that nothing in `src/viewer/` includes the editor. All run by `ctest` |
 
 A pack can be edited end to end, grown new branches, and started from nothing. The test
 row's claims are measured against the corpus in [testing.md](testing.md).
@@ -202,12 +202,32 @@ Hero's pack and Teh's Trails.
 Not in it: Pathing's clipboard consent setting, which comes with the interaction settings in
 milestone 3; until then every copy is allowed, and announced.
 
-### 3. Behaviors and interaction
+### 3. Behaviors and interaction — done offline
 
-- Every filter and modifier except achievement and raid, each with its tests.
-- Behavior state across sessions; interaction (info, toggle, copy), with Pathing's clipboard
-  consent setting, which `User.SetClipboard` then honours too.
-- **First beta here**: local packs, scripts and behaviors all working.
+Built: every filter (festival, map type, mount, profession, race, schedule, specialization, the
+`behavior` attribute, `script-filter`) and modifier (info, bounce, copy, toggle, show/hide,
+reset guid, auto-trigger, `script-*`), focus by trigger range and interaction, under
+`viewer/behaviors/`. What `behavior` hid is kept in `timers.txt`. The interact key is heard
+through Nexus's WndProc and passed on to the game, F unless the player picks another letter.
+Pathing's pack settings are in the options: markers hiding themselves, animating, the prompt,
+clipboard consent (which `User.SetClipboard` honours), and hidden markers shown faded to
+unhide them. Festivals come from the GW2 API, with Blish HUD's fallback. Scripts reach
+behaviors through `GetBehavior`, `Focused` and `ResetLength`, and the corpus test now calls
+every `script-*` function packs name, the way a player walking each map would.
+
+**Left: one pull in game**, deciding these in advance:
+- LadyElyssa's copy markers: walking into one copies its waypoint and says so; pressing F at
+  one copies again. Does the game still interact with what is in front of the player?
+- A `behavior="1"` marker in `tw_ALL_IN_ONE`: F hides it, a map change brings it back.
+- Teh's Trails on a skyscale route: the info text shows in range and goes out of range, and a
+  bouncing marker bounces.
+- Hero's pack on a raid map: markers hidden by profession or specialization match the
+  character, as in Blish HUD.
+
+**First beta here**, once that pull passes: local packs, scripts and behaviors all working.
+
+Not in it: achievement and raid filters (milestone 7), and the info and prompt's final look —
+Pathing's gear icon and info window — which come with the rest of the screen in milestone 4.
 
 ### 4. Maps and screen
 
@@ -235,8 +255,6 @@ milestone 3; until then every copy is allowed, and announced.
   way; whether Nexus's GitHub update check follows a renamed repo needs checking first.
 - **Where a GW2 API key comes from** for the achievement and raid filters. Nexus has no
   provider of its own.
-- **How the viewer hears the interact key.** Nexus's game binds can press a bind and say
-  whether it is bound, not which key it is.
 - **Whether `world_quad` samples with wrap.** A trail texture repeats along its length; with
   clamping, every repeat has to be its own quad. The ribbon keeps each quad's v near zero
   either way, and one look at a long trail segment in the pull answers it.
