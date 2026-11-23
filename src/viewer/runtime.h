@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <limits>
 #include <memory>
 #include <string>
 #include <vector>
@@ -73,6 +74,10 @@ inline bool nodeVisible(size_t node, const std::vector<char>& visible) {
     return node >= visible.size() || visible[node];
 }
 
+// LiveMarker::in_view_since until its first frame in view, and again whenever its category is
+// turned off. A scene built without startFadeIns sees it as long in view, so fully faded in.
+constexpr double kNotInView = -std::numeric_limits<double>::infinity();
+
 // A marker on the live map: a copy of its pack's, which scripts are free to change.
 struct LiveMarker {
     size_t pack = 0; // into Installed::packs: the pack it, or the script that made it, came from
@@ -88,6 +93,10 @@ struct LiveMarker {
     bool removed = false;
 
     behaviors::EntityState behavior; // what its behaviors remember, fresh with every live map
+
+    // The frame's seconds when it last came into view, which it fades in from: Pathing's
+    // AnimatedFadeOpacity. See startFadeIns.
+    double in_view_since = kNotInView;
 };
 
 struct LiveTrail {
@@ -97,6 +106,7 @@ struct LiveTrail {
     size_t texture_pack = 0; // as LiveMarker's
     bool removed = false;
     behaviors::EntityState behavior;
+    double in_view_since = kNotInView; // as LiveMarker's
 };
 
 // What of the installed packs is on one map, copied out of each pack's baked pathables, and
@@ -121,5 +131,11 @@ std::vector<char> nodesOnMap(const registry::CategoryTree& tree, const LiveMap& 
 // Copies out every pack's markers and trails on `map_id`. Done on a map change or when the
 // packs change, not per frame: it walks every marker of every pack.
 LiveMap liveMap(const Installed& installed, int map_id);
+
+// Starts the fade-in of every pathable that came into view since the last call, at `seconds`:
+// one new on the live map, made by a script, or whose category was turned back on. Pathing's
+// PathingEntity starts it at the first update after it is made or while its category was
+// inactive; being filtered or hidden by a script starts none.
+void startFadeIns(LiveMap* live, const std::vector<char>& visible, double seconds);
 
 } // namespace viewer::runtime

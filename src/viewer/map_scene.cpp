@@ -218,6 +218,10 @@ void build(
     out->icons.clear();
 
     if (!options.enabled) return;
+    // Pathing's ignore.yaml, Compass and Map alike: the Super Adventure Box's lobby and its two
+    // worlds, which have no minimap or map of the usual kind to draw on.
+    constexpr int kNoMapDrawn[] = {935, 895, 934};
+    if (std::find(std::begin(kNoMapDrawn), std::end(kNoMapDrawn), mumble.map_id) != std::end(kNoMapDrawn)) return;
     // FlatMap's override opacity, under the fade.
     out->opacity = opacity * (out->full_map ? options.map_opacity : options.minimap_opacity);
     if (out->opacity <= kInvisibleOpacity) return;

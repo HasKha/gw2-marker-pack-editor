@@ -76,6 +76,18 @@ std::vector<char> nodesOnMap(const registry::CategoryTree& tree, const LiveMap& 
     return on_map;
 }
 
+void startFadeIns(LiveMap* live, const std::vector<char>& visible, double seconds) {
+    const auto start = [&](size_t node, double* in_view_since) {
+        if (!nodeVisible(node, visible)) {
+            *in_view_since = kNotInView;
+        } else if (*in_view_since == kNotInView) {
+            *in_view_since = seconds;
+        }
+    };
+    for (LiveMarker& marker : live->markers) start(marker.node, &marker.in_view_since);
+    for (LiveTrail& trail : live->trails) start(trail.node, &trail.in_view_since);
+}
+
 size_t nodeOf(const Installed& installed, size_t pack_index, size_t category) {
     const std::vector<size_t>& node_of = installed.packs[pack_index]->node_of;
     return category < node_of.size() ? node_of[category] : pack::kNoIndex;

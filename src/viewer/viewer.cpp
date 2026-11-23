@@ -115,6 +115,14 @@ map_scene::FadeIn map_fade;
 map_scene::TrailCache map_trails;
 Recycled<map_scene::MapScene> map_scenes;
 
+// The pack open in the editor this frame, as EditorHooks::edited_live hands it over: drawn in
+// the world and on the maps with the installed packs. Its markers belong to no node of our
+// tree, which the editor's own decides for, so nothing of ours turns them off.
+runtime::LiveMap* edited_live = nullptr;
+TextureLookup edited_texture;
+map_scene::TrailCache edited_map_trails;
+const std::vector<char> kNoNodes;
+
 // When packs were last checked for a write since they were read.
 std::chrono::steady_clock::time_point last_change_check{};
 
@@ -742,7 +750,8 @@ void buildMapScene(const TextureLookup& texture) {
     const std::shared_ptr<map_scene::MapScene> next = map_scenes.take();
     const float fade = map_fade.update(mumble_state, ImGui::GetTime());
     if (const map::MapDetails* details = mumble_state.available ? maps.find(mumble_state.map_id) : nullptr) {
-        const std::vector<map_scene::Layer> layers{map_scene::Layer{&live, &visible, texture, &map_trails}};
+        std::vector<map_scene::Layer> layers{map_scene::Layer{&live, &visible, texture, &map_trails}};
+        if (edited_live) layers.push_back(map_scene::Layer{edited_live, &kNoNodes, edited_texture, &edited_map_trails});
         map_scene::build(layers, *details, mumble_state, mapOptions(), fade, uiScale(), next.get());
     } else {
         *next = map_scene::MapScene{};
@@ -763,6 +772,7 @@ void drawMapMenu() {
     context.scene = scene.get();
     context.view = &*view;
     context.live = {&live};
+    if (edited_live) context.live.push_back(edited_live); // the map scene's layers, in order
     context.tree = &installed.tree;
     context.states = &category_states;
     context.player = mumble_state.player_position;
@@ -798,6 +808,9 @@ void preRender() {
     updateVisible();
     runBehaviors();
     updateVisible();
+    runtime::startFadeIns(&live, visible, ImGui::GetTime());
+    edited_live = editor.edited_live ? editor.edited_live(live.map_id, &edited_texture) : nullptr;
+    if (edited_live) runtime::startFadeIns(edited_live, kNoNodes, ImGui::GetTime());
     if (std::chrono::steady_clock::now() - last_save > kSaveInterval) saveStates();
 
     texture_budget.reset();
@@ -811,7 +824,8 @@ void preRender() {
         return installed_pack.textures.get(pack::normalizePath(path), texture_budget, read).texture;
     };
 
-    const std::vector<SceneLayer> layers{SceneLayer{&live, &visible, texture, false}};
+    std::vector<SceneLayer> layers{SceneLayer{&live, &visible, texture, false}};
+    if (edited_live) layers.push_back(SceneLayer{edited_live, &kNoNodes, edited_texture, true});
 
     const std::shared_ptr<Scene> next = scenes.take();
     buildScene(layers, camera, static_cast<float>(ImGui::GetTime()), worldOptions(), next.get());
@@ -1027,7 +1041,7 @@ void load(AddonAPI* aApi, Mumble::Data* aMumbleLink) {
     api->InputBinds.RegisterWithString(KEYBIND_MENU_ID, onMenuKeybind, "(null)");
     api->Localization.Set(KEYBIND_MENU_ID, "en", "Marker pack icon (left click)");
     api->InputBinds.RegisterWithString(KEYBIND_ALL_MARKERS_ID, onAllMarkersKeybind, "(null)");
-    api->Localization.Set(KEYBIND_ALL_MARKERS_ID, "en", "Show or hide all markers");
+    api->Localization.Set(KEYBIND_ALL_MARKERS_ID, "en", "Toggle Markers"); // Pathing's name for it
     api->Textures.GetOrCreateFromMemory(ICON_TEXTURE_ID, const_cast<unsigned char*>(ui::icon_data::kIcon), sizeof(ui::icon_data::kIcon));
     api->Textures.GetOrCreateFromMemory(
         ICON_HOVER_TEXTURE_ID,

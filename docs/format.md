@@ -282,13 +282,21 @@ Markers, per `Entity/StandardMarker.World.cs`:
   with the defaults, a marker stops shrinking at **10 px**, not 20. Anything reproducing
   Blish's picture has to reproduce this, or distant markers pin to a fixed size twice as
   far out and twice as large.
-- Opacity is `alpha * fade`, where fade ramps linearly between `fadeNear` and `fadeFar`.
-- `occlude="1"` switches the blend state to opaque.
-- `cull` maps to a rasterizer cull direction.
+- Opacity is `alpha * fade`, where fade ramps linearly between `fadeNear` and `fadeFar`
+  (`GetOpacity`), and `marker.hlsl` fades again per pixel over the same span, dissolving
+  pixels against a noise texture as it goes. Either fade negative turns both off. The shader
+  is handed Max View Distance as its far limit, where it expects inches, so by default every
+  marker is cut off at 25000 inches, 635 m.
+- `occlude="1"` switches the blend state to opaque. With the texture's alpha of zero, that
+  erases what Blish drew behind it from its transparent overlay: an invisible wall for markers.
+- `cull` maps to a rasterizer cull direction: `None`, `Clockwise` or `CounterClockwise`, by
+  name in any case, anything else none. Which face each keeps is `Cull`'s comment in
+  `viewer/bake.h`.
 
 Trails: `Entity/StandardTrail.World.cs`, `ref/hlsl/trail.hlsl`. `animspeed` scrolls the
 texture along the ribbon; `iswall="1"` orients the ribbon vertically; `trailscale`
-scales ribbon width and texture repeat.
+scales ribbon width and texture repeat. `fadeNear` is handed to the shader and never read
+there: a trail is whole up to `fadeFar` and cut off past it.
 
 The exact geometry, from `BuildTrailSection`:
 

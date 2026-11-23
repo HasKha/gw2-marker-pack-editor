@@ -30,7 +30,6 @@
 #include "viewer/camera.h"
 #include "viewer/edited.h"
 #include "viewer/registry.h"
-#include "viewer/render/overlay.h"
 #include "viewer/scene.h"
 #include "viewer/ui/fonts.h"
 #include "viewer/viewer.h"
@@ -67,10 +66,8 @@ std::filesystem::path last_image_folder;
 
 editor::State state;
 
-// The open pack as a live map, and the scene drawn from it this frame: the editor draws its pack
-// itself, over the world, whatever the viewer draws of the same file.
+// The open pack as a live map, which the viewer draws beside whatever it draws of the same file.
 viewer::edited::EditedLive edited_live;
-viewer::Scene scene;
 
 // This frame's camera, kept so the menu bar can reach the player position and map id
 // without every window that draws the bar having to be handed a camera.
@@ -322,33 +319,28 @@ std::string assetSummary(const pack::SaveResult& result) {
     return summary + ")";
 }
 
-// Draws the open pack over the world, as a player would see it with every marker shown: its own
-// live map and scene, with the tree's eye toggles, and the editor's reads of its files, which see
-// what is not saved yet. Then what only an editor draws over it: outlines, handles, picking.
-void drawPack(const viewer::Camera& camera) {
+// EditorHooks::edited_live: the open pack as a live map on `map_id`, with the tree's eye
+// toggles, and the editor's reads of its files, which see what is not saved yet. The viewer
+// draws it with the installed packs, so it looks as it will once installed.
+viewer::runtime::LiveMap* editedLive(int map_id, viewer::TextureLookup* texture) {
     viewer::edited::Report report;
-    if (state.loaded) {
+    if (active && state.loaded) {
         report.path = open_pack_path;
         report.pack = &state.pack;
         report.revision = state.revision;
         report.shown = &state.pathable_visible;
     }
-    const int map_id = camera.valid ? static_cast<int>(camera.map_id) : edited_live.live().map_id;
     edited_live.update(report, map_id, [](const std::string& path, bool* deferred) { return resources::trail(path, deferred); });
+    if (!report.pack) return nullptr;
+    *texture = [](size_t, const std::string& path) { return resources::texture(path); };
+    return &edited_live.live();
+}
 
-    scene.items.clear();
+// What only an editor draws over its pack, which the viewer drew: outlines, handles, picking,
+// placed by the items of the viewer's scene that carry a pathable — the open pack's.
+void drawPack(const viewer::Camera& camera) {
     if (!state.loaded || !camera.valid || camera.map_open) return;
-    // Its markers belong to no node of the viewer's tree: the editor's tree decides what shows.
-    static const std::vector<char> kNoNodes;
-    const viewer::TextureLookup texture = [](size_t, const std::string& path) { return resources::texture(path); };
-    viewer::buildScene(
-        {viewer::SceneLayer{&edited_live.live(), &kNoNodes, texture, true}},
-        camera,
-        static_cast<float>(ImGui::GetTime()),
-        viewer::WorldOptions{},
-        &scene);
-    viewer::overlay::drawScene(ImGui::GetBackgroundDrawList(), camera, scene);
-    world::overlay::draw(state, camera, scene);
+    if (const std::shared_ptr<const viewer::Scene> scene = viewer::published()) world::overlay::draw(state, camera, *scene);
 }
 
 // Writes the pack back to `target`. A folder pack updates its changed .xml files in place;
@@ -1049,7 +1041,6 @@ void stop() {
     world::overlay::clearHovered();
     closePack();
     edited_live.clear();
-    scene.items.clear();
 }
 
 void render() {
@@ -1150,6 +1141,7 @@ viewer::EditorHooks hooks() {
     hooks.start = start;
     hooks.render = render;
     hooks.wnd_proc = onWndProc;
+    hooks.edited_live = editedLive;
     return hooks;
 }
 

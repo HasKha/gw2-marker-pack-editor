@@ -3,6 +3,9 @@
 #include <Mumble.h>
 #include <Nexus.h>
 
+#include "viewer/runtime.h"
+#include "viewer/scene.h"
+
 // The viewer's lifecycle, and the addon-wide things it owns: the name, the folder, and the
 // one options page Nexus shows for the addon.
 namespace viewer {
@@ -37,6 +40,13 @@ struct EditorHooks {
     // editor does not run. A message the editor returns 0 for is the editor's.
     void (*render)() = nullptr;
     UINT (*wnd_proc)(HWND window, UINT message, WPARAM w_param, LPARAM l_param) = nullptr;
+
+    // The pack open in the editor, which the viewer draws with the installed ones — sorted
+    // with them, through the same sinks and options — so that it looks as it will once
+    // installed: its live map brought up to date for `map_id`, and how its images are read,
+    // which sees images not saved yet. Null while no pack is open. Called at Present, before
+    // the scene is built.
+    runtime::LiveMap* (*edited_live)(int map_id, TextureLookup* texture) = nullptr;
 };
 
 void load(AddonAPI* api, Mumble::Data* mumble_link);

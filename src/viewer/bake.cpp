@@ -82,16 +82,27 @@ RenderLayer renderLayerOf(const pack::Pack& pack, const pack::Pathable& pathable
     return value ? parseRenderLayer(*value) : RenderLayer::Default;
 }
 
+// `value` is `lowercase_name` in any case.
+bool equalsLowercase(std::string_view value, std::string_view lowercase_name) {
+    return value.size() == lowercase_name.size() && std::equal(value.begin(), value.end(), lowercase_name.begin(), [](char a, char b) {
+               return std::tolower(static_cast<unsigned char>(a)) == b;
+           });
+}
+
+// GetValueAsEnum<CullDirection>: a name in any case, untrimmed; anything else is None.
+Cull cullOf(const pack::Pack& pack, const pack::Pathable& pathable) {
+    const std::string* value = pack.effectiveValue(pathable, "cull");
+    if (!value) return Cull::None;
+    if (equalsLowercase(*value, "clockwise")) return Cull::Clockwise;
+    if (equalsLowercase(*value, "counterclockwise")) return Cull::CounterClockwise;
+    return Cull::None;
+}
+
 } // namespace
 
 RenderLayer parseRenderLayer(std::string_view value) {
-    const auto is = [&](std::string_view name) {
-        return value.size() == name.size() && std::equal(value.begin(), value.end(), name.begin(), [](char a, char b) {
-                   return std::tolower(static_cast<unsigned char>(a)) == b;
-               });
-    };
-    if (is("windows")) return RenderLayer::Windows;
-    if (is("terrain")) return RenderLayer::Terrain;
+    if (equalsLowercase(value, "windows")) return RenderLayer::Windows;
+    if (equalsLowercase(value, "terrain")) return RenderLayer::Terrain;
     return RenderLayer::Default;
 }
 
@@ -152,6 +163,7 @@ bool bakeMarker(const pack::Pack& pack, const pack::Pathable& pathable, BakedMar
     out->map_visibility = pack.effectiveBool(pathable, "mapvisibility");
     out->minimap_visibility = pack.effectiveBool(pathable, "minimapvisibility");
     out->render_layer = renderLayerOf(pack, pathable);
+    out->cull = cullOf(pack, pathable);
     out->map_display_size = pack.effectiveFloat(pathable, "mapdisplaysize");
     out->scale_on_map_with_zoom = pack.effectiveBool(pathable, "scaleonmapwithzoom");
     // inforange is an alias, taken only while triggerrange is still the default.
@@ -194,6 +206,7 @@ BakedPathables bake(const pack::Pack& pack) {
             trail.map_visibility = pack.effectiveBool(pathable, "mapvisibility");
             trail.minimap_visibility = pack.effectiveBool(pathable, "minimapvisibility");
             trail.render_layer = renderLayerOf(pack, pathable);
+            trail.cull = cullOf(pack, pathable);
             trail.behaviors = behaviors::bakeBehaviors(pack, pathable, false);
 
             // Trails default to 700/900 where markers default to disabled, so the table's

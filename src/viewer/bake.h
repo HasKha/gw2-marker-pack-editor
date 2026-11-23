@@ -56,6 +56,15 @@ enum class RenderLayer : uint8_t {
 // `render-layer`'s value, in any case; Default for anything else.
 RenderLayer parseRenderLayer(std::string_view value);
 
+// `cull`: Pathing's CullDirection, the rasterizer state a marker or trail is drawn with. Which
+// face each keeps is named by the first triangle Blish draws, its first three vertices v0, v1,
+// v2: CounterClockwise keeps the side cross(v1 - v0, v2 - v0) points to, worked out in our
+// left-handed space, and Clockwise the other. That was read off Hero's pack rather than
+// derived: its Aerodrome raid icons, all CounterClockwise, face the hub on that side, and it
+// is the side their image reads unmirrored from. A billboard's first triangle faces away
+// from the camera that way, so CounterClockwise always shows it and Clockwise never does.
+enum class Cull : uint8_t { None, Clockwise, CounterClockwise };
+
 struct BakedMarker {
     size_t pathable = pack::kNoIndex; // into Pack::pathables
     size_t category = pack::kNoIndex; // into Pack::categories; kNoIndex for a dangling type
@@ -80,6 +89,7 @@ struct BakedMarker {
     bool map_visibility = true;
     bool minimap_visibility = true;
     RenderLayer render_layer = RenderLayer::Default;
+    Cull cull = Cull::None;
     float map_display_size = 20.0f; // across, in Blish HUD's pixels at MapScale 1 — see map_scene.*
     bool scale_on_map_with_zoom = true;
     float trigger_range = 2.0f; // triggerrange, or inforange standing in for it (StandardMarker_Focus.cs)
@@ -128,6 +138,7 @@ struct BakedTrail {
     bool map_visibility = true;
     bool minimap_visibility = true;
     RenderLayer render_layer = RenderLayer::Default;
+    Cull cull = Cull::None;
 
     std::shared_ptr<const behaviors::Behaviors> behaviors; // filters and script only; null for none
 

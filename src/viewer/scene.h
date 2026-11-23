@@ -44,8 +44,14 @@ struct SceneItem {
     glm::vec3 corners[4];
     ImVec2 uv[4];
 
-    // Squared distance from the camera it was sorted with: for a marker, to where it stands
-    // without its heightOffset, which is Blish's order rather than where it is drawn.
+    // For a quad its `cull` keeps one face of: drawn only from the side this points to, from
+    // corners[0]. Zero for both sides. Settled against the camera it is drawn with, as the
+    // corners are; a billboard's always faces the camera, so the scene settles that itself.
+    glm::vec3 front{0.0f};
+
+    // What it was sorted by, Blish's DrawOrder: for a marker the squared distance from the
+    // camera to where it stands without its heightOffset, rather than where it is drawn; for
+    // a piece of trail the largest float, so that every trail is under every marker.
     float depth = 0.0f;
 
     // With GoodRender, both at WORLD_FINISHED and under the game's UI: hidden behind what of the
@@ -90,7 +96,8 @@ struct SceneLayer {
     const std::vector<char>* visible = nullptr; // runtime::visibleNodes over its nodes
     TextureLookup texture;
     // The pack open in the editor: its items carry their pathable, and keep no texture when
-    // their image is missing — see SceneItem.
+    // their image is missing — see SceneItem. Drawn as every other pack is, so its author sees
+    // what a player will.
     bool edited = false;
 };
 

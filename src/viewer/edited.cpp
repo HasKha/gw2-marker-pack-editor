@@ -1,5 +1,7 @@
 #include "viewer/edited.h"
 
+#include <unordered_map>
+
 namespace viewer::edited {
 
 namespace {
@@ -67,14 +69,33 @@ bool EditedLive::resolveTrails(const TrailLookup& trail) {
 }
 
 void EditedLive::rebuild(int map_id) {
+    // An edit rebuilds the whole map, a gizmo drag every frame: what was already in view keeps
+    // the time it came into view, by its pathable, whose index no edit moves. Only what is new
+    // to the map, or shown again in the tree, fades in.
+    std::unordered_map<size_t, double> since;
+    if (live_.map_id == map_id) {
+        for (const runtime::LiveMarker& marker : live_.markers) since[marker.marker.pathable] = marker.in_view_since;
+        for (const runtime::LiveTrail& trail : live_.trails) since[trail.trail.pathable] = trail.in_view_since;
+    }
+    const auto sinceOf = [&](size_t pathable) {
+        const auto found = since.find(pathable);
+        return found != since.end() ? found->second : runtime::kNotInView;
+    };
+
     live_ = runtime::LiveMap{};
     live_.map_id = map_id;
     live_.revision = ++builds_;
     for (const BakedMarker& marker : baked_.markers) {
-        if (marker.map_id == map_id && shown(shown_, marker.pathable)) live_.markers.push_back({0, pack::kNoIndex, marker, 0});
+        if (marker.map_id == map_id && shown(shown_, marker.pathable)) {
+            live_.markers.push_back({0, pack::kNoIndex, marker, 0});
+            live_.markers.back().in_view_since = sinceOf(marker.pathable);
+        }
     }
     for (const BakedTrail& baked : baked_.trails) {
-        if (baked.map_id == map_id && shown(shown_, baked.pathable)) live_.trails.push_back({0, pack::kNoIndex, baked, 0});
+        if (baked.map_id == map_id && shown(shown_, baked.pathable)) {
+            live_.trails.push_back({0, pack::kNoIndex, baked, 0});
+            live_.trails.back().in_view_since = sinceOf(baked.pathable);
+        }
     }
 }
 

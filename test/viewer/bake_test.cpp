@@ -128,6 +128,28 @@ TEST_CASE("render-layer is inherited, and anything but its two values leaves it 
     CHECK(baked.trails[0].render_layer == viewer::RenderLayer::Terrain);
 }
 
+TEST_CASE("cull is inherited, a name in any case, and anything else culls nothing", "[bake]") {
+    const corpus::TempDir temp("bake_cull");
+    const Loaded loaded = loadXml(temp, R"(<MarkerCategory name="walls" cull="counterclockwise"/>
+        <MarkerCategory name="free"/>
+        <POIs>
+            <POI type="walls" xpos="0" ypos="0" zpos="0"/>
+            <POI type="walls" xpos="0" ypos="0" zpos="0" cull="Clockwise"/>
+            <POI type="free" xpos="0" ypos="0" zpos="0" cull="2"/>
+            <POI type="free" xpos="0" ypos="0" zpos="0" cull=" Clockwise"/>
+            <Trail type="walls" trailData="a.trl"/>
+        </POIs>)");
+
+    const viewer::BakedPathables baked = viewer::bake(loaded.model);
+    REQUIRE(baked.markers.size() == 4);
+    CHECK(baked.markers[0].cull == viewer::Cull::CounterClockwise);
+    CHECK(baked.markers[1].cull == viewer::Cull::Clockwise);
+    CHECK(baked.markers[2].cull == viewer::Cull::None); // by name only, as Pathing's enum lookup
+    CHECK(baked.markers[3].cull == viewer::Cull::None); // untrimmed
+    REQUIRE(baked.trails.size() == 1);
+    CHECK(baked.trails[0].cull == viewer::Cull::CounterClockwise);
+}
+
 TEST_CASE("tint and color are the same attribute", "[bake]") {
     const corpus::TempDir temp("bake_tint");
     const Loaded loaded = loadXml(temp, R"(<POIs>

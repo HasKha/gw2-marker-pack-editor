@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <limits>
 
 #include "viewer/bake.h"
 #include "viewer/behaviors/update.h"
@@ -27,6 +28,52 @@ float squaredDistance(const glm::vec3& a, const glm::vec3& b) {
     return glm::dot(d, d);
 }
 
+// SceneItem::front for a quad culled as `cull` says, whose first triangle as Blish draws it is
+// (v0, v1, v2) — see Cull.
+glm::vec3 frontOf(Cull cull, const glm::vec3& v0, const glm::vec3& v1, const glm::vec3& v2) {
+    const glm::vec3 normal = glm::cross(v1 - v0, v2 - v0);
+    switch (cull) {
+    case Cull::CounterClockwise: return normal;
+    case Cull::Clockwise: return -normal;
+    case Cull::None: break;
+    }
+    return glm::vec3(0.0f);
+}
+
+// PathingEntity.AnimatedFadeOpacity: from nothing to whole over FADEIN_DURATION, 800 ms, from
+// when the pathable came into view.
+float fadeInOf(double in_view_since, float seconds) {
+    constexpr double kFadeInSeconds = 0.8;
+    return static_cast<float>(std::clamp((seconds - in_view_since) / kFadeInSeconds, 0.0, 1.0));
+}
+
+// What marker.hlsl's distance fade leaves of a marker on average, a pixel's distance standing
+// in for the marker's: fading as `mult` goes from 0 at fadeNear to 1 at fadeFar, it scales a
+// pixel by 1 - mult and dissolves the pixels whose dissolve texture value is under `mult`,
+// and clips everything past fadeFar. The near and far it is handed are inches, capped by the
+// view distance as StandardMarker.World.Render caps them — which is how Max View Distance,
+// meant in metres, ends up cutting every marker off at that many inches.
+float shaderFade(float distance_inches, float fade_near, float fade_far, float view_distance) {
+    // The share of the dissolve's pixels kept at mult = 0+, 0.05, ..., 1: of Pathing's
+    // ref/png/42975.png, the texels whose 0.21 r + 0.71 b + 0.071 g, as marker.hlsl weighs
+    // them, is at least mult. A fifth are black, gone as soon as a fade starts.
+    constexpr float kKept[21] = {0.801f, 0.742f, 0.659f, 0.596f, 0.554f, 0.527f, 0.495f, 0.467f, 0.442f, 0.414f, 0.390f,
+                                 0.361f, 0.333f, 0.298f, 0.269f, 0.224f, 0.177f, 0.135f, 0.095f, 0.064f, 0.000f};
+
+    // Populate_FadeNearAndFar: either negative turns both off, to float.MaxValue.
+    if (fade_near < 0.0f || fade_far < 0.0f) fade_near = fade_far = std::numeric_limits<float>::max();
+    const float far_inches = std::min(fade_far, view_distance);
+    const float near_inches = std::min(fade_near, view_distance - (fade_far - fade_near));
+
+    if (far_inches > 0.0f && distance_inches > far_inches) return 0.0f;
+    if (near_inches <= 0.0f || far_inches <= 0.0f || distance_inches <= near_inches) return 1.0f;
+    const float mult = far_inches > near_inches ? std::min((distance_inches - near_inches) / (far_inches - near_inches), 1.0f) : 1.0f;
+    const float step = mult * 20.0f;
+    const int below = std::min(static_cast<int>(step), 19);
+    const float kept = kKept[below] + (kKept[below + 1] - kKept[below]) * (step - static_cast<float>(below));
+    return (1.0f - mult) * kept;
+}
+
 // Appends one layer's items to `out`, unsorted. `settings_opacity` is GetOpacity's settings,
 // the same for every marker and trail.
 void appendLayer(
@@ -47,10 +94,15 @@ void appendLayer(
 
         const float distance = glm::distance(marker.position, camera.player);
         if (distance > options.view_distance) continue;
-        // StandardMarker.GetOpacity: a hidden marker shown is half there, whatever its fades.
-        const float opacity =
-            filtered ? 0.5f : marker.alpha * fadeFactor(metresToInches(distance), marker.fade_near, marker.fade_far) * settings_opacity;
+        // StandardMarker.GetOpacity, then the shader's fade over it. A hidden marker shown is
+        // half there, whatever GetOpacity's fades; the shader's still apply.
+        const float inches = metresToInches(distance);
+        const float own_opacity = filtered ? 0.5f
+                                           : marker.alpha * fadeFactor(inches, marker.fade_near, marker.fade_far) * settings_opacity *
+                                                 fadeInOf(live_marker.in_view_since, seconds);
+        const float opacity = own_opacity * shaderFade(inches, marker.fade_near, marker.fade_far, options.view_distance);
         if (opacity <= kInvisibleOpacity) continue;
+        if (!marker.has_rotation && marker.cull == Cull::Clockwise) continue;
         const glm::vec3 position = marker.position + glm::vec3(0.0f, behaviors::bounceOffset(live_marker, seconds), 0.0f);
 
         // Blish scales the unit quad by iconSize * 2, for either kind of marker. A quad that
@@ -78,6 +130,8 @@ void appendLayer(
             item.kind = SceneItem::Kind::Quad;
             rotatedMarkerQuad(position, marker.rotation, marker.icon_size * options.marker_scale, item.corners);
             std::copy(std::begin(kRotatedMarkerUv), std::end(kRotatedMarkerUv), item.uv);
+            // Blish's first triangle: its -X-Y, +X-Y and -X+Y corners.
+            item.front = frontOf(marker.cull, item.corners[0], item.corners[1], item.corners[3]);
         } else {
             item.kind = SceneItem::Kind::Billboard;
             item.centre = position;
@@ -103,16 +157,18 @@ void appendLayer(
         const float fade_far = std::min(trail.fade_far, options.view_distance);
         const float fade_near = std::min(trail.fade_near, options.view_distance - (trail.fade_far - trail.fade_near));
         const float scroll = seconds * std::min(trail.anim_speed, options.max_trail_speed);
+        const float fade_in = fadeInOf(live_trail.in_view_since, seconds);
         for (const pack::trl::Segment& segment : trail.geometry->segments) {
             quads.clear();
             appendRibbon(segment.points, kTrailHalfWidth * trail.scale, trail.is_wall, scroll, &quads);
 
             for (const RibbonQuad& quad : quads) {
-                // Faded per quad, from its middle. Pathing fades a trail per pixel; this is
-                // the approximation viewer.md describes.
+                // Faded per quad, from its middle, from fadeNear to fadeFar. Pathing's
+                // trail.hlsl never reads fadeNear, so its trails stay whole up to fadeFar and
+                // are cut off there; fading them out instead is ours, on purpose.
                 const glm::vec3 middle = (quad.corners[0] + quad.corners[1] + quad.corners[2] + quad.corners[3]) * 0.25f;
-                const float opacity =
-                    trail.alpha * fadeFactor(metresToInches(glm::distance(middle, camera.player)), fade_near, fade_far) * settings_opacity;
+                const float opacity = trail.alpha * fadeFactor(metresToInches(glm::distance(middle, camera.player)), fade_near, fade_far) *
+                                      settings_opacity * fade_in;
                 if (opacity <= kInvisibleOpacity) continue;
 
                 SceneItem item;
@@ -121,7 +177,12 @@ void appendLayer(
                 item.colour = applyOpacity(trail.tint, opacity);
                 std::copy(std::begin(quad.corners), std::end(quad.corners), item.corners);
                 std::copy(std::begin(quad.uv), std::end(quad.uv), item.uv);
-                item.depth = squaredDistance(middle, camera.position);
+                // Blish's strip starts each quad at its right corner at the first point, then
+                // its left, then the right at the next — see appendRibbon's corner order.
+                item.front = frontOf(trail.cull, quad.corners[1], quad.corners[0], quad.corners[2]);
+                // StandardTrail.DrawOrder is float.MaxValue: every trail under every marker,
+                // trails in the order loaded.
+                item.depth = std::numeric_limits<float>::max();
                 item.behind_terrain = behindTerrain(trail.render_layer, options);
                 if (layer.edited) {
                     item.pathable = trail.pathable;
@@ -163,6 +224,7 @@ void buildScene(
 
 bool itemCorners(const Camera& camera, const SceneItem& item, glm::vec3 out_corners[4], const ImVec2** out_uv) {
     if (item.kind == SceneItem::Kind::Quad) {
+        if (item.front != glm::vec3(0.0f) && glm::dot(item.front, camera.position - item.corners[0]) <= 0.0f) return false;
         std::copy(std::begin(item.corners), std::end(item.corners), out_corners);
         *out_uv = item.uv;
         return true;

@@ -261,7 +261,7 @@ Not in it:
 - **Hiding the full map as the camera moves**, before MumbleLink says it closed
   (FlatMap's `MapTriggerHideFromCamera`): one frame's difference at most.
 - Pathing's per-pixel fades — markers between character and camera, trails around the
-  character — and their two settings: milestone 7.
+  character — and their two settings: see [Later](#9-later).
 
 ### 5. The catalog — done offline
 
@@ -379,11 +379,26 @@ Asked for after milestone 7, before its pull in game. Each step is a commit of i
    alone.
 8. **Options from the menu** — done offline. "Options", between Manage Marker Packs and Open
    Editor, opens the page Nexus shows in its options in a window of ours.
+9. **Drawn as Pathing draws** — done offline. Every trail under every marker, and markers in
+   Blish's order, by where they stand before `heightOffset`, ties in the order loaded; `cull`;
+   marker.hlsl's distance fade and its cut at Max View Distance, on average; the 800 ms
+   fade-in; nothing on the Super Adventure Box's minimap and map; the bind named Toggle
+   Markers. A trail's fade stays ours, from `fadeNear` to `fadeFar`, where Pathing's shader
+   cuts it at `fadeFar` alone.
+10. **The editor's pack drawn as a player will see it** — done offline. The viewer draws it with
+   the installed packs, in one scene through the same sinks and options, and on the maps; the
+   editor draws only its outlines, handles and picking over that.
 
 ### 9. Later
 
 - The achievement filter, and raids known complete, once the API key question is settled.
-- Pathing's per-pixel fades, with a shader of our own, if the per-quad version shows.
+- Pathing's per-pixel fades — markers between the character and the camera, trails around the
+  character — and their two settings. Not drawn at all yet: they need a shader of our own.
+- **`occlude`**, which Hero's pack uses for invisible walls in the Aerodrome, the Cosmic
+  Observatory and Arborstone. Blish erases what it drew behind them; a draw list over the game
+  cannot erase, so over the terrain the markers behind those walls show through. Needs a way
+  of its own — hiding what an occluder covers when the scene is built, say — before anything
+  is written.
 
 ## Open questions
 

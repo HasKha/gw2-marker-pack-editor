@@ -13,7 +13,7 @@
 #include "viewer/runtime.h"
 
 // A pack drawn from a model that changes as it is drawn, rather than from disk: the editor's open
-// pack, which the editor draws itself, with the same bake every installed pack goes through.
+// pack, which the viewer draws with the installed ones, through the same bake.
 namespace viewer::edited {
 
 // The model as it stands this frame.

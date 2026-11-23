@@ -149,6 +149,21 @@ TEST_CASE("map scene: what is off, gone, filtered or without its icon is not on 
     CHECK(scene.icons.size() == 2);
 }
 
+TEST_CASE("map scene: nothing is drawn on the Super Adventure Box's maps") {
+    runtime::LiveMap live;
+    live.markers.push_back(marker({500, 0, 500}));
+    live.trails.push_back(trail({{400, 0, 500}, {600, 0, 500}}));
+    REQUIRE(build(live).icons.size() == 1);
+
+    for (const int sab : {935, 895, 934}) {
+        MumbleState state = mumble();
+        state.map_id = sab;
+        const map_scene::MapScene scene = build(live, state);
+        CHECK(scene.icons.empty());
+        CHECK(scene.paths.empty());
+    }
+}
+
 TEST_CASE("map scene: an icon's colour is its tint, its alpha, the map's opacity and the fade") {
     runtime::LiveMap live;
     live.markers.push_back(marker({500, 0, 500}));

@@ -142,6 +142,36 @@ TEST_CASE("what the editor's tree hides is not in the edited live map", "[edited
     CHECK(edited.live().markers.size() == 2);
 }
 
+TEST_CASE("an edit keeps when the edited pack's markers came into view; what is new fades in", "[edited]") {
+    const corpus::TempDir temp("edited_fade_in");
+    pack::Pack model = editedPack(temp);
+    FakeTrails trails;
+    const std::vector<char> no_nodes;
+
+    viewer::edited::EditedLive edited;
+    std::vector<char> shown{1, 0, 1, 1};
+    edited.update({temp.path(), &model, 1, &shown}, kMap, trails.lookup());
+    viewer::runtime::startFadeIns(&edited.live(), no_nodes, 10.0);
+    REQUIRE(edited.live().markers.size() == 1);
+    CHECK(edited.live().markers[0].in_view_since == 10.0);
+
+    // An edit rebuilds the map: the marker that was there keeps its time, and one shown again
+    // in the tree comes into view now.
+    model.pathables[0].attributes.set("zpos", "9");
+    shown[1] = 1;
+    REQUIRE(edited.update({temp.path(), &model, 2, &shown}, kMap, trails.lookup()));
+    viewer::runtime::startFadeIns(&edited.live(), no_nodes, 20.0);
+    REQUIRE(edited.live().markers.size() == 2);
+    CHECK(edited.live().markers[0].in_view_since == 10.0);
+    CHECK(edited.live().markers[1].in_view_since == 20.0);
+
+    // Another map is all new.
+    edited.update({temp.path(), &model, 2, &shown}, 16, trails.lookup());
+    viewer::runtime::startFadeIns(&edited.live(), no_nodes, 30.0);
+    REQUIRE(edited.live().markers.size() == 1);
+    CHECK(edited.live().markers[0].in_view_since == 30.0);
+}
+
 TEST_CASE("a trail whose read was put off arrives on a later frame", "[edited]") {
     const corpus::TempDir temp("edited_deferred");
     const pack::Pack model = editedPack(temp);

@@ -145,8 +145,8 @@ drawn at `WORLD_FINISHED`, and only the map waits for `BEFORE_WINDOWS`, over the
 game's own map markers are. A draw list at `WORLD_FINISHED` has no depth, which is what over
 the terrain needs, and GoodRender draws it after the moment's quads, so an item over the terrain
 always lands on one behind it, whatever the scene's order. Within each half, the order is all
-there is, and it is Blish's: back to front by where a marker stands, before its `heightOffset`,
-ties in the order loaded (`buildScene`). **Over the terrain is the default**,
+there is, and it is Blish's: every trail first, then the markers back to front by where each
+stands, before its `heightOffset`, ties in the order loaded (`buildScene`). **Over the terrain is the default**,
 as Blish HUD draws every marker: the world never hides one. Behind the terrain is the player's choice, **Hide markers behind
 terrain** in the options, and a pack's per category or marker with `render-layer`, our own
 attribute (see [format.md](format.md#render-layer-ours)), which wins over the player's. There,
@@ -154,17 +154,39 @@ attribute (see [format.md](format.md#render-layer-ours)), which wins over the pl
 which no draw list ever is. The scene carries the choice per item (`SceneItem::behind_terrain`),
 settled when it is built.
 
-**Fades are colour alpha, per quad.** `alpha`, `fadeNear`/`fadeFar`, the combat fade and the
-max-opacity setting all multiply into the quad's colour on the CPU, as Pathing's
-`GetOpacity()` multiplies them before its shader sees them. Two of Pathing's fades are
-per-pixel in its shaders (`ref/hlsl/marker.hlsl`, `trail.hlsl`): the fade of markers
-between the character and the camera, and of trails around the character. Per quad, they are
-an approximation. The exact version needs a shader of our own bound in the moment, which is
-the one thing that would take us off `world_quad`; it is a late milestone, and only if the
-approximation shows.
+**Fades are colour alpha, per quad.** `alpha`, `fadeNear`/`fadeFar`, the combat fade, the
+max-opacity setting and the 800 ms fade-in all multiply into the quad's colour on the CPU, as
+Pathing's `GetOpacity()` multiplies them before its shader sees them. What its shaders
+(`ref/hlsl/marker.hlsl`, `trail.hlsl`) do per pixel is matched on average or not at all:
+
+- **A marker's distance fade, on average.** marker.hlsl fades a marker a second time between
+  its fades, and dissolves its pixels against a noise texture as it does; the scene takes the
+  share of pixels that dissolve would keep (`shaderFade` in `scene.cpp`). The shader is handed
+  Max View Distance where it expects inches, so every marker is cut off there: 635 m at the
+  default.
+- **A trail's distance fade, deliberately not.** trail.hlsl never reads `fadeNear`: Pathing's
+  trails stay whole up to `fadeFar` and are cut off there. Ours fade out between the two.
+- **Not drawn at all**: markers fading between the character and the camera, trails fading
+  around the character, and their two settings. Both need a shader of our own bound in the
+  moment, which is the one thing that would take us off `world_quad` ([plan.md](plan.md#9-later)).
+
+The distance a fade is measured by is from where a marker is drawn, `heightOffset` included,
+where Pathing's per-marker fade measures from where it stands. That one is kept.
+
+**`cull` keeps one face** of a rotated marker or a trail, decided in `itemCorners` against the
+camera the frame is drawn with, as the corners are. Which face is `Cull`'s comment in
+`bake.h`: read off Hero's pack, whose Aerodrome raid icons rely on it. A billboard always faces
+the camera, so CounterClockwise always shows it and Clockwise never does.
+
+**`occlude` is not drawn.** In Blish HUD an occluding marker is drawn opaque with an alpha of
+zero, which in its transparent overlay erases whatever was drawn behind it; Hero's pack puts
+invisible ones on the walls of the Aerodrome, the Cosmic Observatory and Arborstone so that
+markers behind those walls do not show through. A draw list over the game cannot erase what is
+under it, so the scene skips them, as it does anything of no opacity, and over the terrain
+those markers show through. Behind the terrain, the game's own walls hide them anyway.
 
 **Without the service**, the same scene goes through `render/overlay.*` at
-`ERenderType_Render`, projected with `camera.*`, over everything the way the editor draws.
+`ERenderType_Render`, projected with `camera.*`, over everything.
 Only what no moment drew: every moment of a frame comes before its Present, so each moment
 sets a flag for what it drew — behind the terrain, over it, the map — and the Nexus render
 takes them (`good_render_sink::takeDrawn`) and draws the rest. A loading screen, the full map,
@@ -311,7 +333,8 @@ Pathing's FlatMap and each pathable's `RenderToMiniMap`, in `map.*` and `map_sce
   their 0.897.
 - **A map's rectangles** come from `/v2/maps?ids=all`, once a session on a worker, written to
   `maps.json` in Pathing's own fallback layout; the file stands until the API answers. A map
-  neither knows shows nothing, as in Pathing.
+  neither knows shows nothing, as in Pathing. Nor do the Super Adventure Box's lobby and two
+  worlds, whose minimap and map are not the usual kind: Pathing's `ignore.yaml` defaults.
 - **Like the world scene, the map scene carries no view**: the moment reads MumbleLink's
   centre, scale and rotation itself, the context only — its identity is parsed into a cache
   only the frame's thread may touch. A map being dragged does not trail a frame behind.
@@ -370,7 +393,8 @@ Blish HUD's, one set of items wherever it is shown (`ui/main_menu.*`): **All Mar
 children open beside it on hover, as Pathing's context menu does; then **Manage Marker Packs**,
 **Options**, which opens the options page Nexus shows in a window of ours, and **Open Editor...**. All Markers' own box is kept with the categories' under the empty id, which no
 category has, and off hides every pack, as Pathing's root category does; a bind, unset, turns it
-on and off too.
+on and off too, named Toggle Markers as Pathing's is. Pathing's other binds — markers in the
+world, on the map, reloading the packs — are not offered.
 
 **Smart categories**, on by default as in Pathing, leave out of each menu the categories with
 nothing on the current map (`runtime::nodesOnMap`), and a separator with nothing under it, behind
@@ -396,7 +420,8 @@ one between addons already.
   the viewer's render and `WndProc` call the editor's through `EditorHooks::render` and
   `wnd_proc`, which do nothing while it does not run. Nexus holds its render mutex across every
   callback, so a render callback of the editor's own could only be registered at load, which is
-  why editing was once a setting applied at the next load. Nothing else passes between them.
+  why editing was once a setting applied at the next load. The one other thing that passes
+  between them is the open pack's live map, `EditorHooks::edited_live`, which the viewer draws.
 - **Undo and redo are bound only while it runs**, so Ctrl+Z and Ctrl+Y are the game's otherwise.
   Registering a bind from inside a render callback is safe: Nexus's binds have a lock of their
   own, and Nexus runs their handlers on a thread of its own, so the editor's only raise a flag
@@ -404,12 +429,16 @@ one between addons already.
 - **A pack is opened from the editor's File menu**, in place, wherever it is. A pack in our
   folder that came from the catalog is overwritten by its next update, edits and all: the
   catalog's Keep updated is the author's to turn off for it.
-- **The editor draws its pack itself**, over the world at Nexus's render, from its model: a live
-  map of its own (`edited.*`), baked again whenever `State::revision` moves, built into a scene
-  of its own with the tree's eye toggles and drawn with `render/overlay.*`. Its outlines, handles
-  and picking work on that scene. Its images and trails are the editor's reads, which see an
-  image added or a trail edited before it is saved. Its scripts and behaviors do not run: the
-  author sees every marker.
+- **The viewer draws the open pack as it draws an installed one**, so that its author sees what a
+  player will: sorted into the same scene, through the same sinks — GoodRender's moments, behind
+  the terrain or over it — with the player's options, culled and faded alike, and on the
+  minimap and the full map. The editor hands it over at Present (`EditorHooks::edited_live`) as
+  a live map of its own (`edited.*`), baked again whenever `State::revision` moves, with the
+  tree's eye toggles. Its images and trails are the editor's reads, which see an image added or
+  a trail edited before it is saved. A rebuild keeps when each pathable came into view, so an
+  edit does not fade the pack in again. Its outlines, handles and picking are drawn over the
+  published scene, by its items that carry a pathable. Its scripts and behaviors do not run:
+  the author sees every marker that is on.
 - **The viewer goes on drawing every installed pack**, the one open in the editor included, as
   it is on disk. Editing an installed pack shows it twice, the saved copy and the edited one.
 - **Save replaces a file the viewer has open.** An archive is opened sharing deletion

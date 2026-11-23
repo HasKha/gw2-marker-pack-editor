@@ -296,8 +296,8 @@ TEST_CASE("Pathing's world settings scale, fade, cap and hide what the scene dra
         CHECK(alpha(built.scene.items[1]) == 128);
     }
 
-    SECTION("view distance, in metres for a marker") {
-        built.options.view_distance = 30.0f;
+    SECTION("view distance: what marker.hlsl cuts at, in inches, whatever the marker's fades") {
+        built.options.view_distance = 1000.0f; // 25.4 m
         built.build(camera);
         REQUIRE(built.scene.items.size() == 1);
         CHECK(built.scene.items[0].centre.z == Approx(10.0f));
@@ -394,6 +394,157 @@ TEST_CASE("markers at the same distance keep the order they were loaded in", "[s
         CHECK(built.scene.items[i].size == Approx(2.0f * static_cast<float>(2 * i + 2)));
         CHECK(built.scene.items[kCount / 2 + i].size == Approx(2.0f * static_cast<float>(2 * i + 1)));
     }
+}
+
+TEST_CASE("cull keeps one face of a rotated marker, and a billboard only on CounterClockwise", "[scene]") {
+    // rotate="90,0,0" stands the quad up facing the axis camera, 10 m ahead: Blish's first
+    // triangle's normal points away from it, +z, so CounterClockwise shows it from beyond.
+    constexpr float kQuarterTurn = 1.5707963f;
+    Built built;
+    viewer::BakedPathables pathables;
+    for (const viewer::Cull cull : {viewer::Cull::None, viewer::Cull::CounterClockwise, viewer::Cull::Clockwise}) {
+        pathables.markers.push_back(marker({0, 0, 10}, 0));
+        pathables.markers.back().has_rotation = true;
+        pathables.markers.back().rotation = glm::vec3(kQuarterTurn, 0.0f, 0.0f);
+        pathables.markers.back().cull = cull;
+        pathables.markers.back().icon_size = static_cast<float>(pathables.markers.size()); // to tell them apart
+    }
+    pathables.markers.push_back(marker({0, 0, 10}, 0));
+    pathables.markers.back().cull = viewer::Cull::CounterClockwise;
+    pathables.markers.push_back(marker({0, 0, 10}, 0));
+    pathables.markers.back().cull = viewer::Cull::Clockwise;
+    viewer::runtime::install(&built.installed, loadedPack("pack", pathables));
+
+    const viewer::Camera front = test_camera::axisCamera();
+    viewer::Camera beyond = front;
+    beyond.position = glm::vec3(0.0f, 0.0f, 20.0f);
+    built.build(front);
+
+    // The three quads and the CounterClockwise billboard; the Clockwise one never shows.
+    REQUIRE(built.scene.items.size() == 4);
+    const auto drawn = [&](float icon_size, const viewer::Camera& camera) {
+        for (const viewer::SceneItem& item : built.scene.items) {
+            if (item.kind != viewer::SceneItem::Kind::Quad || std::abs(item.corners[1].x - item.corners[0].x - 2.0f * icon_size) > 0.01f)
+                continue;
+            glm::vec3 corners[4];
+            const ImVec2* uv = nullptr;
+            return viewer::itemCorners(camera, item, corners, &uv);
+        }
+        FAIL("no such quad");
+        return false;
+    };
+    CHECK(drawn(1.0f, front));
+    CHECK(drawn(1.0f, beyond));
+    CHECK_FALSE(drawn(2.0f, front));
+    CHECK(drawn(2.0f, beyond));
+    CHECK(drawn(3.0f, front));
+    CHECK_FALSE(drawn(3.0f, beyond));
+
+    // The pack open in the editor is culled the same: its author sees what a player will.
+    const viewer::runtime::LiveMap live = viewer::runtime::liveMap(built.installed, kMap);
+    const std::vector<char> visible = viewer::runtime::visibleNodes(built.installed.tree, built.states);
+    viewer::Scene edited;
+    viewer::buildScene({viewer::SceneLayer{&live, &visible, everyTexture(), true}}, front, 0.0f, {}, &edited);
+    REQUIRE(edited.items.size() == 4);
+    for (size_t i = 0; i < edited.items.size(); ++i) CHECK(edited.items[i].front == built.scene.items[i].front);
+}
+
+TEST_CASE("every trail is drawn under every marker, nearer or not", "[scene]") {
+    Built built;
+    viewer::BakedPathables pathables;
+    pathables.markers.push_back(marker({0, 0, 30}, 0));
+    viewer::BakedTrail trail;
+    trail.category = 0;
+    trail.map_id = kMap;
+    trail.texture = "trail.png";
+    auto geometry = std::make_shared<pack::trl::Trail>();
+    geometry->segments.push_back(pack::trl::Segment{{{-1.0f, -1.0f, 5.0f}, {1.0f, -1.0f, 5.0f}}});
+    trail.geometry = std::move(geometry);
+    pathables.trails.push_back(std::move(trail));
+    viewer::runtime::install(&built.installed, loadedPack("pack", pathables));
+
+    built.build(test_camera::axisCamera());
+    REQUIRE(built.scene.items.size() == 2);
+    CHECK(built.scene.items[0].kind == viewer::SceneItem::Kind::Quad); // the trail, 5 m away
+    CHECK(built.scene.items[1].centre.z == Approx(30.0f));
+}
+
+TEST_CASE("cull keeps a flat trail's upper face on CounterClockwise", "[scene]") {
+    // Pathing's strip along +x lies with its first triangle facing down in Blish's space, so
+    // CounterClockwise is the face seen from above.
+    Built built;
+    viewer::BakedPathables pathables;
+    for (const viewer::Cull cull : {viewer::Cull::CounterClockwise, viewer::Cull::Clockwise}) {
+        viewer::BakedTrail trail;
+        trail.category = 0;
+        trail.map_id = kMap;
+        trail.texture = "trail.png";
+        trail.fade_near = trail.fade_far = -1.0f;
+        trail.cull = cull;
+        auto geometry = std::make_shared<pack::trl::Trail>();
+        geometry->segments.push_back(pack::trl::Segment{{{-1.0f, -2.0f, 10.0f}, {1.0f, -2.0f, 10.0f}}});
+        trail.geometry = std::move(geometry);
+        pathables.trails.push_back(std::move(trail));
+    }
+    viewer::runtime::install(&built.installed, loadedPack("pack", pathables));
+
+    const viewer::Camera above = test_camera::axisCamera(); // 2 m over the trail
+    viewer::Camera below = above;
+    below.position.y = -4.0f;
+    built.build(above);
+    REQUIRE(built.scene.items.size() == 2);
+    glm::vec3 corners[4];
+    const ImVec2* uv = nullptr;
+    // Each trail one quad, in the order loaded: both are as far.
+    CHECK(viewer::itemCorners(above, built.scene.items[0], corners, &uv));
+    CHECK_FALSE(viewer::itemCorners(below, built.scene.items[0], corners, &uv));
+    CHECK_FALSE(viewer::itemCorners(above, built.scene.items[1], corners, &uv));
+    CHECK(viewer::itemCorners(below, built.scene.items[1], corners, &uv));
+}
+
+TEST_CASE("a marker's distance fade is GetOpacity's, then marker.hlsl's with its dissolve", "[scene]") {
+    // 100 to 300 inches, 200 away: halfway through both. GetOpacity leaves half; the shader
+    // half of that, and its dissolve keeps 39% of the pixels.
+    Built built;
+    viewer::BakedPathables pathables;
+    pathables.markers.push_back(marker({0, 0, 200.0f / 39.37f}, 0));
+    pathables.markers[0].fade_near = 100.0f;
+    pathables.markers[0].fade_far = 300.0f;
+    pathables.markers.push_back(marker({0, 0, 600.0f}, 0)); // no fades: cut at 25000 inches, 635 m
+    pathables.markers.push_back(marker({0, 0, 700.0f}, 0));
+    viewer::runtime::install(&built.installed, loadedPack("pack", pathables));
+
+    built.build(test_camera::axisCamera());
+    REQUIRE(built.scene.items.size() == 2);
+    CHECK(built.scene.items[0].centre.z == Approx(600.0f));
+    const int alpha = static_cast<int>((built.scene.items[1].colour >> IM_COL32_A_SHIFT) & 0xFF);
+    CHECK(alpha == Approx(255.0 * 0.5 * 0.5 * 0.390).margin(1.0));
+}
+
+TEST_CASE("a pathable fades in over 800 ms once in view, and again when its category comes back", "[scene]") {
+    Built built;
+    viewer::BakedPathables pathables;
+    pathables.markers.push_back(marker({0, 0, 10}, 1));
+    viewer::runtime::install(&built.installed, loadedPack("pack", pathables));
+    viewer::runtime::LiveMap live = viewer::runtime::liveMap(built.installed, kMap);
+    const viewer::Camera camera = test_camera::axisCamera();
+    const auto alphaAt = [&](float seconds) {
+        const std::vector<char> visible = viewer::runtime::visibleNodes(built.installed.tree, built.states);
+        viewer::runtime::startFadeIns(&live, visible, seconds);
+        viewer::buildScene(live, visible, camera, seconds, {}, everyTexture(), &built.scene);
+        return built.scene.items.empty() ? 0 : static_cast<int>((built.scene.items[0].colour >> IM_COL32_A_SHIFT) & 0xFF);
+    };
+
+    CHECK(alphaAt(10.0f) == 0);
+    CHECK(alphaAt(10.4f) == Approx(128).margin(1));
+    CHECK(alphaAt(10.8f) == 255);
+    CHECK(alphaAt(20.0f) == 255);
+
+    built.states.set("a.b", false, true);
+    CHECK(alphaAt(21.0f) == 0);
+    built.states.set("a.b", true, true);
+    CHECK(alphaAt(22.0f) == 0);
+    CHECK(alphaAt(22.2f) == Approx(64).margin(1));
 }
 
 TEST_CASE("nothing is in the scene while the map is open", "[scene]") {

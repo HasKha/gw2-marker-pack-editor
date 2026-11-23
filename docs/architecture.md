@@ -34,9 +34,10 @@ The invariants every change keeps. The sections below are why.
   [Saving serializes](#saving-serializes-it-does-not-diff).
 - **Every edit is an `undo::Step`** with the matching capture inside, or it is the one edit
   Ctrl+Z cannot take back. See [Undo](#undo-records-images-not-inverses).
-- **The editor draws its own pack**, in `marker_editor::render`, from its model, and tells the
-  viewer nothing about it. `render` is not a Nexus callback: the viewer's render calls it
-  through `EditorHooks`, and it does nothing while the editor does not run (see
+- **The viewer draws the editor's pack**, as it draws an installed one, from the live map the
+  editor hands it through `EditorHooks::edited_live`; the editor draws only what an editor
+  needs over it. `render` is not a Nexus callback: the viewer's render calls it through
+  `EditorHooks`, and it does nothing while the editor does not run (see
   [viewer.md](viewer.md#the-editor-inside)).
 - **Nothing is erased from `Pack::categories` or `Pack::pathables`**, and nothing is inserted
   into their middle: delete tombstones, add appends. Every index into them stays valid. A new
@@ -651,10 +652,10 @@ than being dropped, so a broken `type` is visible instead of silent.
 
 ## Rendering
 
-The editor draws its pack with the viewer's code but on its own: a live map and a scene of its
-own, drawn through the viewer's overlay sink, over everything (viewer.md, *The editor inside*).
-What only an editor draws — the outline, the picking, the point handles, a dot where an icon is
-missing, the gizmo — is `editor/world/`, over that scene. The camera is `viewer/camera.*`, and clipping, subdividing and
+The viewer draws the editor's pack in its own scene, with the installed packs and through the
+same sinks (viewer.md, *The editor inside*). What only an editor draws — the outline, the
+picking, the point handles, a dot where an icon is missing, the gizmo — is `editor/world/`, over
+the scene the viewer published. The camera is `viewer/camera.*`, and clipping, subdividing and
 emitting a textured quad, which the overlay sink and the outlines both use, is
 `viewer/render/overlay.*`. What follows is how that overlay path works.
 
