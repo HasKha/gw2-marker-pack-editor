@@ -190,6 +190,7 @@ target_link_libraries(mpe_viewer_test PRIVATE
     mpe_viewer
     mpe_corpus
     Catch2::Catch2WithMain
+    ws2_32  # http_test's local server that never answers
 )
 
 catch_discover_tests(mpe_viewer_test)

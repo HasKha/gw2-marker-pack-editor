@@ -170,17 +170,17 @@ glm::vec2 project(const View& view, const glm::dvec2& continent) {
     return location + (view.min + view.max) * 0.5f;
 }
 
-std::optional<std::string> Catalog::askApi() {
+std::optional<std::string> Catalog::askApi(const http::Cancel& cancel) {
     // A few hundred kilobytes: longer than the festivals' five seconds.
-    return http::get("https://api.guildwars2.com/v2/maps?ids=all", std::chrono::seconds(15));
+    return http::get("https://api.guildwars2.com/v2/maps?ids=all", cancel, std::chrono::seconds(15));
 }
 
 void Catalog::start(const std::filesystem::path& cache_file, Request request) {
     if (!cache_file.empty()) {
         if (std::optional<MapTable> cached = mapsFromCache(readFile(cache_file))) cached_ = std::move(*cached);
     }
-    fresh_.start([cache_file, request = std::move(request)]() -> std::optional<MapTable> {
-        const std::optional<std::string> body = request();
+    fresh_.start([cache_file, request = std::move(request)](const http::Cancel& cancel) -> std::optional<MapTable> {
+        const std::optional<std::string> body = request(cancel);
         if (!body) return std::nullopt;
         std::optional<MapTable> maps = mapsFromApi(*body);
         if (!maps || maps->empty()) return std::nullopt;

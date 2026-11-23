@@ -112,6 +112,29 @@ TEST_CASE("a schedule shows its pathable for the duration after each occurrence"
     CHECK_FALSE(updateSchedule(hourly, duration, utc(2026, 1, 1, 11, 1), &later));
 }
 
+TEST_CASE("a schedule moves on past a window no frame saw open", "[behaviors][cron]") {
+    const CronSchedule hourly = *CronSchedule::parse("0 * * * *");
+    const UtcMillis duration = 10 * kMinute;
+
+    // A frame on the very millisecond the window closes, then the next one after it.
+    ScheduleState edge;
+    CHECK_FALSE(updateSchedule(hourly, duration, utc(2026, 1, 1, 10, 5), &edge));
+    CHECK(updateSchedule(hourly, duration, utc(2026, 1, 1, 10, 10), &edge));
+    CHECK(updateSchedule(hourly, duration, utc(2026, 1, 1, 10, 10) + 16, &edge));
+    CHECK_FALSE(updateSchedule(hourly, duration, utc(2026, 1, 1, 11, 1), &edge));
+
+    // Not updated at all through a window, as a marker under a category that is off is not.
+    ScheduleState skipped;
+    CHECK(updateSchedule(hourly, duration, utc(2026, 1, 1, 10, 30), &skipped));
+    CHECK(updateSchedule(hourly, duration, utc(2026, 1, 1, 11, 30), &skipped));
+    CHECK_FALSE(updateSchedule(hourly, duration, utc(2026, 1, 1, 12, 2), &skipped));
+
+    // An expression that never matches stays hidden.
+    ScheduleState never;
+    CHECK(updateSchedule(*CronSchedule::parse("0 0 30 2 *"), duration, utc(2026, 1, 1), &never));
+    CHECK(updateSchedule(*CronSchedule::parse("0 0 30 2 *"), duration, utc(2026, 1, 2), &never));
+}
+
 TEST_CASE("the daily and weekly resets fall where Pathing puts them", "[behaviors][states]") {
     CHECK(nextDailyReset(utc(2026, 11, 22, 23, 59)) == utc(2026, 11, 23));
     CHECK(nextDailyReset(utc(2026, 11, 23)) == utc(2026, 11, 24));

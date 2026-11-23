@@ -6,6 +6,7 @@
 #include <cctype>
 #include <chrono>
 
+#include "pack/path_text.h"
 #include "viewer/json_file.h"
 
 namespace viewer::catalog {
@@ -79,7 +80,7 @@ bool safeFileName(std::string_view name) {
     const std::string lower = lowercase(std::string(name));
     // Names Windows keeps for devices, whatever the extension.
     static constexpr std::string_view kDevices[] = {"con", "prn", "aux", "nul", "com", "lpt"};
-    const std::string stem = std::filesystem::path(lower).stem().string();
+    const std::string stem = pack::pathText(pack::pathFromText(lower).stem());
     for (std::string_view device : kDevices) {
         if (stem == device || (stem.size() == 4 && stem.starts_with(device) && std::isdigit(static_cast<unsigned char>(stem[3]))))
             return false;
@@ -105,9 +106,9 @@ std::vector<LocalPack> localPacks(const std::vector<std::filesystem::path>& path
 }
 
 const LocalPack* findLocal(const Package& package, const std::vector<LocalPack>& locals) {
-    const std::string stem = lowercase(std::filesystem::path(package.file_name).stem().string());
+    const std::string stem = lowercase(pack::pathText(pack::pathFromText(package.file_name).stem()));
     for (const LocalPack& local : locals) {
-        if (lowercase(local.path.stem().string()) == stem) return &local;
+        if (lowercase(pack::pathText(local.path.stem())) == stem) return &local;
     }
     return nullptr;
 }

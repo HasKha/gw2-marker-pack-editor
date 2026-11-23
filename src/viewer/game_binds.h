@@ -1,6 +1,7 @@
 #pragma once
 
 #include <filesystem>
+#include <optional>
 #include <vector>
 
 // The game's own key binds, as Nexus keeps them: what interacting is bound to, so the addon
@@ -35,7 +36,9 @@ struct Key {
 int virtualKey(int game_code);
 
 // The keyboard keys `action` is bound to in `file`, its first bind before its second; those whose
-// key virtualKey does not know are left out. Nothing for a file that is not there or not read.
-std::vector<Key> read(const std::filesystem::path& file, int action);
+// key virtualKey does not know are left out, so an action bound only to the mouse, or to keys not
+// known here, has none. Nothing at all — not an empty list — for a file that is not there or not
+// read, or that does not name the action: there the game's default stands.
+std::optional<std::vector<Key>> read(const std::filesystem::path& file, int action);
 
 } // namespace viewer::game_binds

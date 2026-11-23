@@ -5,6 +5,7 @@
 #include <filesystem>
 #include <optional>
 #include <string>
+#include <string_view>
 
 // Small JSON files the addon keeps between sessions, read leniently.
 //
@@ -18,7 +19,14 @@ namespace viewer::json_file {
 // replaces it.
 std::optional<nlohmann::json> readObject(const std::filesystem::path& file);
 
-// Writes `value` to `file`, creating its folder first. False when any of that fails.
+// Writes `text` to `file`, creating its folder first, so that the file is the old text or the
+// new and never part of either: into `<file>.tmp`, then moved over it. The files kept between
+// sessions are written every few seconds, and a game that crashes mid-write is common enough
+// that a truncated file — every category the player turned off back on — would be seen. False
+// when any of that fails, with the old file standing.
+bool writeText(const std::filesystem::path& file, std::string_view text);
+
+// writeText of `value`.
 bool write(const std::filesystem::path& file, const nlohmann::json& value);
 
 // One member of `object`, or `fallback` when it is missing or of another type. nlohmann's own

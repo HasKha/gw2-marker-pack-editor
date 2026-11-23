@@ -5,6 +5,7 @@
 
 #include <algorithm>
 
+#include "pack/path_text.h"
 #include "viewer/ui/fonts.h"
 
 namespace viewer::ui::import_window {
@@ -38,7 +39,7 @@ Answer draw(const blish_import::Found& found, Choices* choices, const std::strin
                 for (size_t i = 0; i < found.packs.size(); ++i) {
                     bool chosen = choices->packs[i] != 0;
                     ImGui::PushID(static_cast<int>(i));
-                    if (ImGui::Checkbox(found.packs[i].stem().string().c_str(), &chosen)) choices->packs[i] = chosen ? 1 : 0;
+                    if (ImGui::Checkbox(pack::pathText(found.packs[i].stem()).c_str(), &chosen)) choices->packs[i] = chosen ? 1 : 0;
                     ImGui::PopID();
                 }
             }

@@ -38,10 +38,15 @@ private:
 // ScheduleFilter's state machine, Update and constructor alike: hidden except from each
 // occurrence for `duration`. `started` is false until the first update, which looks back one
 // duration, as the constructor does, so a window already open when the map loads shows.
+//
+// One difference: ScheduleFilter moves on to the next occurrence only on a frame that saw the
+// window open, so a window no frame saw — its category off throughout, since a category that is
+// off runs nothing — leaves it waiting on that window for good. Here a window that is behind
+// is always left for the next.
 struct ScheduleState {
     bool started = false;
-    std::optional<UtcMillis> next_trigger; // DateTime.MinValue while unknown
-    bool filtered = false;
+    std::optional<UtcMillis> next_trigger; // nothing when the expression never matches again
+    bool filtered = false; // what the last update said, for Script's Behavior reads
 };
 
 // Advances `state` to `now` and says whether the pathable is filtered.

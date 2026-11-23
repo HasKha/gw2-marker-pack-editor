@@ -112,6 +112,10 @@ or how the catalog is read:
 bin/Release/mpe_viewer_test.exe "[.web]"
 ```
 
+What does not need the web runs with the rest: `http_test.cpp` points requests at a server on
+localhost that accepts and never answers, and checks that cancelling one ends it at once rather
+than after its timeouts.
+
 The pack open in the editor is tested from the viewer's side, over a small pack written in the test:
 `edited_test.cpp` bakes its model into a live map of its own as the revision, the map, the tree's eye
 toggles and a trail's deferred read change, and checks the scene layer that carries its pathables to the

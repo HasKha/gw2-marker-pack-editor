@@ -174,18 +174,14 @@ bool updateSchedule(const CronSchedule& schedule, UtcMillis duration, UtcMillis 
     if (!state->started) {
         state->started = true;
         state->next_trigger = schedule.next(now - duration);
-        state->filtered = false;
     }
 
-    // DateTime.MinValue, as ScheduleFilter leaves it when there is no occurrence to find:
-    // long past, so the window it opens is too.
-    const UtcMillis trigger = state->next_trigger.value_or(INT64_MIN / 2);
-    if (!state->filtered && now > trigger + duration) {
-        if (const std::optional<UtcMillis> next = schedule.next(now)) state->next_trigger = next;
-        state->filtered = true;
-    } else {
-        state->filtered = !(now >= trigger && now < trigger + duration);
-    }
+    // A window that is over gives way to the next, however long ago it closed. With none to
+    // find the search is not run again: it walks 28 years of days.
+    if (state->next_trigger && now >= *state->next_trigger + duration) state->next_trigger = schedule.next(now);
+
+    const bool open = state->next_trigger && now >= *state->next_trigger && now < *state->next_trigger + duration;
+    state->filtered = !open;
     return state->filtered;
 }
 

@@ -62,13 +62,13 @@ std::optional<std::vector<std::string>> festivalsFromList(std::string_view json)
 }
 
 void FestivalFetcher::start() {
-    request_.start([]() -> std::optional<std::vector<std::string>> {
+    request_.start([](const http::Cancel& cancel) -> std::optional<std::vector<std::string>> {
         std::optional<std::vector<std::string>> active;
-        if (const std::optional<std::string> body = http::get(kDailyGroupUrl)) active = festivalsFromDailyGroup(*body);
+        if (const std::optional<std::string> body = http::get(kDailyGroupUrl, cancel)) active = festivalsFromDailyGroup(*body);
         // Since early 2022 the API has at times listed every festival at once; Blish HUD
         // asks its own service then, as it does when the API cannot be reached.
         if (active && active->size() != std::size(kFestivals)) return active;
-        if (const std::optional<std::string> body = http::get("https://l.blishhud.com/general/getactivefestivals"))
+        if (const std::optional<std::string> body = http::get("https://l.blishhud.com/general/getactivefestivals", cancel))
             return festivalsFromList(*body);
         return std::nullopt;
     });

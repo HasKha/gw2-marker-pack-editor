@@ -21,11 +21,8 @@ class Downloads
 {
 public:
     // Writes the body of `url` to `file`: http::download, unless a test says otherwise.
-    using Fetch = std::function<std::string(
-        const std::string& url,
-        const std::filesystem::path& file,
-        const http::Progress& progress,
-        const std::atomic<bool>& cancel)>;
+    using Fetch = std::function<
+        std::string(const std::string& url, const std::filesystem::path& file, const http::Progress& progress, const http::Cancel& cancel)>;
 
     explicit Downloads(Fetch fetch = defaultFetch())
         : fetch_(std::move(fetch)) {}
@@ -67,7 +64,7 @@ private:
         std::filesystem::path part;
         std::filesystem::path target;
         std::thread thread;
-        std::atomic<bool> cancel{false};
+        http::Cancel cancel;
         std::atomic<uint64_t> received{0};
         std::atomic<uint64_t> total{0};
         std::atomic<bool> done{false};

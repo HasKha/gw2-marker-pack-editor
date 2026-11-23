@@ -297,6 +297,13 @@ TEST_CASE("os is Pathing's: local-epoch time, Sunday as 0, impossible dates refu
     CHECK(s.eval(R"(os.date("*t").isdst)") == "true");
     CHECK(s.eval(R"(os.date("!*t").isdst)") == "false");
     CHECK(s.eval("os.difftime(10, 4)") == "6");
+
+    // A time no calendar here reaches is the script's error, never a name read out of range.
+    // gmtime_s reaches twelve hours before 1970, for the time zones west of UTC; a day before is past it.
+    CHECK_FALSE(s.run(R"(os.date("%B %A", -86400))"));
+    CHECK_FALSE(s.run(R"(os.date("!%B", 1e18))"));
+    CHECK_FALSE(s.run(R"(os.date("%c", 0/0))"));
+    CHECK_FALSE(s.run(R"(os.date("%c", math.huge))"));
 }
 
 TEST_CASE("table.ToLson writes NeoLua's notation, and FromLson reads it back", "[viewer][script]") {

@@ -35,11 +35,13 @@ Fields fieldsOf(const std::tm& tm) {
     return {tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, tm.tm_wday, tm.tm_yday + 1};
 }
 
-// The wall-clock fields `seconds` after 1970-01-01 00:00, with no time zone involved.
-Fields wallClock(int64_t seconds) {
+// The wall-clock fields `seconds` after 1970-01-01 00:00, with no time zone involved. Nothing
+// outside what gmtime_s reaches, 1970 to 3000, which leaves every field at -1 — a month and a
+// weekday no name table has.
+std::optional<Fields> wallClock(int64_t seconds) {
     const std::time_t t = static_cast<std::time_t>(seconds);
     std::tm tm{};
-    gmtime_s(&tm, &t);
+    if (gmtime_s(&tm, &t) != 0) return std::nullopt;
     return fieldsOf(tm);
 }
 
@@ -62,8 +64,9 @@ int64_t localNow() {
     return static_cast<int64_t>(_mkgmtime(&local));
 }
 
-// DateTime.ToUniversalTime() of local wall-clock fields.
-Fields toUniversal(const Fields& local) {
+// DateTime.ToUniversalTime() of local wall-clock fields; nothing when the result is out of
+// gmtime_s's range, as wallClock.
+std::optional<Fields> toUniversal(const Fields& local) {
     std::tm tm{};
     tm.tm_year = local.year - 1900;
     tm.tm_mon = local.month - 1;
@@ -74,7 +77,7 @@ Fields toUniversal(const Fields& local) {
     tm.tm_isdst = -1;
     const std::time_t real = std::mktime(&tm);
     std::tm utc{};
-    gmtime_s(&utc, &real);
+    if (real == -1 || gmtime_s(&utc, &real) != 0) return std::nullopt;
     return fieldsOf(utc);
 }
 
@@ -211,7 +214,11 @@ std::optional<Fields> fieldsFromTable(lua_State* L, const sol::table& table, std
 
 // The number a time value stands for: a number, or a table read as os.time reads it.
 std::optional<int64_t> timeValue(lua_State* L, const sol::object& value) {
-    if (value.get_type() == sol::type::number) return static_cast<int64_t>(std::llround(value.as<double>()));
+    // llround is undefined for NaN and infinity, and unspecified past int64; no time is any of those.
+    if (value.get_type() == sol::type::number) {
+        const double number = value.as<double>();
+        return std::isfinite(number) && std::abs(number) < 9e18 ? std::optional<int64_t>(std::llround(number)) : std::nullopt;
+    }
     if (value.get_type() == sol::type::table) {
         std::string error;
         if (const std::optional<Fields> fields = fieldsFromTable(L, value.as<sol::table>(), &error)) return secondsOf(*fields);
@@ -262,8 +269,11 @@ sol::table makeOsLibrary(sol::state_view lua) {
         } else {
             const std::optional<int64_t> seconds = timeValue(state, time);
             if (!seconds) raise(state, "bad argument #2 to 'date' (number expected)");
-            fields = wallClock(*seconds);
-            if (utc) fields = toUniversal(fields);
+            std::optional<Fields> wall = wallClock(*seconds);
+            if (wall && utc) wall = toUniversal(*wall);
+            // DateTime's constructor throws for a time it cannot hold, and so a script's error.
+            if (!wall) raise(state, "bad argument #2 to 'date' (time out of range)");
+            fields = *wall;
         }
 
         if (format == "*t") {

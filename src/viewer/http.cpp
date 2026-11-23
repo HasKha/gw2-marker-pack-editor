@@ -8,6 +8,8 @@
 #include <memory>
 #include <vector>
 
+#include "pack/path_text.h"
+
 namespace viewer::http {
 
 namespace {
@@ -25,17 +27,33 @@ std::wstring widen(std::string_view text) {
     return out;
 }
 
-// A request that has answered 200, its handles kept open to read the body from.
+// A request that has answered 200, its handles kept open to read the body from. Made in place
+// and never moved: its request handle is attached to a Cancel, which may close it, and only
+// the Response that attached it may let go of it.
 struct Response {
+    Response() = default;
+    Response(const Response&) = delete;
+    Response& operator=(const Response&) = delete;
+    ~Response() {
+        if (cancel && !cancel->release()) (void)request.release();
+    }
+
+    const Cancel* cancel = nullptr; // set once the request handle is attached to it
     Handle session;
     Handle connection;
     Handle request;
     uint64_t length = 0; // Content-Length, 0 when absent
 };
 
-// Sends a GET for `url`. Nothing, with `error` saying why, unless it answered 200. Redirects
-// are followed, as WinHTTP does by default, except from HTTPS to HTTP.
-std::optional<Response> open(std::string_view url, std::chrono::milliseconds timeout, const wchar_t* user_agent, std::string* error) {
+// Sends a GET for `url` into `response`. False, with `error` saying why, unless it answered
+// 200. Redirects are followed, as WinHTTP does by default, except from HTTPS to HTTP.
+bool open(
+    std::string_view url,
+    std::chrono::milliseconds timeout,
+    const wchar_t* user_agent,
+    const Cancel& cancel,
+    Response* response,
+    std::string* error) {
     const std::wstring wide = widen(url);
     URL_COMPONENTS parts{};
     parts.dwStructSize = sizeof(parts);
@@ -45,44 +63,52 @@ std::optional<Response> open(std::string_view url, std::chrono::milliseconds tim
     if (wide.empty() || !WinHttpCrackUrl(wide.c_str(), static_cast<DWORD>(wide.size()), 0, &parts) ||
         (parts.nScheme != INTERNET_SCHEME_HTTP && parts.nScheme != INTERNET_SCHEME_HTTPS)) {
         *error = "not a web address";
-        return std::nullopt;
+        return false;
     }
     const std::wstring host(parts.lpszHostName, parts.dwHostNameLength);
     std::wstring path(parts.lpszUrlPath, parts.dwUrlPathLength);
     path.append(parts.lpszExtraInfo, parts.dwExtraInfoLength);
     if (path.empty()) path = L"/";
 
-    Response response;
-    response.session.reset(WinHttpOpen(user_agent, WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY, WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0));
-    if (!response.session) {
+    response->session.reset(
+        WinHttpOpen(user_agent, WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY, WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0));
+    if (!response->session) {
         *error = "could not start WinHTTP";
-        return std::nullopt;
+        return false;
     }
     const int ms = static_cast<int>(timeout.count());
-    WinHttpSetTimeouts(response.session.get(), ms, ms, ms, ms);
+    WinHttpSetTimeouts(response->session.get(), ms, ms, ms, ms);
 
-    response.connection.reset(WinHttpConnect(response.session.get(), host.c_str(), parts.nPort, 0));
-    response.request.reset(
-        response.connection ? WinHttpOpenRequest(
-                                  response.connection.get(),
-                                  L"GET",
-                                  path.c_str(),
-                                  nullptr,
-                                  WINHTTP_NO_REFERER,
-                                  WINHTTP_DEFAULT_ACCEPT_TYPES,
-                                  parts.nScheme == INTERNET_SCHEME_HTTPS ? WINHTTP_FLAG_SECURE : 0)
-                            : nullptr);
-    if (!response.request ||
-        !WinHttpSendRequest(response.request.get(), WINHTTP_NO_ADDITIONAL_HEADERS, 0, WINHTTP_NO_REQUEST_DATA, 0, 0, 0) ||
-        !WinHttpReceiveResponse(response.request.get(), nullptr)) {
-        *error = "could not reach the server";
-        return std::nullopt;
+    response->connection.reset(WinHttpConnect(response->session.get(), host.c_str(), parts.nPort, 0));
+    response->request.reset(
+        response->connection ? WinHttpOpenRequest(
+                                   response->connection.get(),
+                                   L"GET",
+                                   path.c_str(),
+                                   nullptr,
+                                   WINHTTP_NO_REFERER,
+                                   WINHTTP_DEFAULT_ACCEPT_TYPES,
+                                   parts.nScheme == INTERNET_SCHEME_HTTPS ? WINHTTP_FLAG_SECURE : 0)
+                             : nullptr);
+    if (response->request) {
+        if (cancel.attach(response->request.get())) {
+            response->cancel = &cancel;
+        } else {
+            *error = "cancelled";
+            return false;
+        }
+    }
+    if (!response->request ||
+        !WinHttpSendRequest(response->request.get(), WINHTTP_NO_ADDITIONAL_HEADERS, 0, WINHTTP_NO_REQUEST_DATA, 0, 0, 0) ||
+        !WinHttpReceiveResponse(response->request.get(), nullptr)) {
+        *error = cancel.cancelled() ? "cancelled" : "could not reach the server";
+        return false;
     }
 
     DWORD status = 0;
     DWORD size = sizeof(status);
     if (!WinHttpQueryHeaders(
-            response.request.get(),
+            response->request.get(),
             WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
             WINHTTP_HEADER_NAME_BY_INDEX,
             &status,
@@ -90,21 +116,21 @@ std::optional<Response> open(std::string_view url, std::chrono::milliseconds tim
             WINHTTP_NO_HEADER_INDEX) ||
         status != 200) {
         *error = "the server answered " + std::to_string(status);
-        return std::nullopt;
+        return false;
     }
 
     wchar_t length[32] = {};
     DWORD length_size = sizeof(length);
     if (WinHttpQueryHeaders(
-            response.request.get(),
+            response->request.get(),
             WINHTTP_QUERY_CONTENT_LENGTH,
             WINHTTP_HEADER_NAME_BY_INDEX,
             length,
             &length_size,
             WINHTTP_NO_HEADER_INDEX)) {
-        response.length = std::wcstoull(length, nullptr, 10);
+        response->length = std::wcstoull(length, nullptr, 10);
     }
-    return response;
+    return true;
 }
 
 // Reads the body, handing each piece to `sink`, which returns false to stop. False when the
@@ -125,14 +151,35 @@ bool readBody(const Response& response, Sink&& sink) {
 
 } // namespace
 
-std::optional<std::string> get(std::string_view url, std::chrono::milliseconds timeout) {
+void Cancel::cancel() {
+    const std::lock_guard<std::mutex> lock(mutex_);
+    cancelled_.store(true, std::memory_order_release);
+    if (request_) WinHttpCloseHandle(request_);
+    request_ = nullptr;
+}
+
+bool Cancel::attach(void* request) const {
+    const std::lock_guard<std::mutex> lock(mutex_);
+    if (cancelled()) return false;
+    request_ = request;
+    return true;
+}
+
+bool Cancel::release() const {
+    const std::lock_guard<std::mutex> lock(mutex_);
+    const bool ours = request_ != nullptr;
+    request_ = nullptr;
+    return ours;
+}
+
+std::optional<std::string> get(std::string_view url, const Cancel& cancel, std::chrono::milliseconds timeout) {
     std::string error;
-    const std::optional<Response> response = open(url, timeout, kUserAgent, &error);
-    if (!response) return std::nullopt;
+    Response response;
+    if (!open(url, timeout, kUserAgent, cancel, &response, &error)) return std::nullopt;
     std::string body;
-    if (!readBody(*response, [&body](const char* data, size_t size) {
+    if (!readBody(response, [&](const char* data, size_t size) {
             body.append(data, size);
-            return true;
+            return !cancel.cancelled();
         })) {
         return std::nullopt;
     }
@@ -143,26 +190,26 @@ std::string download(
     std::string_view url,
     const std::filesystem::path& file,
     const Progress& progress,
-    const std::atomic<bool>& cancel,
+    const Cancel& cancel,
     const wchar_t* user_agent) {
     std::string error;
-    const std::optional<Response> response = open(url, std::chrono::seconds(30), user_agent, &error);
-    if (!response) return error;
+    Response response;
+    if (!open(url, std::chrono::seconds(30), user_agent, cancel, &response, &error)) return error;
 
     std::ofstream out(file, std::ios::binary | std::ios::trunc);
-    if (!out) return "could not write " + file.filename().string();
+    if (!out) return "could not write " + pack::pathText(file.filename());
 
     uint64_t received = 0;
-    const bool whole = readBody(*response, [&](const char* data, size_t size) {
-        if (cancel) return false;
+    const bool whole = readBody(response, [&](const char* data, size_t size) {
+        if (cancel.cancelled()) return false;
         out.write(data, static_cast<std::streamsize>(size));
         received += size;
-        if (progress) progress(received, response->length);
+        if (progress) progress(received, response.length);
         return static_cast<bool>(out);
     });
-    if (cancel) return "cancelled";
+    if (cancel.cancelled()) return "cancelled";
     if (!whole || !out) return "the download broke off";
-    if (response->length != 0 && received != response->length) return "the download broke off";
+    if (response.length != 0 && received != response.length) return "the download broke off";
     return {};
 }
 

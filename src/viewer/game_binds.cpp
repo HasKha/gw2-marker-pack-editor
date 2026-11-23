@@ -24,17 +24,17 @@ int virtualKey(int game_code) {
     return 0;
 }
 
-std::vector<Key> read(const std::filesystem::path& file, int action) {
-    std::vector<Key> keys;
+std::optional<std::vector<Key>> read(const std::filesystem::path& file, int action) {
     pugi::xml_document document;
-    if (!document.load_file(file.c_str())) return keys;
+    if (!document.load_file(file.c_str())) return std::nullopt;
     for (const pugi::xml_node& node : document.child("InputBindings").children("action")) {
         if (node.attribute("id").as_int(-1) != action) continue;
+        std::vector<Key> keys;
         addBind(node, "", &keys);
         addBind(node, "2", &keys);
-        break;
+        return keys;
     }
-    return keys;
+    return std::nullopt;
 }
 
 } // namespace viewer::game_binds

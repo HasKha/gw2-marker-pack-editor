@@ -7,7 +7,7 @@ the IconsFontAwesome7.h the build fetches: an icon added to src/ draws only once
 The subset drops the hinting, kerning and layout tables ImGui 1.80 never reads and keeps the name
 table, with its copyright and licence; ImGui's own binary_to_compressed_c then writes the array
 ImFontAtlas::AddFontFromMemoryCompressedTTF reads. Both the header and the tool come from what the
-build fetches, so configure the build first; the tool is built once into tmp/.
+build fetches, so configure the build first; the tool is built once into build/tools/, beside them.
 
 Adapted from gw2-community-challenge-mode's scripts/convert_assets.py. The font's licence and source
 are in assets/fonts/NOTICES.md.
@@ -25,8 +25,8 @@ NAME = "font_awesome_solid"
 SOURCES = ROOT / "src"
 ICON_HEADER = ROOT / "build" / "_deps" / "iconfontcppheaders-src" / "IconsFontAwesome7.h"
 TOOL_SOURCE = ROOT / "build" / "_deps" / "imgui-src" / "misc" / "fonts" / "binary_to_compressed_c.cpp"
-TOOL_BUILD = ROOT / "tmp" / "binary_to_compressed_c"
-SUBSET = ROOT / "tmp" / "font_subsets" / FONT.name
+TOOL_BUILD = ROOT / "build" / "tools" / "binary_to_compressed_c"
+SUBSET = ROOT / "build" / "tools" / "font_subsets" / FONT.name
 UNREAD_TABLES = ["kern", "GPOS", "GSUB", "GDEF", "hdmx", "DSIG", "LTSH", "VDMX"]
 TOOL_CMAKE = """cmake_minimum_required(VERSION 3.20)
 project(binary_to_compressed_c CXX)

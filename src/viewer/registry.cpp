@@ -6,6 +6,7 @@
 #include <cctype>
 #include <set>
 
+#include "pack/path_text.h"
 #include "pack/trl.h"
 #include "pack/xml_reader.h"
 
@@ -14,7 +15,7 @@ namespace viewer::registry {
 namespace {
 
 std::string lowercaseExtension(const std::filesystem::path& path) {
-    std::string extension = path.extension().string();
+    std::string extension = pack::pathText(path.extension());
     std::transform(extension.begin(), extension.end(), extension.begin(), [](unsigned char c) {
         return static_cast<char>(std::tolower(c));
     });
@@ -69,14 +70,12 @@ std::filesystem::file_time_type writtenAt(const std::filesystem::path& path) {
         const std::filesystem::file_time_type written = std::filesystem::last_write_time(path, ec);
         return ec ? std::filesystem::file_time_type{} : written;
     }
+    // Stepped with the error_code overload: a range-for's step throws, and this runs on the frame
+    // while a save may be rewriting the folder.
     std::filesystem::file_time_type newest{};
-    for (const std::filesystem::directory_entry& entry : std::filesystem::directory_iterator(path, ec)) {
-        std::string extension = entry.path().extension().string();
-        std::transform(extension.begin(), extension.end(), extension.begin(), [](unsigned char c) {
-            return static_cast<char>(std::tolower(c));
-        });
-        if (extension != ".xml" || !entry.is_regular_file(ec)) continue;
-        const std::filesystem::file_time_type written = entry.last_write_time(ec);
+    for (auto it = std::filesystem::directory_iterator(path, ec); !ec && it != std::filesystem::directory_iterator(); it.increment(ec)) {
+        if (lowercaseExtension(it->path()) != ".xml" || !it->is_regular_file(ec)) continue;
+        const std::filesystem::file_time_type written = it->last_write_time(ec);
         if (!ec && written > newest) newest = written;
     }
     return newest;
@@ -195,7 +194,18 @@ void Loader::work() {
         // Unlocked while it reads, which is seconds for a large pack: take() and add() are
         // called every frame and must not wait for it.
         lock.unlock();
-        auto loaded = std::make_unique<LoadedPack>(loadPack(path));
+        // Nothing may escape a worker, where it is std::terminate: a pack that throws is a pack
+        // that did not load, and says why.
+        std::unique_ptr<LoadedPack> loaded;
+        try {
+            loaded = std::make_unique<LoadedPack>(loadPack(path));
+        } catch (const std::exception& error) {
+            loaded = std::make_unique<LoadedPack>();
+            loaded->path = path;
+            // As loadPack sets it, or the pack would be read again every time changes are looked for.
+            loaded->written = writtenAt(path);
+            loaded->error = error.what();
+        }
         lock.lock();
 
         --loading_;

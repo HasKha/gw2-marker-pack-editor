@@ -3,9 +3,11 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <fstream>
+#include <iterator>
 #include <string>
 
 #include "corpus.h"
+#include "viewer/json_file.h"
 #include "viewer/settings.h"
 
 using corpus::writeFile;
@@ -122,4 +124,21 @@ TEST_CASE("a hand-edited setting out of its range is brought back into it", "[vi
 TEST_CASE("no folder means nothing is read and nothing is written", "[viewer][settings]") {
     CHECK(viewer::settings::load({}).run_scripts);
     CHECK_FALSE(viewer::settings::save({}, viewer::settings::Settings{}));
+}
+
+TEST_CASE("a kept file is replaced whole, or left as it was", "[viewer][settings]") {
+    const corpus::TempDir temp("settings_write");
+    const std::filesystem::path file = temp / "kept.json";
+    REQUIRE(viewer::json_file::writeText(file, "first"));
+    REQUIRE(viewer::json_file::writeText(file, "second"));
+    std::ifstream in(file, std::ios::binary);
+    CHECK(std::string(std::istreambuf_iterator<char>(in), {}) == "second");
+    CHECK_FALSE(std::filesystem::exists(temp / "kept.json.tmp"));
+
+    // A file that cannot be replaced — here a folder in its place — stays, and so does nothing
+    // half written beside it.
+    std::filesystem::create_directories(temp / "blocked.json" / "inside");
+    CHECK_FALSE(viewer::json_file::writeText(temp / "blocked.json", "text"));
+    CHECK(std::filesystem::is_directory(temp / "blocked.json" / "inside"));
+    CHECK_FALSE(std::filesystem::exists(temp / "blocked.json.tmp"));
 }

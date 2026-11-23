@@ -16,6 +16,7 @@
 #include <string>
 #include <vector>
 
+#include "pack/path_text.h"
 #include "pack/source.h"
 #include "viewer/behaviors/festivals.h"
 #include "viewer/behaviors/states.h"
@@ -176,7 +177,9 @@ int menu_show_all_map = 0;
 // while the frame runs on its render thread.
 //
 // The key is the game's, as Nexus keeps it: each of the two binds packed as its virtual key and,
-// from bit 8, Shift, Ctrl and Alt. F, the game's default, when Nexus's file names no key we know.
+// from bit 8, Shift, Ctrl and Alt; 0 for none. F, the game's default, when Nexus's file does not
+// name Interact at all. Bound to the mouse or to keys not known here, it has no key: F then may
+// well be some other action's, and a marker interacting on it would be a surprise.
 std::atomic<uint32_t> interact_binds[2] = {'F', 0};
 std::filesystem::path game_binds_file;
 std::filesystem::file_time_type game_binds_written{};
@@ -191,24 +194,21 @@ void readInteractBind() {
     const std::filesystem::file_time_type written = std::filesystem::last_write_time(game_binds_file, ec);
     if (ec || written == game_binds_written) return;
     game_binds_written = written;
-    const std::vector<game_binds::Key> keys = game_binds::read(game_binds_file, game_binds::ACTION_INTERACT);
-    interact_binds[0] = keys.empty() ? uint32_t{'F'} : pack(keys[0]);
+    const std::vector<game_binds::Key> keys =
+        game_binds::read(game_binds_file, game_binds::ACTION_INTERACT).value_or(std::vector<game_binds::Key>{game_binds::Key{'F'}});
+    interact_binds[0] = keys.size() > 0 ? pack(keys[0]) : 0;
     interact_binds[1] = keys.size() > 1 ? pack(keys[1]) : 0;
 }
 
-// Whether `key`, just pressed, is one of the interact binds, with its modifiers held.
+// Whether `key`, just pressed, is one of the interact binds, with exactly its modifiers held: Ctrl+F
+// is not F, and is likely some other action's.
 bool isInteract(WPARAM key) {
-    for (const std::atomic<uint32_t>& bind : interact_binds) {
+    const auto held = [](int virtual_key) { return (GetKeyState(virtual_key) & 0x8000) != 0; };
+    const uint32_t mods = (held(VK_SHIFT) ? 1u : 0u) | (held(VK_CONTROL) ? 2u : 0u) | (held(VK_MENU) ? 4u : 0u);
+    return std::any_of(std::begin(interact_binds), std::end(interact_binds), [&](const std::atomic<uint32_t>& bind) {
         const uint32_t packed = bind.load();
-        if (packed == 0 || static_cast<WPARAM>(packed & 0xFF) != key) continue;
-        const uint32_t mods = packed >> 8;
-        const auto held = [](int virtual_key) { return (GetKeyState(virtual_key) & 0x8000) != 0; };
-        if ((mods & 1) && !held(VK_SHIFT)) continue;
-        if ((mods & 2) && !held(VK_CONTROL)) continue;
-        if ((mods & 4) && !held(VK_MENU)) continue;
-        return true;
-    }
-    return false;
+        return packed != 0 && static_cast<WPARAM>(packed & 0xFF) == key && (packed >> 8) == mods;
+    });
 }
 
 std::atomic<bool> interact_pressed{false};
@@ -349,6 +349,13 @@ void replaceLiveMap(int map_id) {
     screen = behaviors::Screen{};
 }
 
+// The live map, and the scripts' handles into it, index the installed packs: whatever installs
+// or removes one leaves them pointing at packs that moved, until they are built again. Whether
+// or not there is a camera — the menu removes packs at character select too.
+void refreshLiveMap(int map_id) {
+    if (live.map_id != map_id || live.revision != installed.revision) replaceLiveMap(map_id);
+}
+
 behaviors::Host behaviorHost() {
     behaviors::Host host;
     host.states = &behavior_states;
@@ -373,8 +380,10 @@ behaviors::Frame behaviorFrame() {
     return behaviors::Frame{&mumble_state, utcNow(), ImGui::GetTime(), &festivals.active()};
 }
 
-// The interact key's name as the keyboard writes it, for the prompt.
+// The interact key's name as the keyboard writes it, for the prompt. With no key the prompt is
+// still clicked, so that is what it says.
 std::string keyName(int virtual_key) {
+    if (virtual_key == 0) return "Click";
     const LONG scan = static_cast<LONG>(MapVirtualKeyW(static_cast<UINT>(virtual_key), MAPVK_VK_TO_VSC)) << 16;
     char name[64] = {};
     if (GetKeyNameTextA(scan, name, static_cast<int>(sizeof(name))) > 0) return name;
@@ -409,7 +418,7 @@ void runBehaviors() {
 // drawn all the while.
 void updatePacks() {
     while (std::unique_ptr<registry::LoadedPack> loaded = loader.take()) {
-        if (!loaded->error.empty()) api->Log(ELogLevel_WARNING, ADDON_NAME, (loaded->path.string() + ": " + loaded->error).c_str());
+        if (!loaded->error.empty()) api->Log(ELogLevel_WARNING, ADDON_NAME, (pack::pathText(loaded->path) + ": " + loaded->error).c_str());
         runtime::uninstall(&installed, loaded->path);
         runtime::install(&installed, std::move(loaded));
     }
@@ -438,7 +447,7 @@ void installDownloads() {
         // An installed pack keeps its archive open, and Windows will not replace an open file.
         runtime::uninstall(&installed, finished.target);
         if (!MoveFileExW(finished.part.c_str(), finished.target.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_COPY_ALLOWED)) {
-            downloads.fail(finished, "could not replace " + finished.target.filename().string());
+            downloads.fail(finished, "could not replace " + pack::pathText(finished.target.filename()));
         }
     }
     if (any) syncPacks();
@@ -449,14 +458,14 @@ void deletePack(const std::filesystem::path& path) {
     runtime::uninstall(&installed, path);
     std::error_code ec;
     std::filesystem::remove(path, ec);
-    if (ec) api->Log(ELogLevel_WARNING, ADDON_NAME, ("could not delete " + path.string() + ": " + ec.message()).c_str());
+    if (ec) api->Log(ELogLevel_WARNING, ADDON_NAME, ("could not delete " + pack::pathText(path) + ": " + ec.message()).c_str());
     syncPacks();
 }
 
 void startCatalogRequest() {
     catalog_request = std::make_unique<Background<std::vector<catalog::Package>>>();
-    catalog_request->start([]() -> std::optional<std::vector<catalog::Package>> {
-        const std::optional<std::string> body = http::get(catalog::REPO_URL, std::chrono::seconds(15));
+    catalog_request->start([](const http::Cancel& cancel) -> std::optional<std::vector<catalog::Package>> {
+        const std::optional<std::string> body = http::get(catalog::REPO_URL, cancel, std::chrono::seconds(15));
         return body ? catalog::parse(*body) : std::nullopt;
     });
 }
@@ -555,7 +564,7 @@ void startImport() {
 
     import_status = "Importing...";
     import_job = std::make_unique<Background<Imported>>();
-    import_job->start([packs, chosen, into = packsFolder()]() -> std::optional<Imported> {
+    import_job->start([packs, chosen, into = packsFolder()](const http::Cancel&) -> std::optional<Imported> {
         Imported done = chosen;
         done.copied = blish_import::copyPacks(packs, into);
         return done;
@@ -773,9 +782,7 @@ void preRender() {
     const ImVec2 display = ImGui::GetIO().DisplaySize;
     const Camera camera = fromMumble(mumble_link, glm::vec2(display.x, display.y));
 
-    if (camera.valid && (live.map_id != static_cast<int>(camera.map_id) || live.revision != installed.revision)) {
-        replaceLiveMap(static_cast<int>(camera.map_id));
-    }
+    refreshLiveMap(camera.valid ? static_cast<int>(camera.map_id) : live.map_id);
     mumble_state = mumbleState(mumble_link);
     runScripts();
 
@@ -832,6 +839,8 @@ void drawFrame() {
     ui::script_console::draw(*scripts, installed, &console_window);
     drawCatalog();
     drawImport();
+    // Either may have removed a pack, and the prompt below calls into the live map.
+    refreshLiveMap(live.map_id);
 
     if (camera.valid && !camera.map_open &&
         ui::interaction::draw(

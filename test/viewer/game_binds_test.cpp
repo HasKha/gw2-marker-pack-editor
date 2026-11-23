@@ -17,20 +17,26 @@ TEST_CASE("game binds: Interact's keys, both of them, with their modifiers", "[g
 </InputBindings>
 )xml");
 
-    const std::vector<Key> keys = viewer::game_binds::read(temp / "GameBinds.xml", viewer::game_binds::ACTION_INTERACT);
+    const std::vector<Key> keys = viewer::game_binds::read(temp / "GameBinds.xml", viewer::game_binds::ACTION_INTERACT).value();
     REQUIRE(keys.size() == 2);
     CHECK(keys[0] == Key{'F'});
     CHECK(keys[1] == Key{'G', true, true, false});
 }
 
-TEST_CASE("game binds: a mouse bind, an unknown key or no file name no key", "[game_binds]") {
+TEST_CASE("game binds: a mouse bind or an unknown key is no key; no file or no entry is no answer", "[game_binds]") {
     const corpus::TempDir temp("game_binds_none");
     corpus::writeFile(temp / "GameBinds.xml", R"xml(<InputBindings>
 	<action id="65" device="Mouse" button="3" device2="Keyboard" button2="21" />
 </InputBindings>
 )xml");
-    CHECK(viewer::game_binds::read(temp / "GameBinds.xml", viewer::game_binds::ACTION_INTERACT).empty());
-    CHECK(viewer::game_binds::read(temp / "missing.xml", viewer::game_binds::ACTION_INTERACT).empty());
+    // Bound, to nothing a keyboard handler can hear: not the default's F.
+    const auto bound = viewer::game_binds::read(temp / "GameBinds.xml", viewer::game_binds::ACTION_INTERACT);
+    REQUIRE(bound);
+    CHECK(bound->empty());
+
+    // Not said at all: the default stands.
+    CHECK_FALSE(viewer::game_binds::read(temp / "GameBinds.xml", 0));
+    CHECK_FALSE(viewer::game_binds::read(temp / "missing.xml", viewer::game_binds::ACTION_INTERACT));
 }
 
 TEST_CASE("game binds: the game's codes for letters and digits are Windows' keys", "[game_binds]") {

@@ -1,20 +1,12 @@
 #include "viewer/downloads.h"
 
+#include "pack/path_text.h"
 #include "pack/source.h"
 
 namespace viewer::catalog {
 
-namespace {
-
-// The catalog's names are UTF-8.
-std::filesystem::path fromUtf8(const std::string& text) {
-    return std::filesystem::path(std::u8string(text.begin(), text.end()));
-}
-
-} // namespace
-
 Downloads::Fetch Downloads::defaultFetch() {
-    return [](const std::string& url, const std::filesystem::path& file, const http::Progress& progress, const std::atomic<bool>& cancel) {
+    return [](const std::string& url, const std::filesystem::path& file, const http::Progress& progress, const http::Cancel& cancel) {
         return http::download(url, file, progress, cancel, kDownloadUserAgent);
     };
 }
@@ -35,8 +27,8 @@ void Downloads::start(const Package& package, const std::filesystem::path& folde
 
     auto job = std::make_unique<Job>();
     job->file_name = package.file_name;
-    job->target = folder / fromUtf8(package.file_name);
-    job->part = folder / fromUtf8(package.file_name + ".part");
+    job->target = folder / pack::pathFromText(package.file_name);
+    job->part = folder / pack::pathFromText(package.file_name + ".part");
     Job* raw = job.get();
     raw->thread = std::thread([this, raw, url = package.download, folder] {
         std::error_code ec;
@@ -92,7 +84,7 @@ void Downloads::fail(const Finished& finished, const std::string& error) {
 }
 
 void Downloads::stop() {
-    for (const std::unique_ptr<Job>& job : jobs_) job->cancel = true;
+    for (const std::unique_ptr<Job>& job : jobs_) job->cancel.cancel();
     for (const std::unique_ptr<Job>& job : jobs_) {
         if (job->thread.joinable()) job->thread.join();
     }

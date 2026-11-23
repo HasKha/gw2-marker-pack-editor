@@ -92,8 +92,8 @@ class Catalog
 {
 public:
     // The body of /v2/maps?ids=all, or nothing. Blocks: it runs on the worker.
-    using Request = std::function<std::optional<std::string>()>;
-    static std::optional<std::string> askApi();
+    using Request = std::function<std::optional<std::string>(const http::Cancel& cancel)>;
+    static std::optional<std::string> askApi(const http::Cancel& cancel);
 
     // Reads `cache_file` and sends `request` on a worker, writing what it answers to the
     // cache. An empty path keeps nothing.

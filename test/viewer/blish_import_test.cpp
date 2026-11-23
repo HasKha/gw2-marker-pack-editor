@@ -89,6 +89,20 @@ TEST_CASE("blish import: a pack is copied unless ours is as new", "[blish_import
     CHECK(viewer::blish_import::copyPacks({temp / "blish" / "Hero.zip"}, temp / "ours").kept == 1);
 }
 
+TEST_CASE("blish import: two packs of one name in different folders are not both counted", "[blish_import]") {
+    const corpus::TempDir temp("blish_same_name");
+    corpus::writeFile(temp / "blish" / "a" / "Tekkit.zip", "first");
+    corpus::writeFile(temp / "blish" / "b" / "tekkit.zip", "second");
+
+    const viewer::blish_import::Copied copied =
+        viewer::blish_import::copyPacks({temp / "blish" / "a" / "Tekkit.zip", temp / "blish" / "b" / "tekkit.zip"}, temp / "ours");
+    CHECK(copied.copied == 1);
+    CHECK(copied.kept == 0);
+    REQUIRE(copied.errors.size() == 1);
+    CHECK(copied.errors[0].find("tekkit.zip") != std::string::npos);
+    CHECK(read(temp / "ours" / "Tekkit.zip") == "first");
+}
+
 TEST_CASE("blish import: a choice is kept as Pathing made it, until set to the default", "[blish_import]") {
     viewer::store::CategoryStates states;
     states.remember("a", true);

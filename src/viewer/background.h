@@ -6,6 +6,8 @@
 #include <thread>
 #include <utility>
 
+#include "viewer/http.h"
+
 // One job run once on a thread of its own, whose answer is read from frames: what the viewer
 // asks the web for at load. The festivals on, the maps' rectangles.
 namespace viewer {
@@ -14,8 +16,9 @@ template <class T>
 class Background
 {
 public:
-    // The job's answer, or nothing when it found none. Runs off the frame, so it may block.
-    using Job = std::function<std::optional<T>()>;
+    // The job's answer, or nothing when it found none. Runs off the frame, so it may block; a
+    // request it makes is handed the Cancel, which stop() sets.
+    using Job = std::function<std::optional<T>(const http::Cancel& cancel)>;
 
     Background() = default;
     ~Background() { stop(); }
@@ -27,7 +30,7 @@ public:
         if (started_) return;
         started_ = true;
         worker_ = std::thread([this, job = std::move(job)] {
-            std::optional<T> answer = job();
+            std::optional<T> answer = job(cancel_);
             if (answer) {
                 value_ = std::move(*answer);
                 ready_.store(true, std::memory_order_release);
@@ -36,8 +39,10 @@ public:
         });
     }
 
-    // Waits for the job, which its own timeouts bound.
+    // Cancels the job's request, if it is waiting on one, and waits for the job. Its answer, if
+    // it still gives one, is kept.
     void stop() {
+        cancel_.cancel();
         if (worker_.joinable()) worker_.join();
     }
 
@@ -50,6 +55,7 @@ public:
 
 private:
     std::thread worker_;
+    http::Cancel cancel_;
     bool started_ = false;
     std::atomic<bool> ready_{false};
     std::atomic<bool> finished_{false};

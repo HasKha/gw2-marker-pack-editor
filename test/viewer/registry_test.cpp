@@ -177,6 +177,25 @@ TEST_CASE("a stopped loader drops what it had and takes more", "[registry]") {
     CHECK(taken->error.empty());
 }
 
+TEST_CASE("a pack that throws while it is read is handed over with the reason", "[registry]") {
+    // A file name the ANSI code page has no characters for, which the folder source's listing
+    // throws on: a worker must hand the pack over, not end the process.
+    const corpus::TempDir temp("registry_loader_throws");
+    writeFile(temp / "pack" / "a.xml", R"(<OverlayData><MarkerCategory name="a"/></OverlayData>)");
+    writeFile(temp / "pack" / std::filesystem::path(u8"日本Ő.png"), "");
+
+    viewer::registry::Loader loader;
+    loader.add({temp / "pack"});
+    std::unique_ptr<viewer::registry::LoadedPack> taken;
+    for (int waited_ms = 0; !taken && waited_ms < 5000; waited_ms += 5) {
+        taken = loader.take();
+        if (!taken) std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    REQUIRE(taken != nullptr);
+    CHECK(taken->path == temp / "pack");
+    CHECK(taken->written == viewer::registry::writtenAt(temp / "pack"));
+}
+
 TEST_CASE("inside a folder is by path, not by name", "[registry]") {
     CHECK(viewer::registry::isInside("C:/addons/packs/Hero.zip", "C:/addons/packs"));
     CHECK(viewer::registry::isInside("C:/addons/packs/sub/../Hero.zip", "C:/addons/packs/"));

@@ -4,6 +4,7 @@
 #include <fstream>
 #include <unordered_map>
 
+#include "pack/path_text.h"
 #include "pack/zip.h"
 
 namespace pack {
@@ -13,7 +14,7 @@ namespace {
 // A pack folder under version control is the normal case for editing, so walking into
 // .git (or .vscode, or .github) would cost far more than it finds.
 bool isSkippedDirectory(const std::filesystem::path& name) {
-    const std::string text = name.filename().string();
+    const std::filesystem::path::string_type text = name.filename().native();
     return !text.empty() && text.front() == '.';
 }
 
@@ -23,7 +24,7 @@ public:
     bool open(const std::filesystem::path& folder, std::string* error) {
         std::error_code ec;
         if (!std::filesystem::is_directory(folder, ec)) {
-            if (error) *error = "Not a folder: " + folder.string();
+            if (error) *error = "Not a folder: " + pathText(folder);
             return false;
         }
 
@@ -77,7 +78,7 @@ public:
 
         std::ifstream file(it->second, std::ios::binary | std::ios::ate);
         if (!file) {
-            if (error) *error = "Could not open " + it->second.string();
+            if (error) *error = "Could not open " + pathText(it->second);
             return false;
         }
 
@@ -86,7 +87,7 @@ public:
 
         out->resize(static_cast<size_t>(size));
         if (size > 0 && !file.read(reinterpret_cast<char*>(out->data()), size)) {
-            if (error) *error = "Could not read " + it->second.string();
+            if (error) *error = "Could not read " + pathText(it->second);
             out->clear();
             return false;
         }
