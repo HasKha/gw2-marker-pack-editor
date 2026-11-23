@@ -166,6 +166,16 @@ void readFilters(const Reader& read, Behaviors* out) {
         for (std::string_view part : splitList(*text)) names.push_back(lowercase(trimmed(part)));
         out->raids = std::move(names);
     }
+
+    // TacO's, a marker's and a trail's both, as StandardTrail_Behaviors registers it too.
+    const std::string* id = read.value("achievementid");
+    const std::string* bit = read.value("achievementbit");
+    if (id || bit) {
+        Behaviors::Achievement achievement;
+        if (id) achievement.id = parseDotNetInt(*id).value_or(0);
+        if (bit) achievement.bit = parseDotNetInt(*bit).value_or(0);
+        out->achievement = achievement;
+    }
 }
 
 void readModifiers(const Reader& read, Behaviors* out) {
@@ -221,7 +231,7 @@ constexpr std::string_view kBehaviorKeys[] = {
     "festival",    "mount",        "profession",     "race",           "specialization", "maptype",       "schedule",
     "raid",        "behavior",     "info",           "bounce",         "bounce-delay",   "bounce-height", "bounce-duration",
     "copy",        "copy-message", "toggle",         "togglecategory", "show",           "hide",          "resetguid",
-    "script-tick", "script-focus", "script-trigger", "script-filter",  "script-once",
+    "script-tick", "script-focus", "script-trigger", "script-filter",  "script-once",    "achievementid", "achievementbit",
 };
 
 bool namesBehavior(const pack::AttributeCollection& attributes) {
@@ -242,7 +252,8 @@ bool mayHaveBehaviors(const pack::Pack& pack, const pack::Pathable& pathable) {
 
 bool hasAny(const Behaviors& b) {
     return b.festivals || b.mounts || b.professions || b.races || b.specializations || b.map_types || b.schedule || b.raids || b.mode > 0 ||
-           b.info || b.bounce || b.copy || !b.toggle.empty() || !b.show.empty() || !b.hide.empty() || b.reset_guids || b.scripted;
+           b.achievement || b.info || b.bounce || b.copy || !b.toggle.empty() || !b.show.empty() || !b.hide.empty() || b.reset_guids ||
+           b.scripted;
 }
 
 } // namespace

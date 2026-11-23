@@ -156,6 +156,10 @@ std::vector<size_t> mergeCategories(CategoryTree* tree, const std::vector<BakedC
         if (baked.is_separator) merged.is_separator = *baked.is_separator;
         if (baked.default_toggle) merged.default_toggle = *baked.default_toggle;
         if (baked.is_hidden) merged.is_hidden = *baked.is_hidden;
+        if (baked.achievement_id) {
+            merged.achievement_id = baked.achievement_id;
+            merged.achievement_bit = baked.achievement_bit;
+        }
     }
     return node_of;
 }

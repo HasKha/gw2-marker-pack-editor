@@ -11,6 +11,7 @@
 #include <string_view>
 #include <vector>
 
+#include "viewer/account.h"
 #include "viewer/behaviors/attributes.h"
 #include "viewer/script/console.h"
 
@@ -47,6 +48,7 @@ struct Host {
     store::CategoryStates* category_states = nullptr;
     store::KeyValues* storage = nullptr;
     const MumbleState* mumble = nullptr;
+    const account::Progress* account = nullptr; // what the API says of the player's account; null for nothing
 
     // User.SetClipboard: copies `text`, telling the player with `message`. False when the
     // player does not allow packs the clipboard. Null refuses.

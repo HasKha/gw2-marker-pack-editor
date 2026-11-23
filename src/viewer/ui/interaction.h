@@ -2,6 +2,7 @@
 
 #include <string>
 
+#include "viewer/achievements.h"
 #include "viewer/behaviors/update.h"
 #include "viewer/settings.h"
 
@@ -11,7 +12,13 @@
 namespace viewer::ui::interaction {
 
 // Draws the last info string as `info` says, and the prompt when `show_prompt`, its "{0}"
-// replaced by `key_name`. True when the prompt was clicked, which interacts as the key does.
-bool draw(const behaviors::Screen& screen, settings::InfoDisplay info, const std::string& key_name, bool show_prompt);
+// replaced by `key_name` — over an achievement's details, from `achievements`, for an
+// achievement marker's gear. True when the prompt was clicked, which interacts as the key does.
+bool draw(
+    const behaviors::Screen& screen,
+    settings::InfoDisplay info,
+    const std::string& key_name,
+    bool show_prompt,
+    achievements::Catalog* achievements);
 
 } // namespace viewer::ui::interaction

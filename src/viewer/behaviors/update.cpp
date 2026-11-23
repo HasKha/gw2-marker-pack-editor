@@ -127,13 +127,16 @@ public:
             if (b.map_types) check(!contains(*b.map_types, mumble.map_type), FilterKind::MapType);
             if (b.schedule)
                 check(updateSchedule(*b.schedule, b.schedule_duration, frame_.now, &stateOf(entity).schedule), FilterKind::Schedule);
-            // No raid is known complete without the API: see Behaviors::raids.
-            check(b.raids.has_value(), FilterKind::Raid);
+            if (b.raids) check(!b.raids->empty() && !(frame_.account && frame_.account->raidsComplete(*b.raids)), FilterKind::Raid);
             if (b.mode > 0 && !entity.trail) {
                 const BakedMarker& marker = live_.markers[entity.index].marker;
                 const bool hidden =
                     host_.states->hidden(static_cast<Mode>(b.mode), behaviorGuid(b, marker, player_), player_.instance, frame_.now);
                 check(b.invert ? !hidden : hidden, FilterKind::Behavior);
+            }
+            if (b.achievement) {
+                const bool done = frame_.account && frame_.account->achievementHidden(b.achievement->id, b.achievement->bit);
+                check(stateOf(entity).achievement_triggered || done, FilterKind::Achievement);
             }
             if (b.scripted && host_.script) {
                 if (b.once && !stateOf(entity).once_done) host_.script(*b.once, entity, Hook::Once, false);
@@ -157,6 +160,8 @@ public:
 
         // Each ICanFocus in turn; a later one's prompt replaces an earlier one's.
         if (b.mode > 0 && !state.filters_cleared) prompt(index, modePrompt(b, live.marker));
+        // AchievementFilter's gear, whose tooltip in Pathing is the achievement's details.
+        if (b.achievement && !state.filters_cleared) prompt(index, "Hide achievement marker until map change {0}", b.achievement->id);
         if (b.info && !state.filtered) {
             host_.screen->info.push_back(*b.info);
             state.shown_info = *b.info;
@@ -225,6 +230,10 @@ public:
             hideByMode(b, live.marker);
             disconnect(index);
         }
+        if (b.achievement && !state.filters_cleared) {
+            state.achievement_triggered = true;
+            disconnect(index);
+        }
         if (b.copy) copy(b.copy.value(), auto_triggered, &state);
         if (!b.toggle.empty()) setCategory(b.toggle, !categoryEnabled(b.toggle));
         if (b.reset_guids) {
@@ -266,9 +275,9 @@ private:
     }
 
     // SmallInteract.ShowInteract: not for a hidden marker, whose own prompt is the unhide one.
-    void prompt(size_t index, std::string text) {
+    void prompt(size_t index, std::string text, std::optional<int> achievement = std::nullopt) {
         if (live_.markers[index].behavior.filtered) return;
-        host_.screen->prompt = Screen::Prompt{index, std::move(text), false};
+        host_.screen->prompt = Screen::Prompt{index, std::move(text), false, achievement};
     }
 
     void takeInfoBack(EntityState* state) {
@@ -430,6 +439,7 @@ std::string filterReason(const runtime::LiveMarker& marker) {
         return "Hidden until you've completed this week: " + names + ".";
     }
     case FilterKind::Script: return "Hidden by a script.";
+    case FilterKind::Achievement: return "Hidden because you've completed the achievement associated with this marker.";
     case FilterKind::Behavior:
         switch (static_cast<Mode>(b->mode)) {
         case Mode::ReappearOnMapChange: return "Hidden until the next map change because you interacted with it.";

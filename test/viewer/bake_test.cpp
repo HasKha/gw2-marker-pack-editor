@@ -224,3 +224,25 @@ TEST_CASE("category flags are read the way TmfLib reads them", "[bake]") {
     CHECK_FALSE(baked[2].is_separator.has_value());
     CHECK_FALSE(baked[2].default_toggle.has_value());
 }
+
+TEST_CASE("a category's achievement is its own id with the bit it inherits", "[bake]") {
+    const corpus::TempDir temp("bake_category_achievement");
+    std::ofstream(temp / "markers.xml") << R"(<OverlayData>
+        <MarkerCategory name="a" achievementId="1234" achievementBit="3">
+            <MarkerCategory name="b" achievementId="5678"/>
+            <MarkerCategory name="c" achievementBit="x"/>
+        </MarkerCategory>
+        <MarkerCategory name="d" achievementId="not a number"/>
+    </OverlayData>)";
+    const Loaded loaded = loadPath(temp.path());
+
+    const std::vector<viewer::BakedCategory> baked = viewer::bakeCategories(loaded.model);
+    REQUIRE(baked.size() == 4);
+    CHECK(baked[0].achievement_id == 1234);
+    CHECK(baked[0].achievement_bit == 3);
+    CHECK(baked[1].achievement_id == 5678); // the id is only ever its own
+    CHECK(baked[1].achievement_bit == 3); // the bit is inherited
+    CHECK_FALSE(baked[2].achievement_id.has_value());
+    CHECK(baked[2].achievement_bit == -1); // its own bit will not parse, and stops the search
+    CHECK_FALSE(baked[3].achievement_id.has_value());
+}

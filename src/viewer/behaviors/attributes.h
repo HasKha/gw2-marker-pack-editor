@@ -75,14 +75,24 @@ struct Behaviors {
     std::optional<CronSchedule> schedule; // with a positive `schedule-duration`, or none
     UtcMillis schedule_duration = 0;
     // `raid`, the encounters' API names, lowercase. RaidFilter shows the marker only once all
-    // are in /v2/account/raids, this week's kills, and hides it while it knows none — which,
-    // with no API key to ask with (plan.md's open question), is always.
+    // are in /v2/account/raids, this week's kills, and hides it while it knows none: with no
+    // API key registered, always.
     std::optional<std::vector<std::string>> raids;
 
     // `behavior`, a Mode; 0 and below is no filter. A value outside the enum filters nothing
     // but still says so on focus, as Pathing's does.
     int mode = 0;
     bool invert = false; // `invertbehavior`: shown only once hidden
+
+    // AchievementFilter, there when `achievementid` or `achievementbit` is: hidden once the
+    // account has done the achievement, or this bit of it (account::Progress), and for the
+    // rest of the map once interacted with. An id that will not parse is 0, which no
+    // achievement has; a bit that will not parse is 0, and none at all is -1, never done.
+    struct Achievement {
+        int id = 0;
+        int bit = -1;
+    };
+    std::optional<Achievement> achievement;
 
     // ── Modifiers (markers only).
     bool auto_trigger = false; // interact on focus, without the key

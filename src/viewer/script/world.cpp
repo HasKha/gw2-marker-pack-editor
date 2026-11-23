@@ -156,6 +156,7 @@ constexpr BehaviorKind kBehaviorKinds[] = {
     {"ScheduleFilter", Behavior::Kind::ScheduleFilter, [](const behaviors::Behaviors& b) { return b.schedule.has_value(); }},
     {"RaidFilter", Behavior::Kind::RaidFilter, [](const behaviors::Behaviors& b) { return b.raids.has_value(); }},
     {"StandardBehaviorFilter", Behavior::Kind::StandardBehaviorFilter, [](const behaviors::Behaviors& b) { return b.mode > 0; }},
+    {"AchievementFilter", Behavior::Kind::AchievementFilter, [](const behaviors::Behaviors& b) { return b.achievement.has_value(); }},
     {"InfoModifier", Behavior::Kind::InfoModifier, [](const behaviors::Behaviors& b) { return b.info.has_value(); }},
     {"BounceModifier", Behavior::Kind::BounceModifier, [](const behaviors::Behaviors& b) { return b.bounce.has_value(); }},
     {"CopyModifier", Behavior::Kind::CopyModifier, [](const behaviors::Behaviors& b) { return b.copy.has_value(); }},
@@ -208,6 +209,7 @@ bool behaviorFiltered(lua_State* L, const Behavior& self) {
         return values && std::find(values->begin(), values->end(), value) == values->end();
     };
     const behaviors::EntityState& state = behaviorState(L, self);
+    const account::Progress* account = context(L).host.account;
     switch (self.kind) {
     case Behavior::Kind::MountFilter: return lacks(b.mounts, mumble.mount);
     case Behavior::Kind::ProfessionFilter: return lacks(b.professions, mumble.profession);
@@ -215,7 +217,9 @@ bool behaviorFiltered(lua_State* L, const Behavior& self) {
     case Behavior::Kind::SpecializationFilter: return lacks(b.specializations, mumble.specialization);
     case Behavior::Kind::MapTypeFilter: return lacks(b.map_types, mumble.map_type);
     case Behavior::Kind::ScheduleFilter: return state.schedule.filtered;
-    case Behavior::Kind::RaidFilter: return true; // no raid is known complete: see Behaviors::raids
+    case Behavior::Kind::RaidFilter: return !b.raids->empty() && !(account && account->raidsComplete(*b.raids));
+    case Behavior::Kind::AchievementFilter:
+        return state.achievement_triggered || (account && account->achievementHidden(b.achievement->id, b.achievement->bit));
     case Behavior::Kind::FestivalFilter: return state.reason == behaviors::FilterKind::Festival;
     case Behavior::Kind::StandardBehaviorFilter: return state.reason == behaviors::FilterKind::Behavior;
     case Behavior::Kind::Script: return state.reason == behaviors::FilterKind::Script;

@@ -11,6 +11,7 @@
 #include <optional>
 #include <string>
 #include <thread>
+#include <utility>
 
 #include "http/background.h"
 #include "http/http.h"
@@ -37,11 +38,17 @@ public:
         port_ = ntohs(address.sin_port);
     }
     ~SilentServer() {
-        closesocket(socket_);
+        close();
         if (started_) WSACleanup();
     }
 
     std::string url() const { return "http://127.0.0.1:" + std::to_string(port_) + "/"; }
+    SOCKET listener() const { return socket_; }
+    // Stops listening, which ends an accept() waiting on it.
+    void close() {
+        if (socket_ != INVALID_SOCKET) closesocket(socket_);
+        socket_ = INVALID_SOCKET;
+    }
 
 private:
     bool started_ = false;
@@ -49,7 +56,60 @@ private:
     unsigned short port_ = 0;
 };
 
+// A server on localhost that answers its first request with `status`, a line such as
+// "200 OK", and `body`, and keeps what it was asked.
+class OneReplyServer
+{
+public:
+    OneReplyServer(const std::string& status, const std::string& body)
+        : reply_("HTTP/1.1 " + status + "\r\nContent-Length: " + std::to_string(body.size()) + "\r\nConnection: close\r\n\r\n" + body) {
+        thread_ = std::thread([this] {
+            const SOCKET client = accept(silent_.listener(), nullptr, nullptr);
+            if (client == INVALID_SOCKET) return;
+            char buffer[4096];
+            while (request_.find("\r\n\r\n") == std::string::npos) {
+                const int read = recv(client, buffer, sizeof(buffer), 0);
+                if (read <= 0) break;
+                request_.append(buffer, static_cast<size_t>(read));
+            }
+            send(client, reply_.data(), static_cast<int>(reply_.size()), 0);
+            shutdown(client, SD_SEND);
+            closesocket(client);
+        });
+    }
+    ~OneReplyServer() {
+        silent_.close();
+        thread_.join();
+    }
+
+    std::string url() const { return silent_.url(); }
+    // What the request sent, once it has its answer.
+    const std::string& request() const { return request_; }
+
+private:
+    SilentServer silent_;
+    std::string reply_;
+    std::string request_;
+    std::thread thread_;
+};
+
 } // namespace
+
+TEST_CASE("a request sends its headers and reads any status's body", "[http]") {
+    const OneReplyServer server("401 Unauthorized", R"({"text":"Invalid access token"})");
+    http::Cancel cancel;
+    const std::optional<http::Reply> reply = http::request(server.url(), "Authorization: Bearer KEY\r\n", cancel, std::chrono::seconds(5));
+    REQUIRE(reply);
+    CHECK(reply->status == 401);
+    CHECK(reply->body == R"({"text":"Invalid access token"})");
+    CHECK(server.request().find("\r\nAuthorization: Bearer KEY\r\n") != std::string::npos);
+}
+
+TEST_CASE("get answers only a 200", "[http]") {
+    const OneReplyServer server("404 Not Found", "no");
+    http::Cancel cancel;
+    CHECK_FALSE(http::get(server.url(), cancel));
+}
 
 TEST_CASE("a background job's answer is there once it is done, and only if it gave one", "[http]") {
     http::Background<int> answered;

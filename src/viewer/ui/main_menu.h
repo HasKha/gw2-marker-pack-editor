@@ -4,6 +4,8 @@
 #include <set>
 #include <vector>
 
+#include "viewer/account.h"
+#include "viewer/achievements.h"
 #include "viewer/registry.h"
 #include "viewer/script/engine.h"
 #include "viewer/store.h"
@@ -27,6 +29,16 @@ struct Context {
     // The categories whose children are all shown anyway, kNoIndex for All Markers' own: what the
     // row was clicked in. The caller forgets them when the map changes.
     std::set<size_t>* show_all = nullptr;
+
+    // With `auto_hide`, Pathing's "Allow Markers to Automatically Hide", a category whose
+    // achievement `account` lists as done is shown off and cannot be turned on or off. Null
+    // knows of nothing done.
+    const account::Progress* account = nullptr;
+    bool auto_hide = true;
+    // With `achievement_tooltips`, Pathing's "Show Tooltips for Achievements", hovering a
+    // category tied to an achievement shows its details from here. Null shows none.
+    achievements::Catalog* achievements = nullptr;
+    bool achievement_tooltips = true;
 
     // The separator above Manage Marker Packs. Left out of Nexus's own menu, which already draws
     // one between each addon's items and the next.

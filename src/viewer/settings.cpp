@@ -25,6 +25,7 @@ constexpr Field<bool> kBools[] = {
     {"smart_categories", &Settings::smart_categories},
     {"behind_terrain", &Settings::behind_terrain},
     {"show_interact_prompt", &Settings::show_interact_prompt},
+    {"achievement_tooltips", &Settings::achievement_tooltips},
     {"menu_in_nexus", &Settings::menu_in_nexus},
     {"menu_icon", &Settings::menu_icon},
     {"world_pathables", &Settings::world_pathables},
@@ -71,8 +72,10 @@ Settings load(const std::filesystem::path& folder) {
             settings.*field.member = std::clamp(util::json_file::readInt(*parsed, field.key, settings.*field.member), field.min, field.max);
         }
         for (const Field<float>& field : kFloats) {
-            settings.*field.member = std::clamp(util::json_file::readFloat(*parsed, field.key, settings.*field.member), field.min, field.max);
+            settings.*field.member =
+                std::clamp(util::json_file::readFloat(*parsed, field.key, settings.*field.member), field.min, field.max);
         }
+        settings.api_key = util::json_file::readString(*parsed, "api_key");
     }
     return settings;
 }
@@ -84,6 +87,7 @@ bool save(const std::filesystem::path& folder, const Settings& settings) {
     for (const Field<bool>& field : kBools) out[field.key] = settings.*field.member;
     for (const Field<int>& field : kInts) out[field.key] = settings.*field.member;
     for (const Field<float>& field : kFloats) out[field.key] = settings.*field.member;
+    out["api_key"] = settings.api_key;
     return util::json_file::write(folder / FILE_NAME, out);
 }
 

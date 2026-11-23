@@ -165,6 +165,12 @@ struct BakedCategory {
     std::optional<bool> is_separator;
     std::optional<bool> default_toggle;
     std::optional<bool> is_hidden;
+
+    // `achievementid` as this declaration writes it, and `achievementbit` as it inherits it,
+    // -1 for none: what Pathing's CategoryAttributeUtil reads for the menu. An id that will not
+    // parse is none.
+    std::optional<int> achievement_id;
+    int achievement_bit = -1;
 };
 
 // One entry per Pack::categories, in the same order, so a baked pathable's `category` indexes

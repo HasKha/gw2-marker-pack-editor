@@ -6,6 +6,7 @@
 #include <string>
 #include <vector>
 
+#include "viewer/account.h"
 #include "viewer/behaviors/attributes.h"
 #include "viewer/behaviors/states.h"
 #include "viewer/mumble.h"
@@ -40,6 +41,8 @@ struct Screen {
         size_t marker = 0;
         std::string text; // with "{0}" where the interact key's name goes
         bool unhides = false; // the prompt of a hidden marker, which interacting unhides
+        // AchievementFilter's gear: the achievement whose details it shows, else none.
+        std::optional<int> achievement;
     };
 
     std::vector<std::string> info;
@@ -69,6 +72,7 @@ struct Frame {
     UtcMillis now = 0; // wall clock, for timers and schedules
     double seconds = 0.0; // game time, for animation and the copy debounce
     const std::vector<std::string>* festivals = nullptr; // on today, lowercase; null for none
+    const account::Progress* account = nullptr; // what the API says of the account; null for nothing
 };
 
 // One frame of every live marker and trail under a category `visible` shows, as

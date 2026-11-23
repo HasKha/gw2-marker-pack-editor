@@ -7,6 +7,7 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <thread>
@@ -79,6 +80,11 @@ struct Category {
     bool is_separator = false;
     bool default_toggle = true;
     bool is_hidden = false;
+
+    // The achievement the menu greys it out for once the account has done it, as
+    // PathingCategoryNode does; the last declaration naming one wins, with its bit.
+    std::optional<int> achievement_id;
+    int achievement_bit = -1;
 };
 
 // Merged by id, as Pathing's SharedPackCollection is: packs that extend another pack's

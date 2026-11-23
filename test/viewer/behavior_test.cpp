@@ -74,7 +74,7 @@ struct Behaving {
         return out;
     }
 
-    Frame frame() const { return Frame{&mumble, now, seconds, &festivals}; }
+    Frame frame() const { return Frame{&mumble, now, seconds, &festivals, &account}; }
 
     void tick() {
         const Host h = host();
@@ -100,6 +100,7 @@ struct Behaving {
     Screen screen;
     viewer::MumbleState mumble;
     std::vector<std::string> festivals;
+    viewer::account::Progress account;
     Options options;
     UtcMillis now = kNoon;
     double seconds = 100.0;
@@ -161,6 +162,41 @@ TEST_CASE("a raid filter hides a marker until its raids are known complete", "[b
     CHECK(world.filtered(1));
     CHECK_FALSE(world.filtered(2));
     CHECK(filterReason(world.live.markers[0]) == "Hidden until you've completed this week: vale_guardian, spirit_woods.");
+
+    // With the account's kills from the API, a marker shows once every raid it names is done.
+    world.account.raids = std::set<std::string>{"vale_guardian"};
+    world.tick();
+    CHECK(world.filtered(0));
+    world.account.raids->insert("spirit_woods");
+    world.tick();
+    CHECK_FALSE(world.filtered(0));
+    CHECK(world.filtered(1)); // "" is never killed
+}
+
+TEST_CASE("an achievement filter hides what the account has done, and what was interacted with", "[behaviors]") {
+    Behaving world(
+        "behave_achievement",
+        {"achievementid=\"100\"", "achievementid=\"200\" achievementbit=\"2\"", "achievementid=\"200\" achievementbit=\"5\"", ""});
+    world.tick();
+    for (size_t i = 0; i < 3; ++i) CHECK_FALSE(world.filtered(i)); // nothing known of the account
+
+    world.account.achievements[100] = {true, {}};
+    world.account.achievements[200] = {false, {2}};
+    world.tick();
+    CHECK(world.filtered(0));
+    CHECK(world.filtered(1));
+    CHECK_FALSE(world.filtered(2));
+    CHECK(filterReason(world.live.markers[0]) == "Hidden because you've completed the achievement associated with this marker.");
+
+    // Focused, it offers to hide itself; interacting hides it until the map is loaded again.
+    world.standAt(2);
+    world.tick();
+    REQUIRE(world.screen.prompt);
+    CHECK(world.screen.prompt->text == "Hide achievement marker until map change {0}");
+    world.press();
+    world.tick();
+    CHECK(world.filtered(2));
+    CHECK_FALSE(world.screen.prompt);
 }
 
 TEST_CASE("walking into range focuses a marker, and out of it lets go", "[behaviors]") {
@@ -524,6 +560,7 @@ TEST_CASE("scripts reach a marker's behaviors through GetBehavior", "[behaviors]
     CHECK(eval("m:GetBehavior('MountFilter'):IsFiltered()") == "true");
     world.mumble.mount = viewer::enumValue(viewer::Gw2Enum::Mount, "Skyscale");
     CHECK(eval("m:GetBehavior('MountFilter'):IsFiltered()") == "false");
+    CHECK(eval("m:GetBehavior('AchievementFilter') == nil") == "true");
     CHECK(eval("m.ResetLength") == "30.0");
     CHECK(eval("m.Focused") == "false");
 

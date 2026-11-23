@@ -27,7 +27,7 @@ std::wstring widen(std::string_view text) {
     return out;
 }
 
-// A request that has answered 200, its handles kept open to read the body from. Made in place
+// A request that has answered, its handles kept open to read the body from. Made in place
 // and never moved: its request handle is attached to a Cancel, which may close it, and only
 // the Response that attached it may let go of it.
 struct Response {
@@ -42,13 +42,16 @@ struct Response {
     Handle session;
     Handle connection;
     Handle request;
+    DWORD status = 0;
     uint64_t length = 0; // Content-Length, 0 when absent
 };
 
-// Sends a GET for `url` into `response`. False, with `error` saying why, unless it answered
-// 200. Redirects are followed, as WinHTTP does by default, except from HTTPS to HTTP.
+// Sends a GET for `url`, with `headers` added, into `response`. False, with `error` saying
+// why, when no answer came; any status is an answer. Redirects are followed, as WinHTTP does
+// by default, except from HTTPS to HTTP.
 bool open(
     std::string_view url,
+    std::string_view headers,
     std::chrono::milliseconds timeout,
     const wchar_t* user_agent,
     const Cancel& cancel,
@@ -98,24 +101,30 @@ bool open(
             return false;
         }
     }
+    const std::wstring wide_headers = widen(headers);
     if (!response->request ||
-        !WinHttpSendRequest(response->request.get(), WINHTTP_NO_ADDITIONAL_HEADERS, 0, WINHTTP_NO_REQUEST_DATA, 0, 0, 0) ||
+        !WinHttpSendRequest(
+            response->request.get(),
+            wide_headers.empty() ? WINHTTP_NO_ADDITIONAL_HEADERS : wide_headers.c_str(),
+            static_cast<DWORD>(wide_headers.size()),
+            WINHTTP_NO_REQUEST_DATA,
+            0,
+            0,
+            0) ||
         !WinHttpReceiveResponse(response->request.get(), nullptr)) {
         *error = cancel.cancelled() ? "cancelled" : "could not reach the server";
         return false;
     }
 
-    DWORD status = 0;
-    DWORD size = sizeof(status);
+    DWORD size = sizeof(response->status);
     if (!WinHttpQueryHeaders(
             response->request.get(),
             WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
             WINHTTP_HEADER_NAME_BY_INDEX,
-            &status,
+            &response->status,
             &size,
-            WINHTTP_NO_HEADER_INDEX) ||
-        status != 200) {
-        *error = "the server answered " + std::to_string(status);
+            WINHTTP_NO_HEADER_INDEX)) {
+        *error = "the server's answer could not be read";
         return false;
     }
 
@@ -172,18 +181,24 @@ bool Cancel::release() const {
     return ours;
 }
 
-std::optional<std::string> get(std::string_view url, const Cancel& cancel, std::chrono::milliseconds timeout) {
+std::optional<Reply> request(std::string_view url, std::string_view headers, const Cancel& cancel, std::chrono::milliseconds timeout) {
     std::string error;
     Response response;
-    if (!open(url, timeout, kUserAgent, cancel, &response, &error)) return std::nullopt;
-    std::string body;
+    if (!open(url, headers, timeout, kUserAgent, cancel, &response, &error)) return std::nullopt;
+    Reply reply{.status = static_cast<int>(response.status)};
     if (!readBody(response, [&](const char* data, size_t size) {
-            body.append(data, size);
+            reply.body.append(data, size);
             return !cancel.cancelled();
         })) {
         return std::nullopt;
     }
-    return body;
+    return reply;
+}
+
+std::optional<std::string> get(std::string_view url, const Cancel& cancel, std::chrono::milliseconds timeout) {
+    std::optional<Reply> reply = request(url, {}, cancel, timeout);
+    if (reply && reply->status == 200) return std::move(reply->body);
+    return std::nullopt;
 }
 
 std::string download(
@@ -194,7 +209,8 @@ std::string download(
     const wchar_t* user_agent) {
     std::string error;
     Response response;
-    if (!open(url, std::chrono::seconds(30), user_agent, cancel, &response, &error)) return error;
+    if (!open(url, {}, std::chrono::seconds(30), user_agent, cancel, &response, &error)) return error;
+    if (response.status != 200) return "the server answered " + std::to_string(response.status);
 
     std::ofstream out(file, std::ios::binary | std::ios::trunc);
     if (!out) return "could not write " + util::pathText(file.filename());

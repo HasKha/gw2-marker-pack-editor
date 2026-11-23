@@ -2,6 +2,8 @@
 
 #include <imgui.h>
 
+#include "viewer/ui/achievement_tooltip.h"
+
 namespace viewer::ui::interaction {
 
 namespace {
@@ -20,7 +22,12 @@ const ImVec4 kUnhideColour(173.0f / 255.0f, 216.0f / 255.0f, 230.0f / 255.0f, 1.
 
 } // namespace
 
-bool draw(const behaviors::Screen& screen, settings::InfoDisplay info, const std::string& key_name, bool show_prompt) {
+bool draw(
+    const behaviors::Screen& screen,
+    settings::InfoDisplay info,
+    const std::string& key_name,
+    bool show_prompt,
+    achievements::Catalog* achievements) {
     const ImVec2 display = ImGui::GetIO().DisplaySize;
 
     if (info != settings::InfoDisplay::Never && !screen.info.empty() && !screen.info.back().empty()) {
@@ -42,6 +49,13 @@ bool draw(const behaviors::Screen& screen, settings::InfoDisplay info, const std
     ImGui::SetNextWindowPos(ImVec2(display.x * kPromptX, display.y * kPromptY), ImGuiCond_Always);
     ImGui::SetNextWindowBgAlpha(0.6f);
     if (ImGui::Begin("##marker_prompt", nullptr, kOverlayFlags)) {
+        // Nothing until the details are in: Pathing's "Loading achievement details..." would
+        // stand for good while the API is down.
+        if (const achievements::Details* details =
+                screen.prompt->achievement && achievements ? achievements->find(*screen.prompt->achievement) : nullptr) {
+            achievement_tooltip::draw(*details, -1);
+            ImGui::Separator();
+        }
         const std::string text = behaviors::formatMessage(screen.prompt->text, "[" + key_name + "]");
         ImGui::PushStyleColor(ImGuiCol_Text, screen.prompt->unhides ? kUnhideColour : kPromptColour);
         clicked = ImGui::Selectable(text.c_str());

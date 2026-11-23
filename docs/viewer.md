@@ -299,11 +299,22 @@ What Pathing's `Behavior/` does, in `behaviors/`, as plain functions over the li
 - **`schedule` is a subset of Cronos**: numbers, `*`, `?`, ranges, steps, lists and names, day
   of month and day of week both required to match. No pack uses `L`, `W` or `#`, and an
   expression with one is no schedule.
-- **Achievement and raid filters** need the GW2 API with `account` and `progression`, which
-  Nexus does not provide — see [plan.md](plan.md#open-questions). Without it each does what
-  Pathing does without a key: the achievement filter hides nothing, and the raid filter hides
+- **Achievement and raid filters** read the account through the GW2 API with `account` and
+  `progression`. Nexus has no key to share, so the player registers one in the options
+  (`api_key.h`), and `account::Fetcher` asks `/v2/account/achievements` and `/v2/account/raids`
+  with it at load and every five minutes, on a worker, as Pathing's AchievementStates and
+  RaidStates do; a new key forgets what the last one said. Without a key each does what
+  Pathing does without one: the achievement filter hides nothing, and the raid filter hides
   everything, since Pathing's shows a marker only once its raids are complete, the reverse of
-  what its own message says.
+  what its own message says. The menu greys out a category whose `achievementId` is done, as
+  Pathing's does.
+- **What comes from the API is cached** beside the settings, where Pathing keeps it in memory,
+  so that it applies from the first frame and while the API is down. `account.json` is the
+  account's progress, under a fingerprint of the key, rewritten by every answer; its raids
+  lapse at the weekly reset. `achievements.json` is each achievement's name, description and
+  requirement from the public `/v2/achievements`, asked for the first time one is shown — on an
+  achievement marker's gear, and over a category in the menu — and kept for good. The options'
+  "Clear cached API data" deletes both and asks again; removing the key deletes the first.
 
 **Interaction.** Pathing interacts on Blish HUD's own interact binding, F unless changed,
 because it cannot read the game's. The viewer reads the game's instead, as Nexus keeps it:

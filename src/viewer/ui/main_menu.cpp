@@ -2,11 +2,14 @@
 
 #include <IconsFontAwesome7.h>
 #include <imgui.h>
+// For ImGuiItemFlags_Disabled: imgui 1.80 has no BeginDisabled.
+#include <imgui_internal.h>
 
 #include <string>
 #include <vector>
 
 #include "viewer/runtime.h"
+#include "viewer/ui/achievement_tooltip.h"
 #include "viewer/ui/fonts.h"
 
 namespace viewer::ui::main_menu {
@@ -14,18 +17,31 @@ namespace viewer::ui::main_menu {
 namespace {
 
 // One row: the box when there is one, then the name, as a menu that opens on hover when it has
-// children and a selectable otherwise. True when the box or the name was clicked. With children
-// and open, the caller draws them and ends the menu: `*open` says so.
-bool row(const char* name, const bool* checked, bool has_children, bool* open) {
+// children and a selectable otherwise. True when the box or the name was clicked; never while
+// `locked`, whose box is greyed out, though its children still open. With children and open,
+// the caller draws them and ends the menu: `*open` says so. `*hovered` is the mouse over the
+// row, read off its rectangle since an open menu's last item is in the menu beside it.
+bool row(const char* name, const bool* checked, bool has_children, bool* open, bool* hovered, bool locked = false) {
     bool clicked = false;
     *open = false;
+    const ImVec2 row_min = ImGui::GetCursorScreenPos();
+    const ImVec2 row_max(row_min.x + ImGui::GetContentRegionAvail().x, row_min.y + ImGui::GetFrameHeight());
+    *hovered = ImGui::IsWindowHovered() && ImGui::IsMouseHoveringRect(row_min, row_max);
     if (checked) {
         bool value = *checked;
+        if (locked) {
+            ImGui::PushItemFlag(ImGuiItemFlags_Disabled, true);
+            ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f);
+        }
         clicked = ImGui::Checkbox("##on", &value);
+        if (locked) {
+            ImGui::PopStyleVar();
+            ImGui::PopItemFlag();
+        }
         ImGui::SameLine();
     }
     if (!has_children) {
-        return ImGui::Selectable(name, false, ImGuiSelectableFlags_DontClosePopups) || clicked;
+        return (ImGui::Selectable(name, false, ImGuiSelectableFlags_DontClosePopups) || clicked) && !locked;
     }
 
     // A click on a menu's name is the menu's, and once it opens ImGui's last item is in the menu
@@ -34,7 +50,7 @@ bool row(const char* name, const bool* checked, bool has_children, bool* open) {
     const ImVec2 name_max(name_min.x + ImGui::GetContentRegionAvail().x, name_min.y + ImGui::GetTextLineHeight());
     const bool name_clicked = ImGui::IsWindowHovered() && ImGui::IsMouseHoveringRect(name_min, name_max) && ImGui::IsMouseClicked(0);
     *open = ImGui::BeginMenu(name);
-    return clicked || (checked && name_clicked);
+    return (clicked || (checked && name_clicked)) && !locked;
 }
 
 // Per child of a menu, whether it is drawn: smart categories leave out what is not on the map,
@@ -82,12 +98,29 @@ bool drawCategory(const registry::CategoryTree& tree, size_t index, const Contex
     }
 
     ImGui::PushID(static_cast<int>(index));
-    const bool enabled = states->enabled(node.id, node.default_toggle);
+    // PathingCategoryNode: shown off once its achievement is done, the player's own choice kept
+    // underneath. Its markers hide by their own achievement filter, which they inherit.
+    const bool done = context.auto_hide && context.account && node.achievement_id &&
+                      context.account->achievementHidden(*node.achievement_id, node.achievement_bit);
+    const bool enabled = !done && states->enabled(node.id, node.default_toggle);
     bool open = false;
     bool changed = false;
-    if (row(node.label.c_str(), &enabled, !node.children.empty(), &open)) {
+    bool hovered = false;
+    if (row(node.label.c_str(), &enabled, !node.children.empty(), &open, &hovered, done)) {
         states->set(node.id, !enabled, node.default_toggle);
         changed = true;
+    }
+    if (hovered && node.achievement_id) {
+        // CategoryContextMenuStripItem's tooltip, with the category's own bit.
+        const achievements::Details* details =
+            context.achievement_tooltips && context.achievements ? context.achievements->find(*node.achievement_id) : nullptr;
+        if (details || done) {
+            ImGui::BeginTooltip();
+            if (details) achievement_tooltip::draw(*details, node.achievement_bit);
+            if (details && done) ImGui::Separator();
+            if (done) ImGui::Text("You've completed this achievement.");
+            ImGui::EndTooltip();
+        }
     }
     if (open) {
         changed |= drawChildren(tree, node.children, index, context);
@@ -125,7 +158,8 @@ void drawScriptEntry(script::Engine* engine, size_t index) {
 
     ImGui::PushID(static_cast<int>(index));
     bool open = false;
-    if (row(node.name.c_str(), node.can_check ? &node.checked : nullptr, !node.children.empty(), &open)) engine->clickMenu(index);
+    bool hovered = false;
+    if (row(node.name.c_str(), node.can_check ? &node.checked : nullptr, !node.children.empty(), &open, &hovered)) engine->clickMenu(index);
     if (!open && ImGui::IsItemHovered() && !engine->menus()[index].tooltip.empty()) {
         ImGui::SetTooltip("%s", engine->menus()[index].tooltip.c_str());
     }
@@ -146,7 +180,8 @@ bool drawItems(const Context& context) {
     ImGui::PushID("all_markers");
     const bool all_on = context.states->enabled(runtime::ALL_MARKERS, true);
     bool open = false;
-    if (row("All Markers", &all_on, true, &open)) {
+    bool hovered = false;
+    if (row("All Markers", &all_on, true, &open, &hovered)) {
         context.states->set(runtime::ALL_MARKERS, !all_on, true);
         changed = true;
     }

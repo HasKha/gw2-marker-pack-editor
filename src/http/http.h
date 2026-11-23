@@ -46,9 +46,19 @@ private:
     std::atomic<bool> cancelled_{false};
 };
 
-// The body of `url` when it answers 200, or nothing: no network, a timeout, any other status,
-// a URL WinHTTP cannot read, `cancel` set. Blocks for at most about `timeout` per step of the
-// request, or until `cancel` is set.
+// A server's answer, whatever its status.
+struct Reply {
+    int status = 0;
+    std::string body;
+};
+
+// What `url` answers, with `headers` sent along — lines as HTTP writes them, each ending in
+// CRLF — or nothing when no answer came: no network, a timeout, a URL WinHTTP cannot read,
+// `cancel` set. Blocks for at most about `timeout` per step of the request, or until `cancel`
+// is set.
+std::optional<Reply> request(std::string_view url, std::string_view headers, const Cancel& cancel, std::chrono::milliseconds timeout);
+
+// The body of `url` when it answers 200, or nothing: as request(), and any other status too.
 std::optional<std::string> get(std::string_view url, const Cancel& cancel, std::chrono::milliseconds timeout = std::chrono::seconds(5));
 
 // Bytes so far, and the whole size, 0 when the server does not say.

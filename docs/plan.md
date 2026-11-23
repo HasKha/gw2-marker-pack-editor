@@ -226,7 +226,7 @@ every `script-*` function packs name, the way a player walking each map would.
 
 **First beta here**, once that pull passes: local packs, scripts and behaviors all working.
 
-Not in it: the achievement filter, and raids known complete (milestone 7).
+Not in it: the achievement filter, and raids known complete (milestone 8).
 
 ### 4. Maps and screen — done offline
 
@@ -388,10 +388,21 @@ Asked for after milestone 7, before its pull in game. Each step is a commit of i
 10. **The editor's pack drawn as a player will see it** — done offline. The viewer draws it with
    the installed packs, in one scene through the same sinks and options, and on the maps; the
    editor draws only its outlines, handles and picking over that.
+11. **The player's API key** — done offline. Nexus has none to share, so the options have a
+   "GW2 API key" section: how to make one, a field and Register. /v2/tokeninfo checks it has
+   `account` and `progression`, Pathing's two, before it is kept in `viewer.json` and shown as
+   asterisks with Remove.
+12. **Achievements and raids from the account** — done offline. With the key, the account's
+   achievements and this week's raids come from the API at load and every five minutes:
+   `achievementId`/`achievementBit` hide what is done, and a marker interacted with until the map
+   changes, `raid` shows what was killed, and the menu greys out a category whose achievement is
+   done. Scripts' `GetBehavior` finds the AchievementFilter. The gear and the menu show the
+   achievement's name, description and requirement, as Pathing's tooltip does, behind its
+   "Show Tooltips for Achievements". Both are cached on disk, used while the API is down, and
+   cleared by a button in the options.
 
 ### 9. Later
 
-- The achievement filter, and raids known complete, once the API key question is settled.
 - Pathing's per-pixel fades — markers between the character and the camera, trails around the
   character — and their two settings. Not drawn at all yet: they need a shader of our own.
 - **`occlude`**, which Hero's pack uses for invisible walls in the Aerodrome, the Cosmic
@@ -404,8 +415,6 @@ Asked for after milestone 7, before its pull in game. Each step is a commit of i
 
 - **The addon's name**, and whether the repo is renamed to match. The signature stays either
   way; whether Nexus's GitHub update check follows a renamed repo needs checking first.
-- **Where a GW2 API key comes from** for the achievement and raid filters. Nexus has no
-  provider of its own.
 - **Whether `world_quad` samples with wrap.** A trail texture repeats along its length; with
   clamping, every repeat has to be its own quad. The ribbon keeps each quad's v near zero
   either way, and one look at a long trail segment in the pull answers it.

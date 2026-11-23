@@ -244,6 +244,18 @@ std::vector<BakedCategory> bakeCategories(const pack::Pack& pack) {
         baked.is_separator = flag(category, "isseparator", true, "1");
         baked.default_toggle = flag(category, "defaulttoggle", false, "0");
         baked.is_hidden = flag(category, "ishidden", false, "0");
+
+        int number = 0;
+        if (const std::string* id = category.attributes.value("achievementid"); id && pack::parseInt(*id, &number)) {
+            baked.achievement_id = number;
+        }
+        // The nearest declaration's, this one's first; one that will not parse is none.
+        for (size_t at = out.size(); at != pack::kNoIndex; at = pack.categories[at].parent) {
+            if (const std::string* bit = pack.categories[at].attributes.value("achievementbit")) {
+                if (pack::parseInt(*bit, &number)) baked.achievement_bit = number;
+                break;
+            }
+        }
         out.push_back(std::move(baked));
     }
     return out;

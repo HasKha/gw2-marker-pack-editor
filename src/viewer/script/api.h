@@ -95,6 +95,7 @@ struct Behavior {
         ScheduleFilter,
         RaidFilter,
         StandardBehaviorFilter,
+        AchievementFilter,
         InfoModifier,
         BounceModifier,
         CopyModifier,

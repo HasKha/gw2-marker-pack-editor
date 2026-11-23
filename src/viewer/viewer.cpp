@@ -18,6 +18,9 @@
 
 #include "pack/source.h"
 #include "util/path_text.h"
+#include "viewer/account.h"
+#include "viewer/achievements.h"
+#include "viewer/api_key.h"
 #include "viewer/behaviors/festivals.h"
 #include "viewer/behaviors/states.h"
 #include "viewer/behaviors/update.h"
@@ -170,6 +173,21 @@ behaviors::FestivalFetcher festivals;
 // Pathing's "Temporarily Show Ghost Markers", which it turns off at every start: so a session
 // setting, never saved.
 bool show_hidden = false;
+
+// The API key in the options: what the player has typed, the check of what they registered
+// while it runs, and what the last check said, until the key is removed. A check carries the
+// key it was asked about, which is what is saved.
+char key_field[128] = {};
+struct KeyCheck {
+    std::string key;
+    api_key::Check check;
+};
+std::unique_ptr<http::Background<KeyCheck>> key_check;
+std::string key_status;
+// What the registered key says of the account: achievements and this week's raids.
+account::Fetcher account_progress;
+// What achievements are, for their tooltips.
+achievements::Catalog achievement_details;
 
 // Our icon in Nexus's bar was clicked: the menu opens under it on the next render. Set from
 // Nexus's input handling, on a thread of its own, as is the bind turning All Markers on or off.
@@ -386,7 +404,7 @@ behaviors::Host behaviorHost() {
 }
 
 behaviors::Frame behaviorFrame() {
-    return behaviors::Frame{&mumble_state, utcNow(), ImGui::GetTime(), &festivals.active()};
+    return behaviors::Frame{&mumble_state, utcNow(), ImGui::GetTime(), &festivals.active(), &account_progress.progress()};
 }
 
 // The interact key's name as the keyboard writes it, for the prompt. With no key the prompt is
@@ -500,6 +518,31 @@ void openInBrowser(const std::string& url) {
     std::wstring wide(static_cast<size_t>(length), L'\0');
     MultiByteToWideChar(CP_UTF8, 0, url.c_str(), -1, wide.data(), length);
     ShellExecuteW(nullptr, L"open", wide.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+}
+
+// Registers the key the check was about once it says the key is fit, else says why not.
+// From the frame rather than the options page, so a key is kept even if the page closed
+// while the check ran.
+void finishKeyCheck() {
+    if (!key_check || !key_check->finished()) return;
+    // The job always answers; one that did not counts as the API not answering.
+    const KeyCheck done = key_check->get() ? *key_check->get() : KeyCheck{};
+    key_check.reset();
+    switch (done.check.outcome) {
+    case api_key::Outcome::Valid:
+        persisted.api_key = done.key;
+        account_progress.setKey(persisted.api_key, utcNow());
+        std::fill(std::begin(key_field), std::end(key_field), char{});
+        key_status = settings::save(folder, persisted)
+                         ? "Key added successfully."
+                         : "Key added for this session, but it could not be saved: it will be needed again next time.";
+        break;
+    case api_key::Outcome::MissingPermissions:
+        key_status = "This key cannot read " + done.check.missing + ". Make a new one with \"account\" and \"progression\" selected.";
+        break;
+    case api_key::Outcome::Rejected: key_status = "The API does not know this key. Check that all of it was copied."; break;
+    case api_key::Outcome::NoAnswer: key_status = "The API could not be reached to check the key. Try again in a moment."; break;
+    }
 }
 
 void drawCatalog() {
@@ -641,6 +684,10 @@ void drawItems(bool separator) {
     if (editor.start) context.open_editor = editor.start;
     context.on_map = persisted.smart_categories ? &on_map : nullptr;
     context.show_all = &menu_show_all;
+    context.account = &account_progress.progress();
+    context.auto_hide = persisted.allow_auto_hide;
+    context.achievements = &achievement_details;
+    context.achievement_tooltips = persisted.achievement_tooltips;
     context.separator = separator;
     // Our font for its icons, pushed here since Nexus draws its menu and our icon's outside our render.
     ui::fonts::push();
@@ -790,6 +837,8 @@ void preRender() {
     installDownloads();
     if (sync_pending) syncPacks();
     autoUpdate();
+    account_progress.update(std::chrono::steady_clock::now(), utcNow());
+    achievement_details.update(std::chrono::steady_clock::now());
 
     const ImVec2 display = ImGui::GetIO().DisplaySize;
     const Camera camera = fromMumble(mumble_link, glm::vec2(display.x, display.y));
@@ -859,6 +908,7 @@ void drawFrame() {
     ui::script_console::draw(*scripts, installed, &console_window);
     drawCatalog();
     drawImport();
+    finishKeyCheck();
     // Either may have removed a pack, and the prompt below calls into the live map.
     refreshLiveMap(live.map_id);
 
@@ -867,7 +917,8 @@ void drawFrame() {
             screen,
             static_cast<settings::InfoDisplay>(persisted.info_display),
             keyName(static_cast<int>(interact_binds[0].load() & 0xFF)),
-            persisted.show_interact_prompt)) {
+            persisted.show_interact_prompt,
+            &achievement_details)) {
         behaviors::interactWith(&live, screen.prompt->marker, behaviorHost(), behaviorFrame());
     }
 
@@ -955,6 +1006,36 @@ void drawOptionsPage() {
     }
     if (ImGui::CollapsingHeader("Minimap") && ui::options::drawMinimap(&persisted)) settings::save(folder, persisted);
     if (ImGui::CollapsingHeader("Full map") && ui::options::drawFullMap(&persisted)) settings::save(folder, persisted);
+    if (ImGui::CollapsingHeader("GW2 API key")) {
+        switch (ui::options::drawApiKey(persisted.api_key, key_field, sizeof(key_field), key_check != nullptr, key_status)) {
+        case ui::options::KeyAction::None: break;
+        case ui::options::KeyAction::OpenApplications: openInBrowser(api_key::APPLICATIONS_URL); break;
+        case ui::options::KeyAction::Register:
+            if (std::string key = api_key::trimmed(key_field); key.empty()) {
+                key_status = "Paste a key in the field first.";
+            } else {
+                key_status.clear();
+                key_check = std::make_unique<http::Background<KeyCheck>>();
+                key_check->start([key = std::move(key)](const http::Cancel& cancel) -> std::optional<KeyCheck> {
+                    return KeyCheck{key, api_key::ask(key, cancel)};
+                });
+            }
+            break;
+        case ui::options::KeyAction::Remove:
+            persisted.api_key.clear();
+            settings::save(folder, persisted);
+            // The progress kept was the key's: it goes with it.
+            account_progress.setKey(persisted.api_key, utcNow());
+            account_progress.clearCache();
+            key_status.clear();
+            break;
+        case ui::options::KeyAction::ClearCache:
+            account_progress.clearCache();
+            achievement_details.clear();
+            key_status = "Cached API data cleared.";
+            break;
+        }
+    }
 
     if (ImGui::Button(ui::fonts::label(ICON_FA_ROTATE_RIGHT, "Reload packs").c_str())) reloadPacks();
     ImGui::SameLine();
@@ -992,6 +1073,8 @@ void load(AddonAPI* aApi, Mumble::Data* aMumbleLink) {
     const char* directory = api->Paths.GetAddonDirectory(ADDON_FOLDER);
     folder = directory ? std::filesystem::path(directory) : std::filesystem::path();
     persisted = settings::load(folder);
+    account_progress.open(folder.empty() ? folder : folder / account::CACHE_FILE_NAME, persisted.api_key, utcNow());
+    achievement_details.open(folder.empty() ? folder : folder / achievements::CACHE_FILE_NAME);
     category_states.load(categoriesFile());
     saved_categories = category_states.revision();
     script_storage.load(storageFile());
@@ -1009,6 +1092,7 @@ void load(AddonAPI* aApi, Mumble::Data* aMumbleLink) {
     host.category_states = &category_states;
     host.storage = &script_storage;
     host.mumble = &mumble_state;
+    host.account = &account_progress.progress();
     // User.SetClipboard: only "Never" stops a script, as in Pathing's Lib/User.cs.
     host.set_clipboard = [](const std::string& text, const std::string& message) {
         return persisted.clipboard_consent != static_cast<int>(behaviors::ClipboardConsent::Never) && setClipboard(text, message);
@@ -1070,7 +1154,9 @@ void unload() {
     loader.stop();
     downloads.stop();
     catalog_request.reset();
-    import_job.reset();
+    key_check.reset();
+    account_progress.stop();
+    achievement_details.stop();
     festivals.stop();
     maps.stop();
     saveStates();

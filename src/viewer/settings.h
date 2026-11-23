@@ -1,6 +1,7 @@
 #pragma once
 
 #include <filesystem>
+#include <string>
 
 // The viewer's own settings, in `<addons>/MarkerPackEditor/viewer.json`.
 namespace viewer::settings {
@@ -22,6 +23,7 @@ struct Settings {
     bool behind_terrain = false;
     bool smart_categories = true; // "Enable Smart Categories": the menu leaves out other maps'
     bool show_interact_prompt = true; // "Allow Markers to Show Interact Gear On-Screen"
+    bool achievement_tooltips = true; // "Show Tooltips for Achievements": over a category in the menu
     int clipboard_consent = 0; // behaviors::ClipboardConsent: Always
 
     // The key that interacts with a focused marker: Blish HUD's own interact binding, F
@@ -53,6 +55,10 @@ struct Settings {
     bool map_fade_far_trails = true; // "Fade Trail Segments Which Are High Above or Below"
     bool map_tooltips = true;
     float map_trail_width = 2.0f; // Blish HUD's pixels, 0.5 to 4.5
+
+    // The player's GW2 API key, empty for none: written only once /v2/tokeninfo has said it is
+    // a key with the permissions api_key.h names.
+    std::string api_key;
 };
 
 // Pathing's MarkerInfoDisplayMode.
