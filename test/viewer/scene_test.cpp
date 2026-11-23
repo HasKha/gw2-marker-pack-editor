@@ -134,6 +134,17 @@ TEST_CASE("a category shows only when every ancestor is on", "[runtime]") {
     CHECK(viewer::runtime::visibleNodes(tree, states)[tree.find("a.b.c")]);
 }
 
+TEST_CASE("All Markers off hides every category, and on gives them back", "[runtime]") {
+    viewer::runtime::Installed installed;
+    viewer::runtime::install(&installed, loadedPack("pack", {}));
+    viewer::store::CategoryStates states;
+
+    states.set(viewer::runtime::ALL_MARKERS, false, true);
+    CHECK(viewer::runtime::visibleNodes(installed.tree, states) == std::vector<char>{0, 0});
+    states.set(viewer::runtime::ALL_MARKERS, true, true);
+    CHECK(viewer::runtime::visibleNodes(installed.tree, states) == std::vector<char>{1, 1});
+}
+
 TEST_CASE("the live map holds the current map's pathables from every pack", "[runtime]") {
     viewer::runtime::Installed installed;
     viewer::BakedPathables first;

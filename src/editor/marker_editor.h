@@ -7,7 +7,6 @@
 
 namespace marker_editor {
 
-constexpr const char* QUICKACCESS_ID = "QA_MarkerPackEditor";
 constexpr const char* KEYBIND_TOGGLE_ID = "KB_MarkerPackEditor_Toggle";
 constexpr const char* KEYBIND_UNDO_ID = "KB_MarkerPackEditor_Undo";
 constexpr const char* KEYBIND_REDO_ID = "KB_MarkerPackEditor_Redo";

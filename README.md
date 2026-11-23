@@ -21,8 +21,11 @@ the pack is a zip again.
 Every pack in `<Guild Wars 2>/addons/MarkerPackEditor/packs/` is drawn in the world, and so is
 every pack in Blish HUD's markers folder unless **Read Blish HUD's packs** is turned off in
 the addon's options — turn it off while Blish HUD is running, or every marker shows twice.
-**Markers**, in the Nexus menu or on a keybind you set, turns categories on and off.
-Packs' Lua scripts run as they do in Pathing; **Script console**, beside it, shows what they
+The addon's menu is Blish HUD's: **All Markers** turns categories on and off, **Scripts** holds
+what packs' scripts add, **Manage Marker Packs** opens the catalog and **Edit Marker Pack** the
+editor. It is in Nexus's menu, and behind the addon's icon in Nexus's bar — left or right click
+it — as the top of the addon's options choose; a keybind you set opens it at the mouse.
+Packs' Lua scripts run as they do in Pathing; **Script console**, in the options, shows what they
 print and any error, and **Run pack scripts** in the options turns them off. Markers behave as
 they do there too: they hide by festival, character, schedule or once you have used them, show
 what they are about when you walk up, and **F** — or the key you pick in the options —
@@ -34,7 +37,7 @@ options. With
 [GoodRender](https://github.com/HasKha/gw2-good-render) loaded, markers draw under the game's
 windows and hide behind walls; without it they draw over everything.
 
-**Marker Packs**, in the Nexus menu, lists the packs Blish HUD's Pathing offers: download one
+**Marker Packs** lists the packs Blish HUD's Pathing offers: download one
 into the addon's own folder, update it, open its page or delete it. Packs you keep updated
 update themselves when the addon loads.
 

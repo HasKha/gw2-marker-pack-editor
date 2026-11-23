@@ -10,8 +10,4 @@ namespace viewer::ui::script_console {
 // script time per frame, and the census of what scripts asked for that does not exist.
 void draw(const script::Engine& engine, const runtime::Installed& installed, bool* open);
 
-// The entries scripts added under Pathing's "Scripts" menu, as a tree; nothing when there are
-// none. Drawn inside whatever window holds it.
-void drawMenu(script::Engine* engine);
-
 } // namespace viewer::ui::script_console

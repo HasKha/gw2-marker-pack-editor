@@ -68,30 +68,6 @@ void drawCensus(const script::Engine& engine) {
     }
 }
 
-void drawMenuEntry(script::Engine* engine, size_t index) {
-    const script::MenuNode& node = engine->menus()[index];
-    if (node.removed) return;
-    ImGui::PushID(static_cast<int>(index));
-
-    if (!node.children.empty()) {
-        if (ImGui::TreeNode("##entry", "%s", node.name.c_str())) {
-            // Copied: a click can add entries, which moves them all.
-            const std::vector<size_t> children = node.children;
-            for (size_t child : children) drawMenuEntry(engine, child);
-            ImGui::TreePop();
-        }
-    } else if (node.can_check) {
-        bool checked = node.checked;
-        if (ImGui::Checkbox(node.name.c_str(), &checked)) engine->clickMenu(index);
-    } else if (ImGui::Selectable(node.name.c_str())) {
-        engine->clickMenu(index);
-    }
-    if (!engine->menus()[index].tooltip.empty() && ImGui::IsItemHovered()) {
-        ImGui::SetTooltip("%s", engine->menus()[index].tooltip.c_str());
-    }
-    ImGui::PopID();
-}
-
 } // namespace
 
 void draw(const script::Engine& engine, const runtime::Installed& installed, bool* open) {
@@ -122,15 +98,5 @@ void draw(const script::Engine& engine, const runtime::Installed& installed, boo
     ImGui::End();
 }
 
-void drawMenu(script::Engine* engine) {
-    const std::vector<script::MenuNode>& menus = engine->menus();
-    if (menus.empty() || menus.front().children.empty()) return;
-    ImGui::Separator();
-    if (ImGui::TreeNode("Scripts")) {
-        const std::vector<size_t> children = menus.front().children;
-        for (size_t child : children) drawMenuEntry(engine, child);
-        ImGui::TreePop();
-    }
-}
 
 } // namespace viewer::ui::script_console

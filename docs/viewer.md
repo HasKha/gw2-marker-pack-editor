@@ -78,7 +78,9 @@ src/
     downloads.*    catalog packs downloading into our folder, a thread each
     utc.*          the wall clock, and the date format the timers and the catalog share
     store.*        what outlives a session: category toggles, script Storage
-    ui/            the category menu, the script console, interaction.* (info and prompt),
+    ui/            main_menu.* (the menu: All Markers, Scripts, Marker Packs, the editor) and
+                   icon_data.h (its icon, made by tools/make_icons.py), the script console,
+                   interaction.* (info and prompt),
                    map_menu.* (the maps' tooltip and menu), options.* (Pathing's settings),
                    pack_catalog.* (Marker Packs, the catalog's window)
   editor/          mpe_editor, links mpe_pack and mpe_viewer
@@ -337,6 +339,21 @@ since all of them land in one `PathingCategory`. No pack in the corpus has been 
 it. If one does, the bake has to resolve against the merged tree instead, which means the
 bake moves after the merge.
 
+## The menu
+
+Blish HUD's, one set of items wherever it is shown (`ui/main_menu.*`): **All Markers** and
+**Scripts**, every entry a row `[ ] name >` whose box turns it on and off and whose children open
+beside it on hover, as Pathing's context menu does; then **Manage Marker Packs** and **Edit
+Marker Pack**. All Markers' own box is kept with the categories' under the empty id, which no
+category has, and off hides every pack, as Pathing's root category does.
+
+It is shown in up to two places, chosen at the top of the options page: Nexus's own menu, and the
+menu of an icon of ours in Nexus's bar. Nexus opens an icon's context menu on a right click and
+presses its keybind on a left one, so the left click opens the same items in a popup of ours, at
+the mouse; the keybind does the same from anywhere. Both places are added and removed from the
+options page, which is safe: Nexus holds its quick access lock only while it draws the bar, and
+the options page is not drawn from there.
+
 ## The editor inside
 
 - **A setting, "Enable pack editing", off by default.** It starts on for an install that
@@ -360,7 +377,7 @@ bake moves after the merge.
   not part of the installed packs' live map. A gizmo drag is a revision every frame, and
   rebuilding the installed packs' would reset their scripts and behaviors every frame. Its
   markers belong to no node of the shared tree: the editor's tree decides what shows, and the
-  Markers window does not list its categories meanwhile. The scene draws both maps sorted
+  menu's All Markers does not list its categories meanwhile. The scene draws both maps sorted
   together: **what the author sees is what a player sees**, fades and filters and all.
 - **Its scripts are paused**: they never load, since the engine runs the installed packs. A
   script that moves markers would fight the gizmo. A toggle to run them anyway is not built.

@@ -49,6 +49,7 @@ void clear(Installed* installed) {
 std::vector<char> visibleNodes(const registry::CategoryTree& tree, const store::CategoryStates& states) {
     // Parents come before their children, so one pass in order sees every parent decided.
     std::vector<char> visible(tree.nodes.size(), 0);
+    if (!states.enabled(ALL_MARKERS, true)) return visible;
     for (size_t i = 0; i < tree.nodes.size(); ++i) {
         const registry::Category& node = tree.nodes[i];
         const bool parent_visible = node.parent == pack::kNoIndex || visible[node.parent];

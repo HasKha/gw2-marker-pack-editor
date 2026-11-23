@@ -59,7 +59,12 @@ bool isInstalled(const Installed& installed, const std::filesystem::path& path);
 // something derived from the old packs would pass for current.
 void clear(Installed* installed);
 
-// Per node of `tree`, whether what is under it shows: it and every ancestor are on.
+// The id the menu's All Markers box is kept under, as a category's would be: no category has an
+// empty id. Off hides every pack, as Pathing's root category does.
+constexpr const char* ALL_MARKERS = "";
+
+// Per node of `tree`, whether what is under it shows: it and every ancestor are on, and All
+// Markers is.
 std::vector<char> visibleNodes(const registry::CategoryTree& tree, const store::CategoryStates& states);
 
 // Whether a pathable under `node` shows, by `visible` from visibleNodes. One whose type names

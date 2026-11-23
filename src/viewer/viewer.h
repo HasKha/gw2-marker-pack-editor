@@ -22,8 +22,16 @@ constexpr const char* ADDON_NAME = "Marker Pack Editor";
 constexpr const char* ADDON_FOLDER = "MarkerPackEditor";
 constexpr const char* PACKS_FOLDER = "packs";
 
+// The bind that opens the menu, which our icon in Nexus's bar presses when clicked. Its id is
+// the one the Markers window's bind had, so a bind the player set carries over.
 constexpr const char* KEYBIND_MARKERS_ID = "KB_MarkerPackEditor_Markers";
+// The menu's items in Nexus's own menu, our icon in Nexus's bar, the same items behind the icon,
+// and the icon's two textures.
 constexpr const char* QUICKACCESS_ID = "QA_MarkerPackEditor_Markers";
+constexpr const char* SHORTCUT_ID = "QA_MarkerPackEditor_Icon";
+constexpr const char* SHORTCUT_MENU_ID = "QA_MarkerPackEditor_IconMenu";
+constexpr const char* ICON_TEXTURE_ID = "TEX_MarkerPackEditor_Icon";
+constexpr const char* ICON_HOVER_TEXTURE_ID = "TEX_MarkerPackEditor_IconHover";
 
 // What the viewer reaches the editor through. entry.cpp connects them when editing is on;
 // with editing off every hook stays null and the viewer never calls into the editor.
@@ -33,6 +41,9 @@ struct EditorHooks {
     // (CAddonsWindow in Nexus's UI/Views/MainWindow/Addons/Addons.cpp) — so the editor cannot
     // register one of its own beside the viewer's.
     void (*draw_options)() = nullptr;
+
+    // Shows the editor's main window: the menu's Edit Marker Pack.
+    void (*open)() = nullptr;
 
     // The editor's reads of its open pack's files, which see what is not saved yet: the edited
     // pack is drawn with these. Null draws it without images or trails.

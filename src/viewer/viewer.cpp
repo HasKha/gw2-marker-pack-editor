@@ -31,8 +31,9 @@
 #include "viewer/settings.h"
 #include "viewer/store.h"
 #include "viewer/textures.h"
-#include "viewer/ui/category_menu.h"
+#include "viewer/ui/icon_data.h"
 #include "viewer/ui/interaction.h"
+#include "viewer/ui/main_menu.h"
 #include "viewer/ui/map_menu.h"
 #include "viewer/ui/options.h"
 #include "viewer/ui/pack_catalog.h"
@@ -116,7 +117,6 @@ behaviors::Screen edited_screen;
 // Its markers belong to no node of the shared tree: the editor's tree decided what is in it.
 const std::vector<char> kNoNodes;
 
-bool markers_window = false;
 bool console_window = false;
 bool catalog_window = false;
 
@@ -148,6 +148,11 @@ behaviors::FestivalFetcher festivals;
 // Pathing's "Temporarily Show Ghost Markers", which it turns off at every start: so a session
 // setting, never saved.
 bool show_hidden = false;
+
+// Our icon in Nexus's bar was clicked, or the menu's bind pressed: the menu opens at the mouse on
+// the next render. Set from Nexus's input handling.
+std::atomic<bool> menu_requested{false};
+constexpr const char* kMenuPopup = "##marker_pack_menu";
 
 // The interact key, heard in the window procedure, which runs on the game's window thread
 // while the frame runs on its render thread.
@@ -482,6 +487,30 @@ void drawCatalog() {
     if (retry) startCatalogRequest();
 }
 
+// The menu's items, wherever it is shown: Nexus's menu, our icon's, or our own popup.
+void drawMenuItems() {
+    ui::main_menu::Context context;
+    context.tree = &installed.tree;
+    context.states = &category_states;
+    context.scripts = persisted.run_scripts ? scripts.get() : nullptr;
+    context.manage_packs = [] { catalog_window = true; };
+    if (editor.open) context.edit_pack = editor.open;
+    // A player's own toggle is written at once, not with the scripts' changes.
+    if (ui::main_menu::drawItems(context)) saveStates();
+}
+
+// The menu at the mouse, for a left click on our icon or the menu's bind.
+void drawMenuPopup() {
+    if (menu_requested.exchange(false)) {
+        ImGui::SetNextWindowPos(ImGui::GetIO().MousePos);
+        ImGui::OpenPopup(kMenuPopup);
+    }
+    if (ImGui::BeginPopup(kMenuPopup)) {
+        drawMenuItems();
+        ImGui::EndPopup();
+    }
+}
+
 std::string loadingStatus() {
     if (!loader.busy()) return std::to_string(installed.packs.size()) + " packs";
     return "Loading packs: " + std::to_string(installed.packs.size()) + " of " + std::to_string(discovered.size());
@@ -639,11 +668,7 @@ void render() {
     }
     drawMapMenu();
 
-    const auto script_menu = [] {
-        if (persisted.run_scripts) ui::script_console::drawMenu(scripts.get());
-    };
-    // A player's own toggle is written at once, not with the scripts' changes.
-    if (ui::category_menu::draw(installed.tree, &category_states, &markers_window, loadingStatus(), script_menu)) saveStates();
+    drawMenuPopup();
     ui::script_console::draw(*scripts, installed, &console_window);
     drawCatalog();
 
@@ -657,7 +682,55 @@ void render() {
     }
 }
 
+void onMarkersKeybind(const char*, bool is_release) {
+    if (!is_release) menu_requested = true;
+}
+
+// Puts the menu where the options say: in Nexus's menu, and behind our icon in Nexus's bar. Safe
+// from the options page: Nexus holds its quick access lock only while drawing the bar.
+void applyMenuPlaces() {
+    static bool in_nexus = false;
+    static bool icon = false;
+    if (persisted.menu_in_nexus != in_nexus) {
+        if (persisted.menu_in_nexus) {
+            api->QuickAccess.AddContextMenu(QUICKACCESS_ID, nullptr, drawMenuItems);
+        } else {
+            api->QuickAccess.RemoveContextMenu(QUICKACCESS_ID);
+        }
+        in_nexus = persisted.menu_in_nexus;
+    }
+    if (persisted.menu_icon != icon) {
+        if (persisted.menu_icon) {
+            api->QuickAccess.Add(SHORTCUT_ID, ICON_TEXTURE_ID, ICON_HOVER_TEXTURE_ID, KEYBIND_MARKERS_ID, ADDON_NAME);
+            api->QuickAccess.AddContextMenu(SHORTCUT_MENU_ID, SHORTCUT_ID, drawMenuItems);
+        } else {
+            api->QuickAccess.RemoveContextMenu(SHORTCUT_MENU_ID);
+            api->QuickAccess.Remove(SHORTCUT_ID);
+        }
+        icon = persisted.menu_icon;
+    }
+}
+
+void removeMenuPlaces() {
+    const bool in_nexus = persisted.menu_in_nexus;
+    const bool icon = persisted.menu_icon;
+    persisted.menu_in_nexus = false;
+    persisted.menu_icon = false;
+    applyMenuPlaces();
+    persisted.menu_in_nexus = in_nexus;
+    persisted.menu_icon = icon;
+}
+
 void drawOptions() {
+    bool places = ImGui::Checkbox("Show the menu in Nexus's menu", &persisted.menu_in_nexus);
+    places |= ImGui::Checkbox("Show an icon in Nexus's bar", &persisted.menu_icon);
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Left or right click it for the menu.");
+    if (places) {
+        applyMenuPlaces();
+        settings::save(folder, persisted);
+    }
+    ImGui::Separator();
+
     // Applied at the next load rather than now, both ways. Loading the editor means
     // registering render callbacks, and Nexus holds its render mutex across every callback it
     // runs (Context::Render in Nexus's UI/UiContext.cpp), so registering from inside one would
@@ -691,8 +764,6 @@ void drawOptions() {
     ImGui::SameLine();
     ImGui::Text("%s", loadingStatus().c_str());
 
-    ImGui::Checkbox("Markers window", &markers_window);
-    ImGui::SameLine();
     ImGui::Checkbox("Script console", &console_window);
     ImGui::SameLine();
     ImGui::Checkbox("Marker Packs", &catalog_window);
@@ -701,16 +772,6 @@ void drawOptions() {
         ImGui::Separator();
         editor.draw_options();
     }
-}
-
-void drawQuickAccess() {
-    if (ImGui::MenuItem("Markers")) markers_window = !markers_window;
-    if (ImGui::MenuItem("Script console")) console_window = !console_window;
-    if (ImGui::MenuItem("Marker Packs")) catalog_window = !catalog_window;
-}
-
-void onMarkersKeybind(const char*, bool is_release) {
-    if (!is_release) markers_window = !markers_window;
 }
 
 } // namespace
@@ -759,10 +820,15 @@ void load(AddonAPI* aApi, Mumble::Data* aMumbleLink) {
     api->Renderer.Register(ERenderType_Render, render);
     api->Renderer.Register(ERenderType_OptionsRender, drawOptions);
     api->WndProc.Register(onWndProc);
-    api->QuickAccess.AddContextMenu(QUICKACCESS_ID, nullptr, drawQuickAccess);
-    // "(null)": no default bind; the player sets one in Nexus.
+    // "(null)": no default bind; the player sets one in Nexus. Our icon presses it.
     api->InputBinds.RegisterWithString(KEYBIND_MARKERS_ID, onMarkersKeybind, "(null)");
-    api->Localization.Set(KEYBIND_MARKERS_ID, "en", "Toggle the markers window");
+    api->Localization.Set(KEYBIND_MARKERS_ID, "en", "Open the marker pack menu");
+    api->Textures.GetOrCreateFromMemory(ICON_TEXTURE_ID, const_cast<unsigned char*>(ui::icon_data::kIcon), sizeof(ui::icon_data::kIcon));
+    api->Textures.GetOrCreateFromMemory(
+        ICON_HOVER_TEXTURE_ID,
+        const_cast<unsigned char*>(ui::icon_data::kIconHover),
+        sizeof(ui::icon_data::kIconHover));
+    applyMenuPlaces();
 }
 
 void unload() {
@@ -773,7 +839,7 @@ void unload() {
     api->Renderer.Deregister(render);
     api->Renderer.Deregister(drawOptions);
     api->WndProc.Deregister(onWndProc);
-    api->QuickAccess.RemoveContextMenu(QUICKACCESS_ID);
+    removeMenuPlaces();
     api->InputBinds.Deregister(KEYBIND_MARKERS_ID);
 
     loader.stop();

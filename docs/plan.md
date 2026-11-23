@@ -318,10 +318,10 @@ while editing.
 The first pull found the world drawing no installed pack — their textures were never given
 Nexus's API, fixed — and asked for the shape below. Each step is a commit of its own.
 
-1. **Fewer windows** — done but for the Markers window, which goes with step 2. The Packs window, Edit from the viewer and personal copies go: the
+1. **Fewer windows** — done. The Packs window, Edit from the viewer and personal copies go: the
    editor's own File menu is how a pack is opened, in place. The Markers window goes too: the
    menu below replaces it. "Pack catalog" becomes **Marker Packs**.
-2. **One menu, Blish HUD's.** At the top of the options page: show it in Nexus's menu (what is
+2. **One menu, Blish HUD's** — done offline. At the top of the options page: show it in Nexus's menu (what is
    done now), and add an icon of our own to Nexus's bar, whose left and right click both open
    it. The same items everywhere: **All Markers** and **Scripts** as Blish HUD draws them,
    `[ ] name >` selectables that open their children to the side on hover; **Manage Marker

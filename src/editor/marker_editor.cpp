@@ -1010,10 +1010,6 @@ void render() {
     reportToViewer();
 }
 
-void drawQuickAccess() {
-    if (ImGui::MenuItem("Marker Pack Editor")) ui::windows::toggleAll();
-}
-
 void onToggleKeybind(const char* aIdentifier, bool aIsRelease) {
     if (aIsRelease) return;
     ui::windows::toggleAll();
@@ -1045,6 +1041,8 @@ void drawOptions() {
 viewer::EditorHooks hooks() {
     viewer::EditorHooks hooks;
     hooks.draw_options = drawOptions;
+    // The tree is the window editing starts from, wherever the others were left.
+    hooks.open = [] { ui::windows::visible(ui::windows::Id::Tree) = true; };
     hooks.texture = resources::texture;
     hooks.trail = [](const std::string& path, bool* deferred) { return resources::trail(path, deferred); };
     hooks.draw_overlay = [](const viewer::Camera& camera, const viewer::Scene& scene) { world::overlay::draw(state, camera, scene); };
@@ -1064,8 +1062,6 @@ void load(AddonAPI* _api, Mumble::Data* _mumble_link) {
     settings::load(&state.settings, &last_folder, &last_image_folder);
 
     api->Renderer.Register(ERenderType_Render, render);
-    // nullptr target -> appended to the Nexus main menu.
-    api->QuickAccess.AddContextMenu(QUICKACCESS_ID, nullptr, drawQuickAccess);
     // "(null)" -> registered without a default bind; the user sets it in Nexus settings.
     api->InputBinds.RegisterWithString(KEYBIND_TOGGLE_ID, onToggleKeybind, "(null)");
     // These two do come with a default: they are the bindings everyone already has in their
@@ -1080,7 +1076,6 @@ void load(AddonAPI* _api, Mumble::Data* _mumble_link) {
 
 void unload() {
     api->Renderer.Deregister(render);
-    api->QuickAccess.RemoveContextMenu(QUICKACCESS_ID);
     api->InputBinds.Deregister(KEYBIND_TOGGLE_ID);
     api->InputBinds.Deregister(KEYBIND_UNDO_ID);
     api->InputBinds.Deregister(KEYBIND_REDO_ID);
