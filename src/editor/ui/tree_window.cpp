@@ -1,5 +1,7 @@
 #include "editor/ui/tree_window.h"
+#include "viewer/ui/fonts.h"
 
+#include <IconsFontAwesome7.h>
 #include <imgui.h>
 
 #include <algorithm>
@@ -60,13 +62,8 @@ std::string pathableLabel(const pack::Pack& pack, size_t index) {
     return std::string(pack::toString(pathable.type)) + suffix;
 }
 
-// Scene-hierarchy style eye toggle, drawn rather than typed.
-//
-// FontAwesome would be the obvious source for this, but it cannot reach the atlas: Nexus
-// builds every font with its own glyph ranges (Latin, Latin-Ext, and CJK/Cyrillic for the
-// default font) and FontAwesome's glyphs live at 0xF000-0xF8FF, so they would be dropped.
-// Its FontManager also takes raw TTF while imgui-fonts ships compressed data. Drawing the
-// icon sidesteps both.
+// Scene-hierarchy style eye toggle: Font Awesome's eye, through our own font (viewer/ui/fonts.*),
+// and drawn by hand where that font is not built.
 //
 // `dimmed` is for a node that is visible in itself but sits under a hidden ancestor.
 bool eyeButton(const char* id, bool open_eye, bool dimmed) {
@@ -85,6 +82,13 @@ bool eyeButton(const char* id, bool open_eye, bool dimmed) {
     if (!open_eye || dimmed) colour.w *= 0.35f;
     if (hovered) colour.w = 1.0f;
     const ImU32 packed = ImGui::ColorConvertFloat4ToU32(colour);
+
+    if (viewer::ui::fonts::ready()) {
+        const char* glyph = open_eye ? ICON_FA_EYE : ICON_FA_EYE_SLASH;
+        const ImVec2 size = ImGui::CalcTextSize(glyph);
+        list->AddText(ImVec2(centre.x - size.x * 0.5f, centre.y - size.y * 0.5f), packed, glyph);
+        return pressed;
+    }
 
     list->PathLineTo(ImVec2(centre.x - w, centre.y));
     list->PathBezierCurveTo(

@@ -52,7 +52,8 @@ The invariants every change keeps. The sections below are why.
   more than 350 past the one it last recorded, until the player re-enables it by hand
   (`IsVolatileDisabled` in Nexus's `Host/Addons/Addon.cpp`).
 - **Every dependency comes in through FetchContent**, one `cmake/<dep>.cmake` each, pinned to a
-  tag or commit. Nothing is vendored into `src/`.
+  tag or commit. Nothing is vendored into `src/`: the one font compiled in is generated there from
+  `assets/fonts/`, whose `NOTICES.md` holds its licence and source.
 
 ## Decisions
 

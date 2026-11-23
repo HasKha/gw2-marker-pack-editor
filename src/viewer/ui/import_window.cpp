@@ -1,8 +1,11 @@
 #include "viewer/ui/import_window.h"
 
+#include <IconsFontAwesome7.h>
 #include <imgui.h>
 
 #include <algorithm>
+
+#include "viewer/ui/fonts.h"
 
 namespace viewer::ui::import_window {
 
@@ -51,9 +54,11 @@ Answer draw(const blish_import::Found& found, Choices* choices, const std::strin
         if (buttons_width > 0.0f) ImGui::SetCursorPosX(std::max(ImGui::GetCursorPosX(), right - buttons_width));
         const float left = ImGui::GetCursorScreenPos().x;
         const bool any_chosen = std::find(choices->packs.begin(), choices->packs.end(), 1) != choices->packs.end();
-        if (button(busy ? "Importing..." : "Import", !busy && any_chosen)) answer = Answer::Import;
+        if (button(fonts::label(ICON_FA_FILE_IMPORT, busy ? "Importing..." : "Import").c_str(), !busy && any_chosen)) {
+            answer = Answer::Import;
+        }
         ImGui::SameLine();
-        if (button("Close", !busy)) {
+        if (button(fonts::label(ICON_FA_XMARK, "Close").c_str(), !busy)) {
             answer = Answer::Close;
             *open = false;
         }

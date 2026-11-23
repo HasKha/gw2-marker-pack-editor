@@ -39,6 +39,7 @@ Useful files within them:
 | A hand-authored pack to test against | `github.com/HasKha/gw2-markers` — `scripts/trltools.py` corroborates the TRL layout, `scripts/shared.py` is the spec for the shape tools |
 | Addon templates this project was seeded from | `github.com/HasKha/VfxDenoiser`, `github.com/HasKha/gw2-oops-wrong-template` |
 | GW2TacO — the original implementation the defaults trace back to | `github.com/BoyC/GW2TacO`, `gw2tactical.h` |
+| Font Awesome in an ImGui 1.80 addon under Nexus | `github.com/HasKha/gw2-community-challenge-mode` — `ccm/src/render/fonts.*`, `scripts/convert_assets.py`: what `viewer/ui/fonts.*` and `tools/convert_fonts.py` were adapted from |
 | GoodRender — the service the viewer draws through | `github.com/HasKha/gw2-good-render` — `include/good_render.h` is the whole contract |
 
 ## For the viewer

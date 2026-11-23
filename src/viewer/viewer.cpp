@@ -2,6 +2,8 @@
 
 #include <imgui.h>
 // For the rectangle of the button ImGui last saw clicked: where our icon in Nexus's bar is.
+#include <IconsFontAwesome7.h>
+#include <d3d11.h>
 #include <imgui_internal.h>
 
 #include <windows.h>
@@ -35,6 +37,7 @@
 #include "viewer/settings.h"
 #include "viewer/store.h"
 #include "viewer/textures.h"
+#include "viewer/ui/fonts.h"
 #include "viewer/ui/icon_data.h"
 #include "viewer/ui/import_window.h"
 #include "viewer/ui/interaction.h"
@@ -57,6 +60,10 @@ std::filesystem::path folder;
 
 // What the options page edits and saves, against what this session loaded with.
 settings::Settings persisted;
+
+// The game's device, which our font's atlas is uploaded to. Taken from Nexus's swap chain once
+// there is one; ours to release.
+ID3D11Device* font_device = nullptr;
 
 EditorHooks editor;
 
@@ -616,8 +623,11 @@ void drawItems(bool separator) {
     context.on_map = persisted.smart_categories ? &on_map : nullptr;
     context.show_all = &menu_show_all;
     context.separator = separator;
+    // Our font for its icons, pushed here since Nexus draws its menu and our icon's outside our render.
+    ui::fonts::push();
     // A player's own toggle is written at once, not with the scripts' changes.
     if (ui::main_menu::drawItems(context)) saveStates();
+    ui::fonts::pop();
 }
 
 void drawMenuItems() {
@@ -626,6 +636,13 @@ void drawMenuItems() {
 
 void drawNexusMenuItems() {
     drawItems(false);
+}
+
+// Hands the fonts the game's device as soon as Nexus has a swap chain to take it from.
+void takeFontDevice() {
+    if (font_device || !api->SwapChain) return;
+    auto* swap_chain = static_cast<IDXGISwapChain*>(api->SwapChain);
+    if (SUCCEEDED(swap_chain->GetDevice(__uuidof(ID3D11Device), reinterpret_cast<void**>(&font_device)))) ui::fonts::load(font_device);
 }
 
 // Opens the menu under our icon, or above it in the lower half of the screen, and likewise left
@@ -795,7 +812,7 @@ void preRender() {
     buildMapScene(texture);
 }
 
-void render() {
+void drawFrame() {
     const ImVec2 display = ImGui::GetIO().DisplaySize;
     const Camera camera = fromMumble(mumble_link, glm::vec2(display.x, display.y));
     const std::shared_ptr<const Scene> scene = published();
@@ -830,6 +847,13 @@ void render() {
         saveStates();
     }
     if (editor.render) editor.render();
+}
+
+void render() {
+    takeFontDevice();
+    ui::fonts::push();
+    drawFrame();
+    ui::fonts::pop();
 }
 
 void onMenuKeybind(const char*, bool is_release) {
@@ -875,7 +899,7 @@ void removeMenuPlaces() {
     persisted.menu_icon = icon;
 }
 
-void drawOptions() {
+void drawOptionsPage() {
     bool places = ImGui::Checkbox("Show the menu in Nexus's menu", &persisted.menu_in_nexus);
     places |= ImGui::Checkbox("Show an icon in Nexus's bar", &persisted.menu_icon);
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("Left or right click it for the menu.");
@@ -885,7 +909,7 @@ void drawOptions() {
     }
     ImGui::Separator();
 
-    if (ImGui::Button("Import from Blish HUD...")) openImport();
+    if (ImGui::Button(ui::fonts::label(ICON_FA_FILE_IMPORT, "Import from Blish HUD...").c_str())) openImport();
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("Copies Blish HUD's marker packs into this addon, with what Pathing remembers.");
 
     if (ImGui::Checkbox("Run pack scripts", &persisted.run_scripts)) {
@@ -902,13 +926,20 @@ void drawOptions() {
     if (ImGui::CollapsingHeader("Minimap") && ui::options::drawMinimap(&persisted)) settings::save(folder, persisted);
     if (ImGui::CollapsingHeader("Full map") && ui::options::drawFullMap(&persisted)) settings::save(folder, persisted);
 
-    if (ImGui::Button("Reload packs")) reloadPacks();
+    if (ImGui::Button(ui::fonts::label(ICON_FA_ROTATE_RIGHT, "Reload packs").c_str())) reloadPacks();
     ImGui::SameLine();
     ImGui::Text("%s", loadingStatus().c_str());
 
     ImGui::Checkbox("Script console", &console_window);
     ImGui::SameLine();
     ImGui::Checkbox("Marker Packs", &catalog_window);
+}
+
+void drawOptions() {
+    takeFontDevice();
+    ui::fonts::push();
+    drawOptionsPage();
+    ui::fonts::pop();
 }
 
 } // namespace
@@ -989,6 +1020,11 @@ void unload() {
     api->Renderer.Deregister(drawOptions);
     api->WndProc.Deregister(onWndProc);
     removeMenuPlaces();
+    ui::fonts::unload();
+    if (font_device) {
+        font_device->Release();
+        font_device = nullptr;
+    }
     api->InputBinds.Deregister(KEYBIND_MENU_ID);
     api->InputBinds.Deregister(KEYBIND_ALL_MARKERS_ID);
 

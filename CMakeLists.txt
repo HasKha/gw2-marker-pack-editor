@@ -31,6 +31,7 @@ include(nfd)
 include(catch2)
 include(good_render)
 include(lua)
+include(iconfontcppheaders)
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${PROJECT_SOURCE_DIR}/bin/")
 
@@ -79,6 +80,7 @@ target_link_libraries(mpe_viewer PUBLIC
     nexus
     nlohmann_json::nlohmann_json
     good_render
+    iconfontcppheaders
     sol2
     shell32  # SHGetKnownFolderPath
     ole32    # CoTaskMemFree

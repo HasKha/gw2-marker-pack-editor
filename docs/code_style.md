@@ -63,9 +63,12 @@ block under a comment saying what it does.
   has to live with it, which is why ImGuizmo is built the way it is.
 - **No text drawn in the game smaller than 20 px.** 16 px is barely readable in game; 20 is the floor,
   for the least important line, and anything the player must read is larger. This is for what is drawn
-  into the world or over it, not for our windows, which use Nexus's fonts.
+  into the world or over it, not for our windows, which use Nexus's font at Nexus's size.
 - **UI text is `ImGui::Text`.** `TextDisabled` only for what is really off — a control that cannot be
   used, a pack that is not loaded — never to make a heading or a hint quieter. `TextWrapped` only for
   long or variable text, such as an error.
-- **An icon is drawn with `ImDrawList` primitives**, as `eyeButton` in `editor/ui/tree_window.cpp` is. An icon
-  font cannot reach Nexus's atlas; the comment there says why.
+- **An icon in a window is Font Awesome**, as text: `viewer::ui::fonts::label(ICON_FA_TRASH, "Delete")`,
+  inside a `fonts::push()`. An icon added to `src/` draws only once `tools/convert_fonts.py` is run
+  again, which subsets the font to the names it finds; its docstring says how. Where the font may not
+  be built and the icon is the whole control, draw it with `ImDrawList` too, as `eyeButton` in
+  `editor/ui/tree_window.cpp` does.

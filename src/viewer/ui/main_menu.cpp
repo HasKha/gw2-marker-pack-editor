@@ -1,11 +1,13 @@
 #include "viewer/ui/main_menu.h"
 
+#include <IconsFontAwesome7.h>
 #include <imgui.h>
 
 #include <string>
 #include <vector>
 
 #include "viewer/runtime.h"
+#include "viewer/ui/fonts.h"
 
 namespace viewer::ui::main_menu {
 
@@ -104,7 +106,9 @@ bool drawChildren(const registry::CategoryTree& tree, const std::vector<size_t>&
         if (shown[i]) changed |= drawCategory(tree, children[i], context);
     }
     if (skipped > 0) {
-        const std::string label = std::to_string(skipped) + (skipped == 1 ? " Category Is Hidden" : " Categories Are Hidden");
+        const std::string label = fonts::label(
+            ICON_FA_EYE_SLASH,
+            (std::to_string(skipped) + (skipped == 1 ? " Category Is Hidden" : " Categories Are Hidden")).c_str());
         ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
         if (ImGui::Selectable(label.c_str(), false, ImGuiSelectableFlags_DontClosePopups) && context.show_all) {
             context.show_all->insert(parent);
@@ -157,7 +161,7 @@ bool drawItems(const Context& context) {
         const std::vector<script::MenuNode>& menus = context.scripts->menus();
         if (!menus.empty() && !menus.front().children.empty()) {
             ImGui::PushID("scripts");
-            if (ImGui::BeginMenu("Scripts")) {
+            if (ImGui::BeginMenu((fonts::label(ICON_FA_SCROLL, "Scripts") + "###scripts").c_str())) {
                 const std::vector<size_t> children = menus.front().children;
                 for (size_t child : children) drawScriptEntry(context.scripts, child);
                 ImGui::EndMenu();
@@ -167,8 +171,8 @@ bool drawItems(const Context& context) {
     }
 
     if (context.separator) ImGui::Separator();
-    if (ImGui::Selectable("Manage Marker Packs") && context.manage_packs) context.manage_packs();
-    if (context.open_editor && ImGui::Selectable("Open Editor...")) context.open_editor();
+    if (ImGui::Selectable(fonts::label(ICON_FA_BOX_ARCHIVE, "Manage Marker Packs").c_str()) && context.manage_packs) context.manage_packs();
+    if (context.open_editor && ImGui::Selectable(fonts::label(ICON_FA_PEN_TO_SQUARE, "Open Editor...").c_str())) context.open_editor();
     return changed;
 }
 

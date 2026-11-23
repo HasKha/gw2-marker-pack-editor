@@ -371,7 +371,10 @@ Asked for after milestone 7, before its pull in game. Each step is a commit of i
    0.8 s, and a default is no longer looked up through a copy of its key. Baking stays the
    largest part: per marker it walks the category chain once per attribute, and caching
    that per category is the next step if it is still felt.
-7. **Font Awesome icons**, as gw2-community-challenge-mode has them.
+7. **Font Awesome icons** — done offline. Nexus's font with Font Awesome merged, in an atlas of our
+   own, around every window and menu of ours: the menu, the catalog, the import, the options and
+   the editor's menus and eyes. Without a device, or before the first frame, the labels are text
+   alone.
 
 ### 9. Later
 

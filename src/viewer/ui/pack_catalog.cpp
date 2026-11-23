@@ -1,5 +1,7 @@
 #include "viewer/ui/pack_catalog.h"
+#include "viewer/ui/fonts.h"
 
+#include <IconsFontAwesome7.h>
 #include <imgui.h>
 
 #include <algorithm>
@@ -80,7 +82,7 @@ bool drawRow(const Row& row, size_t index, Action* action) {
             static_cast<int>(std::min(progress, 0.99f) * 100.0f));
         ImGui::ProgressBar(progress < 0.0f ? 0.0f : progress, ImVec2(ImGui::GetFontSize() * 10.0f, 0.0f), label);
     } else if (const char* label = buttonLabel(row)) {
-        if (ImGui::Button(label)) {
+        if (ImGui::Button(fonts::label(ICON_FA_DOWNLOAD, label).c_str())) {
             *action = Action{Action::Kind::Download, index};
             acted = true;
         }
@@ -99,7 +101,7 @@ bool drawRow(const Row& row, size_t index, Action* action) {
 
     if (!package.info.empty()) {
         ImGui::SameLine();
-        if (ImGui::Button("Info")) {
+        if (ImGui::Button(fonts::label(ICON_FA_ARROW_UP_RIGHT_FROM_SQUARE, "Info").c_str())) {
             *action = Action{Action::Kind::OpenPage, index};
             acted = true;
         }
@@ -108,7 +110,7 @@ bool drawRow(const Row& row, size_t index, Action* action) {
 
     if (row.local && !running) {
         ImGui::SameLine();
-        if (ImGui::Button("Delete")) ImGui::OpenPopup("##delete");
+        if (ImGui::Button(fonts::label(ICON_FA_TRASH, "Delete").c_str())) ImGui::OpenPopup("##delete");
         if (ImGui::BeginPopup("##delete")) {
             ImGui::Text("Delete %s from disk?", row.local->path.filename().string().c_str());
             if (ImGui::Button("Delete")) {

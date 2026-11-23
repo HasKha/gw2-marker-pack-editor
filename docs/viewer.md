@@ -80,7 +80,9 @@ src/
     utc.*          the wall clock, and the date format the timers and the catalog share
     store.*        what outlives a session: category toggles, script Storage
     ui/            main_menu.* (the menu: All Markers, Scripts, Marker Packs, the editor) and
-                   icon_data.h (its icon, made by tools/make_icons.py), the script console,
+                   icon_data.h (its icon, made by tools/make_icons.py), fonts.* (Nexus's font
+                   with Font Awesome merged, font_awesome_solid.* made by tools/convert_fonts.py),
+                   the script console,
                    interaction.* (info and prompt),
                    map_menu.* (the maps' tooltip and menu), options.* (Pathing's settings),
                    pack_catalog.* (Marker Packs, the catalog's window), import_window.*

@@ -1,5 +1,6 @@
 #include "editor/marker_editor.h"
 
+#include <IconsFontAwesome7.h>
 #include <imgui.h>
 
 #include <atomic>
@@ -31,6 +32,7 @@
 #include "viewer/registry.h"
 #include "viewer/render/overlay.h"
 #include "viewer/scene.h"
+#include "viewer/ui/fonts.h"
 #include "viewer/viewer.h"
 
 namespace marker_editor {
@@ -120,6 +122,11 @@ bool open_new_pack_popup = false;
 char new_pack_name[64] = "mypack";
 char new_pack_display[96] = "My Pack";
 char new_pack_file[64] = "markers.xml";
+
+// A menu item's label with its icon; its text alone where the icons do not draw.
+std::string icon(const char* glyph, const char* text) {
+    return viewer::ui::fonts::label(glyph, text);
+}
 
 void log(ELogLevel level, const std::string& message) {
     api->Log(level, viewer::ADDON_NAME, message.c_str());
@@ -485,14 +492,14 @@ void drawMenuBar(ui::windows::Id owner) {
     if (!ImGui::BeginMenuBar()) return;
 
     if (ImGui::BeginMenu("File")) {
-        if (ImGui::MenuItem("New Pack...")) requestAction(PendingAction::NewPack, owner);
+        if (ImGui::MenuItem(icon(ICON_FA_FILE, "New Pack...").c_str())) requestAction(PendingAction::NewPack, owner);
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("Starts an empty pack. It lives in memory until you Save As.");
 
-        if (ImGui::MenuItem("Open Pack...", nullptr, false, !file_dialog::isPending())) {
+        if (ImGui::MenuItem(icon(ICON_FA_FOLDER_OPEN, "Open Pack...").c_str(), nullptr, false, !file_dialog::isPending())) {
             dialog_purpose = DialogPurpose::OpenFile;
             file_dialog::requestOpenFile(packFolder(), {{"Marker pack", "zip,taco"}});
         }
-        if (ImGui::MenuItem("Open Folder...", nullptr, false, !file_dialog::isPending())) {
+        if (ImGui::MenuItem(icon(ICON_FA_FOLDER, "Open Folder...").c_str(), nullptr, false, !file_dialog::isPending())) {
             dialog_purpose = DialogPurpose::OpenFolder;
             file_dialog::requestOpenFolder(packFolder());
         }
@@ -500,12 +507,12 @@ void drawMenuBar(ui::windows::Id owner) {
         ImGui::Separator();
 
         // A pack that has never been saved has nothing to reload from.
-        if (ImGui::MenuItem("Reload", nullptr, false, state.loaded && !open_pack_path.empty())) {
+        if (ImGui::MenuItem(icon(ICON_FA_ROTATE_RIGHT, "Reload").c_str(), nullptr, false, state.loaded && !open_pack_path.empty())) {
             requestAction(PendingAction::Reload, owner);
         }
-        if (ImGui::MenuItem("Close", nullptr, false, state.loaded)) requestAction(PendingAction::Close, owner);
+        if (ImGui::MenuItem(icon(ICON_FA_XMARK, "Close").c_str(), nullptr, false, state.loaded)) requestAction(PendingAction::Close, owner);
 
-        if (ImGui::MenuItem("Save", nullptr, false, state.loaded && state.dirty)) {
+        if (ImGui::MenuItem(icon(ICON_FA_FLOPPY_DISK, "Save").c_str(), nullptr, false, state.loaded && state.dirty)) {
             if (open_pack_path.empty()) {
                 // Never saved: Save is Save As, or it would have nowhere to write.
                 dialog_purpose = DialogPurpose::SaveAs;
@@ -521,7 +528,7 @@ void drawMenuBar(ui::windows::Id owner) {
                                             : "Rebuilds the archive. The previous one is kept as .bak.");
         }
 
-        if (ImGui::MenuItem("Save As...", nullptr, false, state.loaded && !file_dialog::isPending())) {
+        if (ImGui::MenuItem(icon(ICON_FA_FLOPPY_DISK, "Save As...").c_str(), nullptr, false, state.loaded && !file_dialog::isPending())) {
             dialog_purpose = DialogPurpose::SaveAs;
             const std::string suggested =
                 open_pack_path.empty() ? std::string("markers.zip") : open_pack_path.filename().replace_extension(".zip").string();
@@ -536,8 +543,8 @@ void drawMenuBar(ui::windows::Id owner) {
         const std::string undo_label = undo::canUndo() ? "Undo " + undo::undoLabel() : std::string("Undo");
         const std::string redo_label = undo::canRedo() ? "Redo " + undo::redoLabel() : std::string("Redo");
 
-        if (ImGui::MenuItem(undo_label.c_str(), "Ctrl+Z", false, undo::canUndo())) applyUndo();
-        if (ImGui::MenuItem(redo_label.c_str(), "Ctrl+Y", false, undo::canRedo())) applyRedo();
+        if (ImGui::MenuItem(icon(ICON_FA_ROTATE_LEFT, undo_label.c_str()).c_str(), "Ctrl+Z", false, undo::canUndo())) applyUndo();
+        if (ImGui::MenuItem(icon(ICON_FA_ROTATE_RIGHT, redo_label.c_str()).c_str(), "Ctrl+Y", false, undo::canRedo())) applyRedo();
 
         ImGui::EndMenu();
     }
