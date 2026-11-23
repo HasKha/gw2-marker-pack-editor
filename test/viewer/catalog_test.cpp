@@ -108,39 +108,31 @@ TEST_CASE("catalog: a file name is safe when it is a bare archive name") {
     CHECK(safeFileName("console.zip"));
 }
 
-TEST_CASE("catalog: a package's local copy is the pack of its name, ours first") {
+TEST_CASE("catalog: a package's local copy is the pack of its name") {
     const std::vector<LocalPack> locals = {
-        {"blish/TehsTrails-HeroPoints.taco", 5, false},
-        {"blish/tehstrails.zip", 5, false},
-        {"ours/TehsTrails.taco", 2000, true},
+        {"packs/TehsTrails-HeroPoints.taco", 5},
+        {"packs/tehstrails.zip", 2000},
     };
     const LocalPack* teh = findLocal(package("TehsTrails.taco"), locals);
     REQUIRE(teh);
-    CHECK(teh->ours);
-
-    const std::vector<LocalPack> blish_only(locals.begin(), locals.begin() + 2);
-    const LocalPack* theirs = findLocal(package("TehsTrails.taco"), blish_only);
-    REQUIRE(theirs);
-    CHECK(theirs->path == "blish/tehstrails.zip"); // not the Hero Points pack
+    CHECK(teh->path == "packs/tehstrails.zip"); // not the Hero Points pack
     CHECK(findLocal(package("Other.taco"), locals) == nullptr);
 
     CHECK(state(package("TehsTrails.taco", 1000), teh) == State::Current);
-    CHECK(state(package("TehsTrails.taco", 1000), theirs) == State::Stale);
+    CHECK(state(package("TehsTrails.taco", 3000), teh) == State::Stale);
     CHECK(state(package("TehsTrails.taco", 1000), nullptr) == State::Absent);
 }
 
-TEST_CASE("catalog: local packs know when they were written and whose folder they are in") {
+TEST_CASE("catalog: local packs know when they were written") {
     const corpus::TempDir temp("catalog_locals");
     corpus::writeFile(temp / "ours/a.zip", "a");
-    corpus::writeFile(temp / "blish/b.taco", "b");
+    corpus::writeFile(temp / "ours/b.taco", "b");
     std::filesystem::create_directories(temp / "ours/folder");
 
     const viewer::UtcMillis before = viewer::utcNow() - 60'000;
     const std::vector<LocalPack> locals =
-        localPacks({temp / "ours/a.zip", temp / "blish/b.taco", temp / "ours/folder", temp / "ours/gone.zip"}, temp / "ours");
+        localPacks({temp / "ours/a.zip", temp / "ours/b.taco", temp / "ours/folder", temp / "ours/gone.zip"});
     REQUIRE(locals.size() == 2);
-    CHECK(locals[0].ours);
-    CHECK_FALSE(locals[1].ours);
     CHECK(locals[0].written > before);
     CHECK(locals[0].written < viewer::utcNow() + 60'000);
 }
@@ -161,14 +153,6 @@ TEST_CASE("catalog: Keep updated is on unless turned off, and kept") {
 
     loaded.load(temp / "missing.json");
     CHECK(loaded.enabled("Teh's Trails"));
-}
-
-TEST_CASE("catalog: our copy of a pack stands in for Blish HUD's") {
-    const std::vector<std::filesystem::path> merged =
-        viewer::registry::mergeSources({{"ours/TehsTrails.taco", "ours/mine.zip"}, {"blish/tehstrails.TACO", "blish/Hero.zip"}});
-    REQUIRE(merged.size() == 3);
-    CHECK(merged[0] == "ours/TehsTrails.taco");
-    CHECK(merged[2] == "blish/Hero.zip");
 }
 
 TEST_CASE("utc: the catalog's and the timers' dates read and write back") {

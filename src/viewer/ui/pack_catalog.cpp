@@ -86,7 +86,7 @@ bool drawRow(const Row& row, size_t index, Action* action) {
         }
         if (ImGui::IsItemHovered() && package.size_mb > 0.0f) ImGui::SetTooltip("%.1f MB", package.size_mb);
     } else {
-        ImGui::TextDisabled(row.local && !row.local->ours ? "Up to date, in Blish HUD's folder" : "Up to date");
+        ImGui::TextDisabled("Up to date");
     }
 
     ImGui::SameLine();
@@ -106,8 +106,7 @@ bool drawRow(const Row& row, size_t index, Action* action) {
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", package.info.c_str());
     }
 
-    // Only ours: Blish HUD's folder is read, never written.
-    if (row.local && row.local->ours && !running) {
+    if (row.local && !running) {
         ImGui::SameLine();
         if (ImGui::Button("Delete")) ImGui::OpenPopup("##delete");
         if (ImGui::BeginPopup("##delete")) {

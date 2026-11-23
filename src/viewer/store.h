@@ -26,6 +26,10 @@ public:
     // `fallback` is the pack's default, as for enabled().
     void set(const std::string& id, bool enabled, bool fallback);
 
+    // Keeps a choice made elsewhere — in Pathing, imported — as it was made, whatever the pack's
+    // default: the pack may not be loaded to say. set() forgets it once it equals the default.
+    void remember(const std::string& id, bool enabled);
+
     // Moves whenever a state changes, so whoever derives visibility from these knows to
     // derive it again.
     uint64_t revision() const { return revision_; }

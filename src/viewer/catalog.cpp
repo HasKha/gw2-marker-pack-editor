@@ -7,7 +7,6 @@
 #include <chrono>
 
 #include "viewer/json_file.h"
-#include "viewer/registry.h"
 
 namespace viewer::catalog {
 
@@ -88,7 +87,7 @@ bool safeFileName(std::string_view name) {
     return endsWith(lower, ".zip") || endsWith(lower, ".taco");
 }
 
-std::vector<LocalPack> localPacks(const std::vector<std::filesystem::path>& paths, const std::filesystem::path& own_folder) {
+std::vector<LocalPack> localPacks(const std::vector<std::filesystem::path>& paths) {
     std::vector<LocalPack> locals;
     for (const std::filesystem::path& path : paths) {
         std::error_code ec;
@@ -100,7 +99,6 @@ std::vector<LocalPack> localPacks(const std::vector<std::filesystem::path>& path
         local.written = std::chrono::duration_cast<std::chrono::milliseconds>(
                             std::chrono::clock_cast<std::chrono::system_clock>(written).time_since_epoch())
                             .count();
-        local.ours = registry::isInside(path, own_folder);
         locals.push_back(std::move(local));
     }
     return locals;
@@ -108,13 +106,10 @@ std::vector<LocalPack> localPacks(const std::vector<std::filesystem::path>& path
 
 const LocalPack* findLocal(const Package& package, const std::vector<LocalPack>& locals) {
     const std::string stem = lowercase(std::filesystem::path(package.file_name).stem().string());
-    const LocalPack* found = nullptr;
     for (const LocalPack& local : locals) {
-        if (lowercase(local.path.stem().string()) != stem) continue;
-        if (local.ours) return &local;
-        if (!found) found = &local;
+        if (lowercase(local.path.stem().string()) == stem) return &local;
     }
-    return found;
+    return nullptr;
 }
 
 State state(const Package& package, const LocalPack* local) {

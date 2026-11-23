@@ -117,6 +117,16 @@ void BehaviorStates::load(const std::filesystem::path& file) {
     }
 }
 
+void BehaviorStates::merge(const BehaviorStates& other) {
+    for (const auto& [guid, expiry] : other.until_time_) {
+        UtcMillis& mine = until_time_[guid];
+        if (expiry > mine) {
+            mine = expiry;
+            dirty_ = true;
+        }
+    }
+}
+
 bool BehaviorStates::save(const std::filesystem::path& file) {
     std::ofstream out(file, std::ios::trunc);
     if (!out) return false;

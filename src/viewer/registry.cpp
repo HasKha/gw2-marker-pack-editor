@@ -50,27 +50,6 @@ std::vector<std::filesystem::path> discoverPacks(const std::filesystem::path& fo
     return archives;
 }
 
-std::vector<std::filesystem::path> mergeSources(const std::vector<std::vector<std::filesystem::path>>& tiers) {
-    const auto key = [](const std::filesystem::path& path) {
-        std::string stem = path.stem().string();
-        for (char& c : stem) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-        return stem;
-    };
-    std::vector<std::filesystem::path> merged;
-    std::set<std::string> taken;
-    for (const std::vector<std::filesystem::path>& tier : tiers) {
-        // A tier never hides its own packs, only later tiers'.
-        std::set<std::string> tier_keys;
-        for (const std::filesystem::path& path : tier) {
-            if (taken.count(key(path))) continue;
-            merged.push_back(path);
-            tier_keys.insert(key(path));
-        }
-        taken.insert(tier_keys.begin(), tier_keys.end());
-    }
-    return merged;
-}
-
 bool samePack(const std::filesystem::path& a, const std::filesystem::path& b) {
     if (a.empty() || b.empty()) return false;
     std::error_code ec;

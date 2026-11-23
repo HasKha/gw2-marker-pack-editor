@@ -19,7 +19,7 @@ struct Field {
 
 constexpr Field<bool> kBools[] = {
     {"enable_editing", &Settings::enable_editing},
-    {"read_blish_folder", &Settings::read_blish_folder},
+    {"import_offered", &Settings::import_offered},
     {"run_scripts", &Settings::run_scripts},
     {"allow_auto_hide", &Settings::allow_auto_hide},
     {"allow_animation", &Settings::allow_animation},

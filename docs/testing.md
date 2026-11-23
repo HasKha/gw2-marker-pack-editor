@@ -115,7 +115,8 @@ bin/Release/mpe_viewer_test.exe "[.web]"
 The pack open in the editor is tested from the viewer's side, over a small pack written in the test:
 `edited_test.cpp` bakes its model into a live map of its own as the revision, the map, the tree's eye
 toggles and a trail's deferred read change, and checks the scene layer that carries its pathables to the
-editor's overlay; `map_scene_test.cpp` builds the maps over two live maps the same way.
+editor's overlay; `map_scene_test.cpp` builds the maps over two live maps the same way. `blish_import_test.cpp` lays out a Blish HUD markers
+folder as Pathing does and reads it back: packs, both category file formats, Storage, timers, and the copy.
 
 ## Above the pack layer
 

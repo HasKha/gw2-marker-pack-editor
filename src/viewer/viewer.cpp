@@ -15,6 +15,7 @@
 #include "viewer/behaviors/festivals.h"
 #include "viewer/behaviors/states.h"
 #include "viewer/behaviors/update.h"
+#include "viewer/blish_import.h"
 #include "viewer/camera.h"
 #include "viewer/catalog.h"
 #include "viewer/downloads.h"
@@ -32,6 +33,7 @@
 #include "viewer/store.h"
 #include "viewer/textures.h"
 #include "viewer/ui/icon_data.h"
+#include "viewer/ui/import_window.h"
 #include "viewer/ui/interaction.h"
 #include "viewer/ui/main_menu.h"
 #include "viewer/ui/map_menu.h"
@@ -119,6 +121,18 @@ const std::vector<char> kNoNodes;
 
 bool console_window = false;
 bool catalog_window = false;
+
+// The Blish HUD import: what Pathing has, what the player chose to bring, and the copy while it
+// runs, which reads what Pathing kept too so that the frame only has to apply it.
+bool import_window = false;
+blish_import::Found import_found;
+ui::import_window::Choices import_choices;
+struct Imported {
+    blish_import::Copied copied;
+    blish_import::Found states; // what of Pathing's states was chosen
+};
+std::unique_ptr<Background<Imported>> import_job;
+std::string import_status;
 
 // The public catalog: its list, asked for at load; the downloads into our folder; the per-pack
 // choices; every pack on disk as the catalog sees them; and whether this session's automatic
@@ -232,23 +246,15 @@ void runScripts() {
     scripts->tick(ImGui::GetTime(), io.DeltaTime);
 }
 
-// Lists every pack: our own folder's and, unless turned off, Blish HUD's, ours hiding Blish
-// HUD's of the same name.
+// Lists every pack in our folder. Blish HUD's are drawn once imported into it, not from theirs.
 void discover() {
-    std::vector<std::filesystem::path> ours;
+    discovered.clear();
     if (!folder.empty()) {
         std::error_code ec;
         std::filesystem::create_directories(packsFolder(), ec);
-        ours = registry::discoverPacks(packsFolder());
+        discovered = registry::discoverPacks(packsFolder());
     }
-    std::vector<std::filesystem::path> blish;
-    if (persisted.read_blish_folder) {
-        const std::filesystem::path blish_folder = registry::blishMarkersFolder();
-        std::error_code ec;
-        if (!blish_folder.empty() && std::filesystem::is_directory(blish_folder, ec)) blish = registry::discoverPacks(blish_folder);
-    }
-    discovered = registry::mergeSources({ours, blish});
-    local_packs = catalog::localPacks(discovered, packsFolder());
+    local_packs = catalog::localPacks(discovered);
 }
 
 bool isDiscovered(const std::filesystem::path& path) {
@@ -400,7 +406,7 @@ void installDownloads() {
     if (any) syncPacks();
 }
 
-// Deletes one of our own packs from disk. Blish HUD's folder is only ever read.
+// Deletes one of our packs from disk.
 void deletePack(const std::filesystem::path& path) {
     if (registry::samePack(path, edit_applied)) return;
     runtime::uninstall(&installed, path);
@@ -426,7 +432,7 @@ void autoUpdate() {
     auto_updated = true;
     for (const catalog::Package& package : *packages) {
         const catalog::LocalPack* local = catalog::findLocal(package, local_packs);
-        if (local && local->ours && catalog::state(package, local) == catalog::State::Stale && auto_update.enabled(package.name)) {
+        if (local && catalog::state(package, local) == catalog::State::Stale && auto_update.enabled(package.name)) {
             downloads.start(package, packsFolder());
         }
     }
@@ -485,6 +491,82 @@ void drawCatalog() {
         }
     }
     if (retry) startCatalogRequest();
+}
+
+// Opens the import, reading again what Blish HUD has now.
+void openImport() {
+    if (import_job) {
+        import_window = true;
+        return;
+    }
+    import_found = blish_import::find(registry::blishMarkersFolder());
+    import_choices = {};
+    import_status = import_found.empty() ? "Nothing to import: no Blish HUD markers folder, or nothing in it." : "";
+    import_window = true;
+}
+
+// Copies the chosen packs on a worker, and reads the chosen states with them.
+void startImport() {
+    std::vector<std::filesystem::path> packs;
+    for (size_t i = 0; i < import_found.packs.size(); ++i) {
+        if (i < import_choices.packs.size() && import_choices.packs[i]) packs.push_back(import_found.packs[i]);
+    }
+    Imported chosen;
+    if (import_choices.categories) chosen.states.categories = import_found.categories;
+    if (import_choices.storage) chosen.states.storage = import_found.storage;
+    if (import_choices.timers) chosen.states.timers = import_found.timers;
+
+    import_status = "Copying " + std::to_string(packs.size()) + " packs...";
+    import_job = std::make_unique<Background<Imported>>();
+    import_job->start([packs, chosen, into = packsFolder()]() -> std::optional<Imported> {
+        Imported done = chosen;
+        done.copied = blish_import::copyPacks(packs, into);
+        return done;
+    });
+}
+
+// Once the copy is done: Pathing's states into ours, written at once, and the new packs loaded.
+void finishImport() {
+    if (!import_job || !import_job->finished()) return;
+    const Imported* done = import_job->get();
+    if (!done) {
+        import_job.reset();
+        import_status = "The import did not finish.";
+        return;
+    }
+
+    for (const auto& [id, on] : done->states.categories) category_states.remember(id, on);
+    for (const auto& [key, value] : done->states.storage) script_storage.upsert(key, value);
+    if (!done->states.timers.empty()) {
+        behaviors::BehaviorStates theirs;
+        theirs.load(done->states.timers);
+        behavior_states.merge(theirs);
+    }
+    saveStates();
+
+    import_status = "Imported " + std::to_string(done->copied.copied) + " packs";
+    if (done->copied.kept > 0) import_status += ", kept " + std::to_string(done->copied.kept) + " already as new";
+    if (!done->states.categories.empty()) import_status += ", " + std::to_string(done->states.categories.size()) + " category choices";
+    import_status += ".";
+    for (const std::string& error : done->copied.errors) {
+        import_status += "\nNot copied: " + error;
+        api->Log(ELogLevel_WARNING, ADDON_NAME, ("Blish HUD import: " + error).c_str());
+    }
+    import_job.reset();
+    syncPacks();
+}
+
+void drawImport() {
+    finishImport();
+    const bool was_open = import_window;
+    const ui::import_window::Answer answer =
+        ui::import_window::draw(import_found, &import_choices, import_status, import_job != nullptr, &import_window);
+    if (answer == ui::import_window::Answer::Import) startImport();
+    // Answered, or closed: it does not open by itself again.
+    if (!persisted.import_offered && (answer != ui::import_window::Answer::None || (was_open && !import_window))) {
+        persisted.import_offered = true;
+        settings::save(folder, persisted);
+    }
 }
 
 // The menu's items, wherever it is shown: Nexus's menu, our icon's, or our own popup.
@@ -671,6 +753,7 @@ void render() {
     drawMenuPopup();
     ui::script_console::draw(*scripts, installed, &console_window);
     drawCatalog();
+    drawImport();
 
     if (camera.valid && !camera.map_open &&
         ui::interaction::draw(
@@ -738,11 +821,8 @@ void drawOptions() {
     if (ImGui::Checkbox("Enable pack editing", &persisted.enable_editing)) settings::save(folder, persisted);
     if (persisted.enable_editing != editing_this_session) ImGui::Text("Takes effect the next time the addon loads.");
 
-    if (ImGui::Checkbox("Read Blish HUD's packs", &persisted.read_blish_folder)) {
-        settings::save(folder, persisted);
-        reloadPacks();
-    }
-    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Turn off while Blish HUD is running, or every marker shows twice.");
+    if (ImGui::Button("Import from Blish HUD...")) openImport();
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Copies Blish HUD's marker packs into this addon, with what Pathing remembers.");
 
     if (ImGui::Checkbox("Run pack scripts", &persisted.run_scripts)) {
         settings::save(folder, persisted);
@@ -814,6 +894,12 @@ void load(AddonAPI* aApi, Mumble::Data* aMumbleLink) {
     auto_update.load(catalogFile());
     discoverAndLoad();
     startCatalogRequest();
+    // Offered once, by itself, when Blish HUD has anything to bring.
+    if (!persisted.import_offered) {
+        import_found = blish_import::find(registry::blishMarkersFolder());
+        import_window = !import_found.empty();
+        if (!import_window) persisted.import_offered = true;
+    }
     good_render_sink::load(mumble_link);
 
     api->Renderer.Register(ERenderType_PreRender, preRender);
@@ -845,6 +931,7 @@ void unload() {
     loader.stop();
     downloads.stop();
     catalog_request.reset();
+    import_job.reset();
     festivals.stop();
     maps.stop();
     saveStates();

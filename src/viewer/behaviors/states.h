@@ -70,6 +70,9 @@ public:
 
     // A missing file leaves nothing hidden; a line that does not parse is skipped.
     void load(const std::filesystem::path& file);
+
+    // Takes every timer of `other` in, the later expiry winning where both hide one marker.
+    void merge(const BehaviorStates& other);
     bool save(const std::filesystem::path& file);
 
 private:

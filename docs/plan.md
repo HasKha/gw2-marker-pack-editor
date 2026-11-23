@@ -270,16 +270,14 @@ filtered by name, author or category, each with Download, Update or "Up to date"
 updated, Info and, for our own copy, Delete. Downloads go into our `packs` folder on a worker
 each, with progress, are checked to be archives, and replace the old copy once nothing is
 reading it; only what changed on disk is loaded or dropped, not every pack. A catalog pack in
-our folder stands in for Blish HUD's copy of it. Packs kept updated are updated once a
+our folder stood in for Blish HUD's copy of it, until milestone 7 stopped drawing from Blish HUD's folder. Packs kept updated are updated once a
 session, as soon as the catalog answers. WinHTTP was checked once against the real catalog,
 which reads, and its smallest pack downloads and opens.
 
 **Left: one pull in game**, deciding these in advance:
 - Download a pack not installed: does the window show its progress, and does it draw without
   a reload of the others?
-- Update a pack drawn from Blish HUD's folder: does ours replace it, with no marker shown
-  twice?
-- Delete it: does Blish HUD's copy come back?
+- Update a pack: does the new copy replace the old, with no marker shown twice?
 - Unload the addon while a large pack downloads: does it unload within a second or two? A
   download stops between reads, so only a stalled read waits for its timeout.
 
@@ -326,7 +324,7 @@ Nexus's API, fixed — and asked for the shape below. Each step is a commit of i
    it. The same items everywhere: **All Markers** and **Scripts** as Blish HUD draws them,
    `[ ] name >` selectables that open their children to the side on hover; **Manage Marker
    Packs**, which opens Marker Packs; **Edit Marker Pack**, which opens the editor.
-3. **Blish HUD's packs imported, not read.** Its folder is no longer drawn from. A wizard on
+3. **Blish HUD's packs imported, not read** — done offline. Its folder is no longer drawn from. A wizard on
    the first load, and a button in options, copy its packs into ours, with Pathing's category
    choices, script storage and hidden-marker timers.
 4. **Interact is Nexus's.** The key comes from Nexus's game binds (`GameBinds.xml`, its

@@ -19,7 +19,8 @@
 namespace viewer::registry {
 
 // <Documents>/Guild Wars 2/addons/blishhud/markers, where Blish HUD's Pathing module keeps
-// its packs, whether or not it exists. Empty when Windows will not say where Documents is.
+// its packs, whether or not it exists: what the import reads, and where the editor's file
+// browser starts. Empty when Windows will not say where Documents is.
 std::filesystem::path blishMarkersFolder();
 
 // What Pathing loads from one markers folder (PackInitiator.LoadAllPacks): every .zip and
@@ -28,11 +29,6 @@ std::filesystem::path blishMarkersFolder();
 // pack with nothing in it. Sorted, so packs load — and override one another's category
 // names — in the same order every time.
 std::vector<std::filesystem::path> discoverPacks(const std::filesystem::path& folder);
-
-// Every tier's packs, first tier first, less any that a pack of an earlier tier stands in for:
-// one whose file name, less its extension, is the same, ignoring case. A catalog pack updated
-// into our folder is then not drawn twice beside Blish HUD's older copy of it.
-std::vector<std::filesystem::path> mergeSources(const std::vector<std::vector<std::filesystem::path>>& tiers);
 
 // Whether two paths name the same pack: the same file or folder however spelled, or — when
 // one is gone from disk — the same path once normalized. Never for an empty path.

@@ -18,9 +18,12 @@ the pack is a zip again.
 
 ## Using it
 
-Every pack in `<Guild Wars 2>/addons/MarkerPackEditor/packs/` is drawn in the world, and so is
-every pack in Blish HUD's markers folder unless **Read Blish HUD's packs** is turned off in
-the addon's options — turn it off while Blish HUD is running, or every marker shows twice.
+Every pack in `<Guild Wars 2>/addons/MarkerPackEditor/packs/` is drawn in the world. On the
+first load, if Blish HUD has marker packs, the addon offers to import them: it copies them into
+its own folder with what Pathing remembers — the categories you turned on or off, what pack
+scripts stored, markers hidden until a time. **Import from Blish HUD...** in the options offers
+it again. Blish HUD's folder is never drawn from, so both can run without every marker showing
+twice.
 The addon's menu is Blish HUD's: **All Markers** turns categories on and off, **Scripts** holds
 what packs' scripts add, **Manage Marker Packs** opens the catalog and **Edit Marker Pack** the
 editor. It is in Nexus's menu, and behind the addon's icon in Nexus's bar — left or right click

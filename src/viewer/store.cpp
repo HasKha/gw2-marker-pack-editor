@@ -10,13 +10,20 @@ bool CategoryStates::enabled(const std::string& id, bool fallback) const {
 }
 
 void CategoryStates::set(const std::string& id, bool enabled, bool fallback) {
-    if (this->enabled(id, fallback) == enabled) return;
-
+    const auto it = states_.find(id);
     if (enabled == fallback) {
-        states_.erase(id);
+        // Forgotten even when it shows no different: a remembered choice equal to the default.
+        if (it == states_.end()) return;
+        states_.erase(it);
     } else {
+        if (it != states_.end() && it->second == enabled) return;
         states_[id] = enabled;
     }
+    ++revision_;
+}
+
+void CategoryStates::remember(const std::string& id, bool enabled) {
+    states_[id] = enabled;
     ++revision_;
 }
 

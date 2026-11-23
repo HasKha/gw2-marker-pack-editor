@@ -51,16 +51,15 @@ bool safeFileName(std::string_view name);
 struct LocalPack {
     std::filesystem::path path;
     UtcMillis written = 0; // last written, which an update makes now
-    bool ours = false; // in our own folder, rather than Blish HUD's
 };
 
-// The packs at `paths`, as discovery found them, those under `own_folder` ours. A folder
-// pack is left out: the catalog only ships archives.
-std::vector<LocalPack> localPacks(const std::vector<std::filesystem::path>& paths, const std::filesystem::path& own_folder);
+// The packs at `paths`, as discovery found them. A folder pack is left out: the catalog only
+// ships archives.
+std::vector<LocalPack> localPacks(const std::vector<std::filesystem::path>& paths);
 
 // The local copy of `package`: the pack whose file name, less its extension, is the
-// package's, ignoring case; ours before Blish HUD's. Pathing takes the first file whose path
-// merely contains that name, which finds TehsTrails in TehsTrails-HeroPoints.taco.
+// package's, ignoring case. Pathing takes the first file whose path merely contains that name,
+// which finds TehsTrails in TehsTrails-HeroPoints.taco.
 const LocalPack* findLocal(const Package& package, const std::vector<LocalPack>& locals);
 
 enum class State {
