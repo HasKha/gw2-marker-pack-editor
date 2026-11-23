@@ -159,6 +159,13 @@ void readFilters(const Reader& read, Behaviors* out) {
         out->schedule = CronSchedule::parse(*expression);
         out->schedule_duration = static_cast<UtcMillis>(static_cast<double>(minutes) * 60'000.0);
     }
+
+    // GetValueAsStrings: split and trimmed.
+    if (const std::string* text = read.value("raid")) {
+        std::vector<std::string> names;
+        for (std::string_view part : splitList(*text)) names.push_back(lowercase(trimmed(part)));
+        out->raids = std::move(names);
+    }
 }
 
 void readModifiers(const Reader& read, Behaviors* out) {
@@ -211,10 +218,10 @@ void readScript(const Reader& read, bool is_marker, Behaviors* out) {
 // Every attribute a behavior reads, by key. "invertbehavior" and "autotrigger" do nothing
 // alone and so are not among what makes a marker worth reading.
 constexpr std::string_view kBehaviorKeys[] = {
-    "festival",     "mount",          "profession",     "race",         "specialization", "maptype",         "schedule",
-    "behavior",     "info",           "bounce",         "bounce-delay", "bounce-height",  "bounce-duration", "copy",
-    "copy-message", "toggle",         "togglecategory", "show",         "hide",           "resetguid",       "script-tick",
-    "script-focus", "script-trigger", "script-filter",  "script-once",
+    "festival",    "mount",        "profession",     "race",           "specialization", "maptype",       "schedule",
+    "raid",        "behavior",     "info",           "bounce",         "bounce-delay",   "bounce-height", "bounce-duration",
+    "copy",        "copy-message", "toggle",         "togglecategory", "show",           "hide",          "resetguid",
+    "script-tick", "script-focus", "script-trigger", "script-filter",  "script-once",
 };
 
 bool namesBehavior(const pack::AttributeCollection& attributes) {
@@ -234,8 +241,8 @@ bool mayHaveBehaviors(const pack::Pack& pack, const pack::Pathable& pathable) {
 }
 
 bool hasAny(const Behaviors& b) {
-    return b.festivals || b.mounts || b.professions || b.races || b.specializations || b.map_types || b.schedule || b.mode > 0 || b.info ||
-           b.bounce || b.copy || !b.toggle.empty() || !b.show.empty() || !b.hide.empty() || b.reset_guids || b.scripted;
+    return b.festivals || b.mounts || b.professions || b.races || b.specializations || b.map_types || b.schedule || b.raids || b.mode > 0 ||
+           b.info || b.bounce || b.copy || !b.toggle.empty() || !b.show.empty() || !b.hide.empty() || b.reset_guids || b.scripted;
 }
 
 } // namespace

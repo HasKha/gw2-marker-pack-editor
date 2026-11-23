@@ -79,7 +79,7 @@ src/
     downloads.*    catalog packs downloading into our folder, a thread each
     utc.*          the wall clock, and the date format the timers and the catalog share
     store.*        what outlives a session: category toggles, script Storage
-    ui/            main_menu.* (the menu: All Markers, Scripts, Marker Packs, the editor) and
+    ui/            main_menu.* (the menu: All Markers, Scripts, Marker Packs, Options, the editor) and
                    icon_data.h (its icon, made by tools/make_icons.py), fonts.* (Nexus's font
                    with Font Awesome merged, font_awesome_solid.* made by tools/convert_fonts.py),
                    the script console,
@@ -144,7 +144,9 @@ as well as its windows, where Blish HUD draws over all of it. So both halves of 
 drawn at `WORLD_FINISHED`, and only the map waits for `BEFORE_WINDOWS`, over the HUD as the
 game's own map markers are. A draw list at `WORLD_FINISHED` has no depth, which is what over
 the terrain needs, and GoodRender draws it after the moment's quads, so an item over the terrain
-always lands on one behind it, whatever the scene's order. **Over the terrain is the default**,
+always lands on one behind it, whatever the scene's order. Within each half, the order is all
+there is, and it is Blish's: back to front by where a marker stands, before its `heightOffset`,
+ties in the order loaded (`buildScene`). **Over the terrain is the default**,
 as Blish HUD draws every marker: the world never hides one. Behind the terrain is the player's choice, **Hide markers behind
 terrain** in the options, and a pack's per category or marker with `render-layer`, our own
 attribute (see [format.md](format.md#render-layer-ours)), which wins over the player's. There,
@@ -276,8 +278,10 @@ What Pathing's `Behavior/` does, in `behaviors/`, as plain functions over the li
   of month and day of week both required to match. No pack uses `L`, `W` or `#`, and an
   expression with one is no schedule.
 - **Achievement and raid filters** need the GW2 API with `account` and `progression`, which
-  Nexus does not provide — see [plan.md](plan.md#open-questions). A pathable carrying one is
-  not filtered by it.
+  Nexus does not provide — see [plan.md](plan.md#open-questions). Without it each does what
+  Pathing does without a key: the achievement filter hides nothing, and the raid filter hides
+  everything, since Pathing's shows a marker only once its raids are complete, the reverse of
+  what its own message says.
 
 **Interaction.** Pathing interacts on Blish HUD's own interact binding, F unless changed,
 because it cannot read the game's. The viewer reads the game's instead, as Nexus keeps it:
@@ -363,8 +367,8 @@ bake moves after the merge.
 
 Blish HUD's, one set of items wherever it is shown (`ui/main_menu.*`): **All Markers** and
 **Scripts**, every entry a row `[ ] name >` whose box or name turns it on and off and whose
-children open beside it on hover, as Pathing's context menu does; then **Manage Marker Packs** and
-**Open Editor...**. All Markers' own box is kept with the categories' under the empty id, which no
+children open beside it on hover, as Pathing's context menu does; then **Manage Marker Packs**,
+**Options**, which opens the options page Nexus shows in a window of ours, and **Open Editor...**. All Markers' own box is kept with the categories' under the empty id, which no
 category has, and off hides every pack, as Pathing's root category does; a bind, unset, turns it
 on and off too.
 
@@ -379,7 +383,7 @@ of ours. That bind is the one Nexus lists as "Marker pack icon (left click)": Ne
 way to say the icon was clicked. The popup opens under the icon, whose rectangle ImGui keeps as
 the button last clicked (`placeMenu` in `viewer.cpp`). Both places are added and removed from the
 options page, which is safe: Nexus holds its quick access lock only while it draws the bar, and
-the options page is not drawn from there. In Nexus's menu our separator is left out: Nexus draws
+the options page, Nexus's or our window's, is not drawn from there. In Nexus's menu our separator is left out: Nexus draws
 one between addons already.
 
 ## The editor inside

@@ -12,7 +12,7 @@
 namespace viewer::behaviors {
 
 // Why a pathable was last filtered: the filter whose FilterReason a hidden marker shows.
-enum class FilterKind : uint8_t { None, Festival, Mount, Profession, Race, Specialization, MapType, Schedule, Behavior, Script };
+enum class FilterKind : uint8_t { None, Festival, Mount, Profession, Race, Specialization, MapType, Schedule, Raid, Behavior, Script };
 
 // BounceModifier's tween: up when focused, back down when not.
 struct BounceState {

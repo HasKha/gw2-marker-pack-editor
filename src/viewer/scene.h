@@ -44,7 +44,9 @@ struct SceneItem {
     glm::vec3 corners[4];
     ImVec2 uv[4];
 
-    float depth = 0.0f; // squared distance from the camera it was sorted with
+    // Squared distance from the camera it was sorted with: for a marker, to where it stands
+    // without its heightOffset, which is Blish's order rather than where it is drawn.
+    float depth = 0.0f;
 
     // With GoodRender, both at WORLD_FINISHED and under the game's UI: hidden behind what of the
     // world is in front of it, or otherwise over the whole world.

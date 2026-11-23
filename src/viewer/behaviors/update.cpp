@@ -127,6 +127,8 @@ public:
             if (b.map_types) check(!contains(*b.map_types, mumble.map_type), FilterKind::MapType);
             if (b.schedule)
                 check(updateSchedule(*b.schedule, b.schedule_duration, frame_.now, &stateOf(entity).schedule), FilterKind::Schedule);
+            // No raid is known complete without the API: see Behaviors::raids.
+            check(b.raids.has_value(), FilterKind::Raid);
             if (b.mode > 0 && !entity.trail) {
                 const BakedMarker& marker = live_.markers[entity.index].marker;
                 const bool hidden =
@@ -421,6 +423,12 @@ std::string filterReason(const runtime::LiveMarker& marker) {
     case FilterKind::Specialization: return "Hidden because you're not the correct specialization.";
     case FilterKind::MapType: return "Hidden because you're not on the map type: " + joined(*b->map_types, Gw2Enum::MapType) + ".";
     case FilterKind::Schedule: return "Hidden because it is only scheduled to show at certain times of day.";
+    case FilterKind::Raid: {
+        // Pathing's says "because you've completed", the opposite of what its filter does.
+        std::string names;
+        for (const std::string& name : *b->raids) names += (names.empty() ? "" : ", ") + name;
+        return "Hidden until you've completed this week: " + names + ".";
+    }
     case FilterKind::Script: return "Hidden by a script.";
     case FilterKind::Behavior:
         switch (static_cast<Mode>(b->mode)) {

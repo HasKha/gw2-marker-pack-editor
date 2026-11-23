@@ -9,7 +9,7 @@
 #include "viewer/store.h"
 
 // The addon's one menu, Blish HUD's: All Markers and Scripts as Pathing draws them, then Manage
-// Marker Packs and Open Editor. The same items wherever it is shown — Nexus's own menu, and the
+// Marker Packs, Options and Open Editor. The same items wherever it is shown — Nexus's own menu, and the
 // menu of our icon in Nexus's bar, left click or right.
 namespace viewer::ui::main_menu {
 
@@ -18,6 +18,7 @@ struct Context {
     store::CategoryStates* states = nullptr;
     script::Engine* scripts = nullptr; // null while scripts do not run
     std::function<void()> manage_packs; // opens Marker Packs
+    std::function<void()> open_options; // opens the options page in a window of ours
     std::function<void()> open_editor; // null leaves the item out
 
     // Pathing's smart categories: with `on_map` (runtime::nodesOnMap), a category with nothing on

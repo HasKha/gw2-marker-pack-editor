@@ -4,7 +4,8 @@ A map pin with a hole, drawn here rather than kept as a binary so a change is a 
 
     python tools/make_icons.py
 
-Nexus's own icons are 64 pixels square, light grey, and white on hover; these follow them.
+Nexus's own icons are 64 pixels square, light grey, and white on hover; these follow them, with a black
+outline drawn inside the silhouette, so the icon is no bigger for it and still reads on a light background.
 """
 
 import math
@@ -19,30 +20,56 @@ CENTRE = (32.0, 25.0)
 RADIUS = 17.0
 TIP = (32.0, 60.0)
 HOLE = 6.5
+OUTLINE = 3.0  # width of the black band along every edge, the hole's included
+
+# Where the two lines from the tip touch the circle; the head's outline is the arc above them.
+_D = TIP[1] - CENTRE[1]
+_TANGENT_Y = CENTRE[1] + RADIUS * RADIUS / _D
+_TANGENT_X = RADIUS * math.sqrt(_D * _D - RADIUS * RADIUS) / _D
+TANGENTS = ((CENTRE[0] - _TANGENT_X, _TANGENT_Y), (CENTRE[0] + _TANGENT_X, _TANGENT_Y))
 
 
-def inside(x, y):
-    dx, dy = x - CENTRE[0], y - CENTRE[1]
-    if dx * dx + dy * dy <= HOLE * HOLE:
-        return False
-    if dx * dx + dy * dy <= RADIUS * RADIUS:
+def segment_distance(x, y, a, b):
+    abx, aby = b[0] - a[0], b[1] - a[1]
+    t = max(0.0, min(1.0, ((x - a[0]) * abx + (y - a[1]) * aby) / (abx * abx + aby * aby)))
+    return math.hypot(x - a[0] - t * abx, y - a[1] - t * aby)
+
+
+def inside_pin(x, y):
+    """The pin without its hole: the circle and the triangle from the tip to the tangent points."""
+    if math.hypot(x - CENTRE[0], y - CENTRE[1]) <= RADIUS:
         return True
-    # The two lines from the tip that touch the circle: below the centre and between them.
-    distance = TIP[1] - CENTRE[1]
-    half_angle = math.asin(RADIUS / distance)
-    if y < CENTRE[1] or y > TIP[1]:
+    if y < _TANGENT_Y or y > TIP[1]:
         return False
-    angle = math.atan2(abs(x - TIP[0]), TIP[1] - y)
-    return angle <= half_angle
+    return abs(x - TIP[0]) <= _TANGENT_X * (TIP[1] - y) / (TIP[1] - _TANGENT_Y)
 
 
-def coverage(px, py):
+def edge_distance(x, y):
+    """How far a point inside the pin is from its nearest edge, the hole's included; None outside."""
+    r = math.hypot(x - CENTRE[0], y - CENTRE[1])
+    if r <= HOLE or not inside_pin(x, y):
+        return None
+    # The arc counts only where the nearest point on the circle lies above the tangent points; below them
+    # the circle is inside the pin and the edge is the two lines.
+    near_y = CENTRE[1] + RADIUS * (y - CENTRE[1]) / r
+    arc = abs(r - RADIUS) if near_y <= _TANGENT_Y else math.inf
+    sides = min(segment_distance(x, y, TIP, t) for t in TANGENTS)
+    return min(arc, sides, r - HOLE)
+
+
+def sample(px, py, grey):
+    """The pixel as (grey level, coverage): fill and outline averaged over the samples that hit."""
     hits = 0
+    total = 0
     for sy in range(SAMPLES):
         for sx in range(SAMPLES):
-            if inside(px + (sx + 0.5) / SAMPLES, py + (sy + 0.5) / SAMPLES):
+            d = edge_distance(px + (sx + 0.5) / SAMPLES, py + (sy + 0.5) / SAMPLES)
+            if d is not None:
                 hits += 1
-    return hits / (SAMPLES * SAMPLES)
+                total += grey if d >= OUTLINE else 0
+    if hits == 0:
+        return 0, 0.0
+    return round(total / hits), hits / (SAMPLES * SAMPLES)
 
 
 def png(grey):
@@ -50,8 +77,8 @@ def png(grey):
     for py in range(SIZE):
         rows.append(0)  # filter: none
         for px in range(SIZE):
-            alpha = round(coverage(px, py) * 255)
-            rows += bytes((grey, grey, grey, alpha))
+            level, cover = sample(px, py, grey)
+            rows += bytes((level, level, level, round(cover * 255)))
 
     def chunk(kind, data):
         body = kind + data

@@ -202,8 +202,8 @@ milestone 3; until then every copy is allowed, and announced.
 
 ### 3. Behaviors and interaction — done offline
 
-Built: every filter (festival, map type, mount, profession, race, schedule, specialization, the
-`behavior` attribute, `script-filter`) and modifier (info, bounce, copy, toggle, show/hide,
+Built: every filter (festival, map type, mount, profession, race, schedule, specialization, raid
+as Pathing has it without an API key, the `behavior` attribute, `script-filter`) and modifier (info, bounce, copy, toggle, show/hide,
 reset guid, auto-trigger, `script-*`), focus by trigger range and interaction, under
 `viewer/behaviors/`. What `behavior` hid is kept in `timers.txt`. The interact key is heard
 through Nexus's WndProc and passed on to the game; which key is milestone 7's.
@@ -221,10 +221,12 @@ every `script-*` function packs name, the way a player walking each map would.
   bouncing marker bounces.
 - Hero's pack on a raid map: markers hidden by profession or specialization match the
   character, as in Blish HUD.
+- Hero's pack in the Aerodrome, Raid Wing Tracking on: every boss's icon is the grey one, and
+  none flickers as the camera turns.
 
 **First beta here**, once that pull passes: local packs, scripts and behaviors all working.
 
-Not in it: achievement and raid filters (milestone 7).
+Not in it: the achievement filter, and raids known complete (milestone 7).
 
 ### 4. Maps and screen — done offline
 
@@ -375,10 +377,12 @@ Asked for after milestone 7, before its pull in game. Each step is a commit of i
    own, around every window and menu of ours: the menu, the catalog, the import, the options and
    the editor's menus and eyes. Without a device, or before the first frame, the labels are text
    alone.
+8. **Options from the menu** — done offline. "Options", between Manage Marker Packs and Open
+   Editor, opens the page Nexus shows in its options in a window of ours.
 
 ### 9. Later
 
-- Achievement and raid filters, once the API key question is settled.
+- The achievement filter, and raids known complete, once the API key question is settled.
 - Pathing's per-pixel fades, with a shader of our own, if the per-quad version shows.
 
 ## Open questions

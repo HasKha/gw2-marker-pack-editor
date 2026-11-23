@@ -74,6 +74,10 @@ struct Behaviors {
     std::optional<std::vector<int>> map_types; // Gw2Enum::MapType
     std::optional<CronSchedule> schedule; // with a positive `schedule-duration`, or none
     UtcMillis schedule_duration = 0;
+    // `raid`, the encounters' API names, lowercase. RaidFilter shows the marker only once all
+    // are in /v2/account/raids, this week's kills, and hides it while it knows none — which,
+    // with no API key to ask with (plan.md's open question), is always.
+    std::optional<std::vector<std::string>> raids;
 
     // `behavior`, a Mode; 0 and below is no filter. A value outside the enum filters nothing
     // but still says so on focus, as Pathing's does.

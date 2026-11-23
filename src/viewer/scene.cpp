@@ -66,7 +66,10 @@ void appendLayer(
         item.texture = image;
         if (layer.edited) item.pathable = marker.pathable;
         item.colour = applyOpacity(marker.tint, opacity);
-        item.depth = squaredDistance(position, camera.position);
+        // StandardMarker.DrawOrder: from where the marker stands, its heightOffset and bounce
+        // (which BounceModifier tweens into the heightOffset) left out. Hero's pack draws
+        // markers at one spot from positions that differ, and relies on this to stack them.
+        item.depth = squaredDistance(marker.position - glm::vec3(0.0f, marker.height_offset, 0.0f), camera.position);
         item.behind_terrain = behindTerrain(marker.render_layer, options);
         if (marker.has_rotation) {
             // Fixed in the world, so it foreshortens with the viewing angle. minSize and
@@ -142,7 +145,9 @@ void buildScene(const std::vector<SceneLayer>& layers, const Camera& camera, flo
     const float settings_opacity = options.max_opacity * (options.combat_fade && options.in_combat ? 0.5f : 1.0f);
     for (const SceneLayer& layer : layers) appendLayer(layer, camera, seconds, options, settings_opacity, out);
 
-    std::sort(out->items.begin(), out->items.end(), [](const SceneItem& a, const SceneItem& b) { return a.depth > b.depth; });
+    // Stable, as Blish's StableSortKey breaks a tie by its entity list: markers stacked on one
+    // spot are drawn in the order they were loaded.
+    std::stable_sort(out->items.begin(), out->items.end(), [](const SceneItem& a, const SceneItem& b) { return a.depth > b.depth; });
 }
 
 void buildScene(

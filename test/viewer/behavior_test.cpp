@@ -151,6 +151,18 @@ TEST_CASE("a festival filter shows only while the festival is on", "[behaviors]"
     CHECK(filterReason(world.live.markers[0]) == "Hidden because the Halloween, Wintersday festival isn't active.");
 }
 
+TEST_CASE("a raid filter hides a marker until its raids are known complete", "[behaviors]") {
+    // Hero's pack draws a boss done this week as a coloured icon carrying `raid`, over a grey
+    // one without. With no completions to go by, Pathing hides every marker naming a raid —
+    // even one naming none, since its split of "" is one empty name.
+    Behaving world("behave_raid", {"raid=\"Vale_Guardian, spirit_woods\"", "raid=\"\"", ""});
+    world.tick();
+    CHECK(world.filtered(0));
+    CHECK(world.filtered(1));
+    CHECK_FALSE(world.filtered(2));
+    CHECK(filterReason(world.live.markers[0]) == "Hidden until you've completed this week: vale_guardian, spirit_woods.");
+}
+
 TEST_CASE("walking into range focuses a marker, and out of it lets go", "[behaviors]") {
     Behaving world("behave_focus", {"info=\"Hello\" copy=\"x\"", "triggerrange=\"10\" info=\"Far\""});
     world.tick();

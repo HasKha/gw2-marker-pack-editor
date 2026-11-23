@@ -154,6 +154,7 @@ constexpr BehaviorKind kBehaviorKinds[] = {
      [](const behaviors::Behaviors& b) { return b.specializations.has_value(); }},
     {"MapTypeFilter", Behavior::Kind::MapTypeFilter, [](const behaviors::Behaviors& b) { return b.map_types.has_value(); }},
     {"ScheduleFilter", Behavior::Kind::ScheduleFilter, [](const behaviors::Behaviors& b) { return b.schedule.has_value(); }},
+    {"RaidFilter", Behavior::Kind::RaidFilter, [](const behaviors::Behaviors& b) { return b.raids.has_value(); }},
     {"StandardBehaviorFilter", Behavior::Kind::StandardBehaviorFilter, [](const behaviors::Behaviors& b) { return b.mode > 0; }},
     {"InfoModifier", Behavior::Kind::InfoModifier, [](const behaviors::Behaviors& b) { return b.info.has_value(); }},
     {"BounceModifier", Behavior::Kind::BounceModifier, [](const behaviors::Behaviors& b) { return b.bounce.has_value(); }},
@@ -214,6 +215,7 @@ bool behaviorFiltered(lua_State* L, const Behavior& self) {
     case Behavior::Kind::SpecializationFilter: return lacks(b.specializations, mumble.specialization);
     case Behavior::Kind::MapTypeFilter: return lacks(b.map_types, mumble.map_type);
     case Behavior::Kind::ScheduleFilter: return state.schedule.filtered;
+    case Behavior::Kind::RaidFilter: return true; // no raid is known complete: see Behaviors::raids
     case Behavior::Kind::FestivalFilter: return state.reason == behaviors::FilterKind::Festival;
     case Behavior::Kind::StandardBehaviorFilter: return state.reason == behaviors::FilterKind::Behavior;
     case Behavior::Kind::Script: return state.reason == behaviors::FilterKind::Script;

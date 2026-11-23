@@ -354,6 +354,48 @@ TEST_CASE("the scene is back to front, billboards and quads together", "[scene]"
     CHECK(built.scene.items[2].centre.z == Approx(5.0f));
 }
 
+TEST_CASE("markers drawn in one place are ordered by where they stand, before heightOffset", "[scene]") {
+    // Hero's pack's raid tracking in the Aerodrome: a grey icon and a coloured one drawn at the
+    // same spot on a wall, 0.001 m apart, from positions 14 m apart that their heightOffsets
+    // even out. Blish orders by the position, so the one standing nearer the camera wins
+    // wherever the camera turns; ordered by where they are drawn, they swap as it moves.
+    Built built;
+    viewer::BakedPathables pathables;
+    pathables.markers = {marker({0, 5, 10}, 0), marker({0, 5, 9.999f}, 0)};
+    pathables.markers[0].height_offset = 4.0f; // standing at y = 1, nearer the camera at 0
+    pathables.markers[1].height_offset = 1.0f; // standing at y = 4
+    pathables.markers[0].icon_size = 1.0f;
+    pathables.markers[1].icon_size = 2.0f;
+    viewer::runtime::install(&built.installed, loadedPack("pack", pathables));
+
+    built.build(test_camera::axisCamera());
+    REQUIRE(built.scene.items.size() == 2);
+    CHECK(built.scene.items[0].size == Approx(4.0f));
+    CHECK(built.scene.items[1].size == Approx(2.0f));
+}
+
+TEST_CASE("markers at the same distance keep the order they were loaded in", "[scene]") {
+    // Blish breaks a tie by its entity list, and packs stack markers on one spot relying on it.
+    // Two spots taking turns, and enough markers on each, that a sort which does not keep
+    // ties would reorder some.
+    constexpr int kCount = 64;
+    Built built;
+    viewer::BakedPathables pathables;
+    for (int i = 0; i < kCount; ++i) {
+        pathables.markers.push_back(marker({0, 0, i % 2 == 0 ? 10.0f : 20.0f}, 0));
+        pathables.markers.back().icon_size = static_cast<float>(i + 1);
+    }
+    viewer::runtime::install(&built.installed, loadedPack("pack", pathables));
+
+    built.build(test_camera::axisCamera());
+    REQUIRE(built.scene.items.size() == kCount);
+    // The far spot's, odd sizes in turn, then the near spot's, even ones.
+    for (int i = 0; i < kCount / 2; ++i) {
+        CHECK(built.scene.items[i].size == Approx(2.0f * static_cast<float>(2 * i + 2)));
+        CHECK(built.scene.items[kCount / 2 + i].size == Approx(2.0f * static_cast<float>(2 * i + 1)));
+    }
+}
+
 TEST_CASE("nothing is in the scene while the map is open", "[scene]") {
     Built built;
     viewer::BakedPathables pathables;

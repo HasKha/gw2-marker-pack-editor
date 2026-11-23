@@ -172,6 +172,7 @@ bool drawItems(const Context& context) {
 
     if (context.separator) ImGui::Separator();
     if (ImGui::Selectable(fonts::label(ICON_FA_BOX_ARCHIVE, "Manage Marker Packs").c_str()) && context.manage_packs) context.manage_packs();
+    if (ImGui::Selectable(fonts::label(ICON_FA_GEAR, "Options").c_str()) && context.open_options) context.open_options();
     if (context.open_editor && ImGui::Selectable(fonts::label(ICON_FA_PEN_TO_SQUARE, "Open Editor...").c_str())) context.open_editor();
     return changed;
 }

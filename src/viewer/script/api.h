@@ -93,6 +93,7 @@ struct Behavior {
         SpecializationFilter,
         MapTypeFilter,
         ScheduleFilter,
+        RaidFilter,
         StandardBehaviorFilter,
         InfoModifier,
         BounceModifier,

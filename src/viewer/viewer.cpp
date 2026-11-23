@@ -120,6 +120,7 @@ std::chrono::steady_clock::time_point last_change_check{};
 
 bool console_window = false;
 bool catalog_window = false;
+bool options_window = false;
 
 // The Blish HUD import: what Pathing has, what the player chose to bring, and the copy while it
 // runs, which reads what Pathing kept too so that the frame only has to apply it.
@@ -628,6 +629,7 @@ void drawItems(bool separator) {
     context.states = &category_states;
     context.scripts = persisted.run_scripts ? scripts.get() : nullptr;
     context.manage_packs = [] { catalog_window = true; };
+    context.open_options = [] { options_window = true; };
     if (editor.start) context.open_editor = editor.start;
     context.on_map = persisted.smart_categories ? &on_map : nullptr;
     context.show_all = &menu_show_all;
@@ -819,6 +821,8 @@ void preRender() {
     buildMapScene(texture);
 }
 
+void drawOptionsWindow();
+
 void drawFrame() {
     const ImVec2 display = ImGui::GetIO().DisplaySize;
     const Camera camera = fromMumble(mumble_link, glm::vec2(display.x, display.y));
@@ -836,6 +840,8 @@ void drawFrame() {
     drawMapMenu();
 
     drawMenuPopup();
+    // Before the windows it can open, so they show in the frame it was clicked in.
+    drawOptionsWindow();
     ui::script_console::draw(*scripts, installed, &console_window);
     drawCatalog();
     drawImport();
@@ -874,7 +880,8 @@ void onAllMarkersKeybind(const char*, bool is_release) {
 }
 
 // Puts the menu where the options say: in Nexus's menu, and behind our icon in Nexus's bar. Safe
-// from the options page: Nexus holds its quick access lock only while drawing the bar.
+// from the options page, Nexus's or our window's: Nexus holds its quick access lock only while
+// drawing the bar.
 void applyMenuPlaces() {
     static bool in_nexus = false;
     static bool icon = false;
@@ -949,6 +956,15 @@ void drawOptions() {
     ui::fonts::push();
     drawOptionsPage();
     ui::fonts::pop();
+}
+
+// The same page in a window of ours, from the menu's Options; our render has the fonts pushed
+// already. Not titled "Options" alone: that is Nexus's window, in the same ImGui context.
+void drawOptionsWindow() {
+    if (!options_window) return;
+    ImGui::SetNextWindowSize(ImVec2(480.0f, 520.0f), ImGuiCond_FirstUseEver);
+    if (ImGui::Begin("Marker Pack Options", &options_window)) drawOptionsPage();
+    ImGui::End();
 }
 
 } // namespace
