@@ -310,12 +310,37 @@ scene drew.
   and without it?
 - A marker whose icon is missing: is there a dot where it stands?
 - Save, then close: does the pack go back to drawing from disk, unchanged?
-- Move a marker on the minimap's map: does its icon follow on the minimap as it is dragged?
+- Drag a marker with the gizmo while the minimap shows it: does its icon follow there too?
 
 Not in it: the edited pack's info text and interact prompt, and a toggle to run its scripts
 while editing.
 
-### 7. Later
+### 7. After the first look in game
+
+The first pull found the world drawing no installed pack — their textures were never given
+Nexus's API, fixed — and asked for the shape below. Each step is a commit of its own.
+
+1. **Fewer windows.** The Packs window, Edit from the viewer and personal copies go: the
+   editor's own File menu is how a pack is opened, in place. The Markers window goes too: the
+   menu below replaces it. "Pack catalog" becomes **Marker Packs**.
+2. **One menu, Blish HUD's.** At the top of the options page: show it in Nexus's menu (what is
+   done now), and add an icon of our own to Nexus's bar, whose left and right click both open
+   it. The same items everywhere: **All Markers** and **Scripts** as Blish HUD draws them,
+   `[ ] name >` selectables that open their children to the side on hover; **Manage Marker
+   Packs**, which opens Marker Packs; **Edit Marker Pack**, which opens the editor.
+3. **Blish HUD's packs imported, not read.** Its folder is no longer drawn from. A wizard on
+   the first load, and a button in options, copy its packs into ours, with Pathing's category
+   choices, script storage and hidden-marker timers.
+4. **Interact is Nexus's.** The key comes from Nexus's game binds (`GameBinds.xml`, its
+   Interact action), not a setting of our own. GW2's key codes are its own: letters and digits
+   are their ASCII codes, as Windows' are; anything else falls back to F.
+5. **The editor on demand.** No "Enable pack editing", nothing of the editor registered at
+   load: the viewer's callbacks drive it, so Edit Marker Pack starts it at any time. It was
+   applied at load only because the editor registered a render callback of its own, which
+   cannot be done from inside one (Nexus holds its render mutex across every callback), and
+   unloading it would have dropped unsaved edits.
+
+### 8. Later
 
 - Achievement and raid filters, once the API key question is settled.
 - Pathing's per-pixel fades, with a shader of our own, if the per-quad version shows.
