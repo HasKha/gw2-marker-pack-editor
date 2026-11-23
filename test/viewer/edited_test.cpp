@@ -114,9 +114,14 @@ TEST_CASE("an edit is baked again when the revision moves, and not before", "[ed
     CHECK(edited.update({temp.path(), &model, 2, nullptr}, kMap, trails.lookup()));
     CHECK(zOf(edited.live().markers[0]) == Approx(9.0f));
 
+    // Each build is a revision of its own, which the map's trail lines go by.
+    const uint64_t built = edited.live().revision;
+    CHECK(edited.update({temp.path(), &model, 3, nullptr}, kMap, trails.lookup()));
+    CHECK(edited.live().revision > built);
+
     // A behavior's state stays between frames while nothing changed.
     edited.live().markers[0].behavior.filtered = true;
-    CHECK_FALSE(edited.update({temp.path(), &model, 2, nullptr}, kMap, trails.lookup()));
+    CHECK_FALSE(edited.update({temp.path(), &model, 3, nullptr}, kMap, trails.lookup()));
     CHECK(edited.live().markers[0].behavior.filtered);
 }
 

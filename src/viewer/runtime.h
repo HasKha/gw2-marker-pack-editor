@@ -94,7 +94,9 @@ struct LiveTrail {
 // whatever scripts made of it since: Pathing's PackState.Entities.
 struct LiveMap {
     int map_id = kMapUnknown;
-    uint64_t revision = 0; // the Installed::revision it was built from
+    // What it was built from: the Installed::revision, or for the edited pack's, how many times
+    // it was built. Whatever keeps something of it — the map's trail lines — goes by this.
+    uint64_t revision = 0;
 
     std::vector<LiveMarker> markers;
     std::vector<LiveTrail> trails;

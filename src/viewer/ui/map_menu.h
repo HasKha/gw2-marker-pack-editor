@@ -4,6 +4,7 @@
 
 #include <functional>
 #include <string>
+#include <vector>
 
 #include "viewer/map.h"
 #include "viewer/map_scene.h"
@@ -18,7 +19,7 @@ namespace viewer::ui::map_menu {
 struct Context {
     const map_scene::MapScene* scene = nullptr;
     const map::View* view = nullptr;
-    const runtime::LiveMap* live = nullptr; // what the scene's icons index
+    std::vector<const runtime::LiveMap*> live; // what the scene's icons index, by their layer
     const registry::CategoryTree* tree = nullptr;
     store::CategoryStates* states = nullptr;
     glm::vec3 player{0.0f}; // Blish HUD's axes, for how far away

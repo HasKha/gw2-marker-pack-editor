@@ -102,6 +102,7 @@ Recycled<Scene> scenes;
 map::Catalog maps;
 map_scene::FadeIn map_fade;
 map_scene::TrailCache map_trails;
+map_scene::TrailCache edited_map_trails;
 Recycled<map_scene::MapScene> map_scenes;
 
 // What the editor has open, as last reported, and what the viewer has acted on.
@@ -114,6 +115,8 @@ std::filesystem::path edit_applied;
 edited::Report edited_report;
 edited::EditedLive edited_live;
 behaviors::Screen edited_screen;
+// Its markers belong to no node of the shared tree: the editor's tree decided what is in it.
+const std::vector<char> kNoNodes;
 
 bool markers_window = false;
 bool console_window = false;
@@ -363,8 +366,7 @@ void runBehaviors() {
     behaviors::Host edited_host = host;
     edited_host.script = nullptr;
     edited_host.screen = &edited_screen;
-    // Its markers belong to no node of the shared tree: the editor's tree decided what is in it.
-    behaviors::update(&edited_live.live(), {}, edited_host, frame);
+    behaviors::update(&edited_live.live(), kNoNodes, edited_host, frame);
 
     // Not while typing — in chat, or in one of our own text fields.
     const bool typing = mumble_state.is_text_input_focused || ImGui::GetIO().WantTextInput;
@@ -613,11 +615,15 @@ map_scene::Options mapOptions() {
 
 // What the minimap or the full map shows this frame. Nothing on a map the API has not
 // described, as in Pathing.
-void buildMapScene(const TextureLookup& texture) {
+void buildMapScene(const TextureLookup& texture, const TextureLookup& edited_texture) {
     const std::shared_ptr<map_scene::MapScene> next = map_scenes.take();
     const float fade = map_fade.update(mumble_state, ImGui::GetTime());
     if (const map::MapDetails* details = mumble_state.available ? maps.find(mumble_state.map_id) : nullptr) {
-        map_scene::build(live, visible, *details, mumble_state, mapOptions(), fade, uiScale(), texture, &map_trails, next.get());
+        const std::vector<map_scene::Layer> layers{
+            map_scene::Layer{&live, &visible, texture, &map_trails},
+            map_scene::Layer{&edited_live.live(), &kNoNodes, edited_texture, &edited_map_trails},
+        };
+        map_scene::build(layers, *details, mumble_state, mapOptions(), fade, uiScale(), next.get());
     } else {
         *next = map_scene::MapScene{};
     }
@@ -636,7 +642,7 @@ void drawMapMenu() {
     ui::map_menu::Context context;
     context.scene = scene.get();
     context.view = &*view;
-    context.live = &live;
+    context.live = {&live, &edited_live.live()};
     context.tree = &installed.tree;
     context.states = &category_states;
     context.player = mumble_state.player_position;
@@ -695,7 +701,6 @@ void preRender() {
     const TextureLookup edited_texture = [](size_t, const std::string& path) -> ImTextureID {
         return editor.texture ? editor.texture(path) : nullptr;
     };
-    static const std::vector<char> kNoNodes;
     const std::vector<SceneLayer> layers{
         SceneLayer{&live, &visible, texture, false},
         SceneLayer{&edited_live.live(), &kNoNodes, edited_texture, true},
@@ -706,7 +711,7 @@ void preRender() {
     scenes.keep(next);
     publish(next);
 
-    buildMapScene(texture);
+    buildMapScene(texture, edited_texture);
 }
 
 void render() {
@@ -878,6 +883,7 @@ void unload() {
     map_scene::publish(nullptr);
     map_scenes.clear();
     map_trails = map_scene::TrailCache{};
+    edited_map_trails = map_scene::TrailCache{};
     live = runtime::LiveMap{};
     edited_live.clear();
     edited_report = {};

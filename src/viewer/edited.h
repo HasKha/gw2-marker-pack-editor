@@ -73,6 +73,7 @@ private:
     BakedPathables baked_;
     std::vector<char> shown_;
     bool unresolved_ = false; // a trail whose file waits for a later frame
+    uint64_t builds_ = 0; // never reset, so a live map's revision is never reused
     runtime::LiveMap live_;
 };
 

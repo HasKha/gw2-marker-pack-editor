@@ -20,8 +20,9 @@ bool draw(const Context& context) {
     if (!io.WantCaptureMouse) {
         const glm::vec2 mouse(io.MousePos.x, io.MousePos.y);
         const map_scene::Icon* icon = map_scene::hovered(*context.scene, *context.view, mouse);
-        if (icon && icon->marker < context.live->markers.size()) {
-            const runtime::LiveMarker& marker = context.live->markers[icon->marker];
+        const runtime::LiveMap* live = icon && icon->layer < context.live.size() ? context.live[icon->layer] : nullptr;
+        if (live && icon->marker < live->markers.size()) {
+            const runtime::LiveMarker& marker = live->markers[icon->marker];
             if (context.tooltips) {
                 const map_scene::Tooltip tip = map_scene::tooltip(marker, *context.tree, context.player, io.KeyShift);
                 if (!tip.title.empty()) {

@@ -380,8 +380,9 @@ bake moves after the merge.
   render: outlines, handles, missing images, from the scene — see Drawing.
 - **Save** writes the zip as before; the pack stays drawn from the model until the editor
   closes it, then goes back to the registry as a normal one.
-- **Not yet on the maps.** The minimap and the full map draw the installed packs' live map
-  only.
+- **On the maps too.** The minimap and the full map are built over both live maps, as the
+  world is, each with its own trail lines, kept per build of its live map; the tooltip reads
+  either. The menu, which hides a category of the shared tree, has nothing to offer for it.
 
 A gizmo drag is a revision every frame, and each is a bake of the whole pack, as the editor's
 own renderer did before. If a 55k-marker pack hitches under a drag, the bake narrows to the

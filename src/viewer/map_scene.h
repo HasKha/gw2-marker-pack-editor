@@ -47,7 +47,8 @@ struct Options {
 
 // A marker on the map.
 struct Icon {
-    size_t marker = 0; // into LiveMap::markers
+    size_t layer = 0; // which of the layers the scene was built from it is in
+    size_t marker = 0; // into that layer's LiveMap::markers
     ImTextureID texture = nullptr;
     ImU32 colour = IM_COL32_WHITE; // tint, alpha and the map's opacity
     glm::dvec2 continent{0.0};
@@ -66,6 +67,7 @@ struct Line {
 
 // One trail's lines, and the continent box around them, to skip a trail off the map whole.
 struct Path {
+    size_t layer = 0; // whose TrailLines: MapScene::trails[layer]
     size_t first = 0; // into TrailLines::lines
     size_t count = 0;
     glm::dvec2 min{0.0};
@@ -99,7 +101,7 @@ struct MapScene {
     float opacity = 1.0f; // the map's opacity under its fade, for every line and icon
     float trail_width = 2.0f;
     bool fade_far_trails = true;
-    std::shared_ptr<const TrailLines> trails;
+    std::vector<std::shared_ptr<const TrailLines>> trails; // each layer's
     std::vector<Path> paths; // the trails that show, drawn first, under every icon
     std::vector<Icon> icons; // farthest from the camera first, as FlatMap sorts them
 };
@@ -118,9 +120,28 @@ private:
     double since_ = 0.0;
 };
 
-// Builds what the map shows of `live` on `details`' map, for the map MumbleLink has up.
-// `visible` is runtime::visibleNodes; `opacity` the fade-in; `ui_scale` how many screen
-// pixels a UI pixel is; `trails` keeps the trails' lines from one frame to the next.
+// One live map going onto the map.
+struct Layer {
+    const runtime::LiveMap* live = nullptr;
+    const std::vector<char>* visible = nullptr; // runtime::visibleNodes over its nodes
+    TextureLookup texture;
+    TrailCache* trails = nullptr; // its own: a cache keeps one live map's lines
+};
+
+// Builds what the map shows of every layer on `details`' map, for the map MumbleLink has up:
+// each layer's trails, then every icon sorted together. `opacity` is the fade-in; `ui_scale`
+// how many screen pixels a UI pixel is.
+void build(
+    const std::vector<Layer>& layers,
+    const map::MapDetails& details,
+    const MumbleState& mumble,
+    const Options& options,
+    float opacity,
+    float ui_scale,
+    MapScene* out);
+
+// The same over one live map, `visible` being runtime::visibleNodes and `trails` what keeps
+// its lines from one frame to the next.
 void build(
     const runtime::LiveMap& live,
     const std::vector<char>& visible,

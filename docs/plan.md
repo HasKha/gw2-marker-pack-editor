@@ -46,7 +46,7 @@ it, save it back, and the edited markers show correctly in Blish HUD.**
 | Settings | the Settings toggles, gizmo mode, which windows are open and where the browsers start, kept in `settings.json` |
 | Create pack | `New Pack...` builds an empty pack in memory; Save As writes the first zip |
 | Write | serializes the owned document; comments, order, spelling, BOM, CRLF and the file split survive. 947/947 files stable on rewrite |
-| Tests | `mpe_test`, 44 cases over the real pack corpus, the selection rules and the trail editing layer; `mpe_viewer_test`, 166 over the camera, the quad path, textures, settings, the bake, the registry, the ribbon, the scene, the GoodRender sink, the Lua scripts, the behaviors, the maps, the catalog, the edited pack and personal copies, the scripts over every scripted corpus pack, plus one hidden case that reaches the real catalog; and a check that nothing in `src/viewer/` includes the editor. All run by `ctest` |
+| Tests | `mpe_test`, 44 cases over the real pack corpus, the selection rules and the trail editing layer; `mpe_viewer_test`, 167 over the camera, the quad path, textures, settings, the bake, the registry, the ribbon, the scene, the GoodRender sink, the Lua scripts, the behaviors, the maps, the catalog, the edited pack and personal copies, the scripts over every scripted corpus pack, plus one hidden case that reaches the real catalog; and a check that nothing in `src/viewer/` includes the editor. All run by `ctest` |
 
 A pack can be edited end to end, grown new branches, and started from nothing. The test
 row's claims are measured against the corpus in [testing.md](testing.md).
@@ -296,7 +296,7 @@ Blish HUD's folder or ours is copied into `edits` on a worker first, and the cop
 in for the original from then on, is what the editor opens; Delete on a copy brings the
 original back. Whatever the editor has open, however it was opened, the viewer draws from the
 editor's model, baked again per revision, as a live map of its own beside the installed
-packs': GoodRender, fades, filters and all. Its scripts do not run. The editor's renderer is
+packs': GoodRender, fades, filters and all, on the minimap and the full map as well. Its scripts do not run. The editor's renderer is
 gone; what only an editor draws — outlines, picking, point handles, a dot for a missing icon —
 draws over the viewer's scene through `EditorHooks::draw_overlay`, picking by the shapes the
 scene drew.
@@ -310,9 +310,10 @@ scene drew.
   and without it?
 - A marker whose icon is missing: is there a dot where it stands?
 - Save, then close: does the pack go back to drawing from disk, unchanged?
+- Move a marker on the minimap's map: does its icon follow on the minimap as it is dragged?
 
-Not in it: the edited pack on the minimap and the full map, which draw the installed packs
-only; its info text and interact prompt; a toggle to run its scripts while editing.
+Not in it: the edited pack's info text and interact prompt, and a toggle to run its scripts
+while editing.
 
 ### 7. Later
 

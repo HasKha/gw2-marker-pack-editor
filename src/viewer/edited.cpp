@@ -69,6 +69,7 @@ bool EditedLive::resolveTrails(const TrailLookup& trail) {
 void EditedLive::rebuild(int map_id) {
     live_ = runtime::LiveMap{};
     live_.map_id = map_id;
+    live_.revision = ++builds_;
     for (const BakedMarker& marker : baked_.markers) {
         if (marker.map_id == map_id && shown(shown_, marker.pathable)) live_.markers.push_back({0, pack::kNoIndex, marker, 0});
     }

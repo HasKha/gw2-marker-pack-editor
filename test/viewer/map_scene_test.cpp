@@ -206,8 +206,8 @@ TEST_CASE("map scene: a trail is a line per stretch, faded by how far above or b
 
     const map_scene::MapScene scene = build(live, mumble(), {}, 0.5f);
     REQUIRE(scene.paths.size() == 1);
-    REQUIRE(scene.trails);
-    const std::vector<map_scene::Line>& lines = scene.trails->lines;
+    REQUIRE(scene.trails.size() == 1);
+    const std::vector<map_scene::Line>& lines = scene.trails[0]->lines;
     REQUIRE(lines.size() == 3);
     CHECK(scene.paths[0].colour == IM_COL32(0, 255, 0, 255));
     CHECK(roughly(scene.paths[0].min, glm::dvec2(100.0, 700.0)));
@@ -223,7 +223,7 @@ TEST_CASE("map scene: a trail is a line per stretch, faded by how far above or b
     map_scene::Options flat;
     flat.fade_far_trails = false;
     const map_scene::MapScene unfaded = build(live, mumble(), flat);
-    CHECK(map_scene::lineOpacity(unfaded, unfaded.trails->lines[2], 0.0f) == 1.0f);
+    CHECK(map_scene::lineOpacity(unfaded, unfaded.trails[0]->lines[2], 0.0f) == 1.0f);
 }
 
 TEST_CASE("map scene: a trail's lines are laid once per live map and kept") {
@@ -254,6 +254,42 @@ TEST_CASE("map scene: a trail's lines are laid once per live map and kept") {
 
     const map_scene::MapScene scene = build(live);
     CHECK(scene.paths.empty());
+}
+
+TEST_CASE("map scene: every layer's icons are sorted together, and each keeps its own trails") {
+    runtime::LiveMap installed;
+    installed.markers = {marker({100, 0, 100}), marker({500, 0, 500})};
+    installed.trails.push_back(trail({{100, 0, 100}, {200, 0, 300}}));
+    runtime::LiveMap edited;
+    edited.markers = {marker({300, 0, 300})};
+    edited.trails.push_back(trail({{400, 0, 400}, {450, 0, 450}, {500, 0, 400}}));
+
+    const std::vector<char> no_nodes;
+    map_scene::TrailCache installed_trails;
+    map_scene::TrailCache edited_trails;
+    map_scene::MapScene scene;
+    map_scene::build(
+        {map_scene::Layer{&installed, &no_nodes, everyTexture(), &installed_trails},
+         map_scene::Layer{&edited, &no_nodes, everyTexture(), &edited_trails}},
+        squareKilometre(),
+        mumble(),
+        {},
+        1.0f,
+        1.0f,
+        &scene);
+
+    // The farthest from the camera, over the middle of the square, first.
+    REQUIRE(scene.icons.size() == 3);
+    CHECK((scene.icons[0].layer == 0 && scene.icons[0].marker == 0));
+    CHECK((scene.icons[1].layer == 1 && scene.icons[1].marker == 0));
+    CHECK((scene.icons[2].layer == 0 && scene.icons[2].marker == 1));
+
+    REQUIRE(scene.trails.size() == 2);
+    REQUIRE(scene.paths.size() == 2);
+    CHECK(scene.paths[0].layer == 0);
+    CHECK(scene.paths[1].layer == 1);
+    CHECK(scene.trails[1]->lines.size() == 2);
+    CHECK(roughly(scene.trails[1]->lines[scene.paths[1].first].from, glm::dvec2(400.0, 600.0)));
 }
 
 TEST_CASE("map scene: an icon's size follows the zoom unless it keeps its own") {

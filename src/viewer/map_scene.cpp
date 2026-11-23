@@ -201,22 +201,19 @@ float FadeIn::update(const MumbleState& mumble, double seconds) {
 }
 
 void build(
-    const runtime::LiveMap& live,
-    const std::vector<char>& visible,
+    const std::vector<Layer>& layers,
     const map::MapDetails& details,
     const MumbleState& mumble,
     const Options& options,
     float opacity,
     float ui_scale,
-    const TextureLookup& texture,
-    TrailCache* trails,
     MapScene* out) {
     out->full_map = mumble.is_map_open;
     out->ui_scale = ui_scale;
     out->trail_width = options.trail_width;
     out->fade_far_trails = options.fade_far_trails;
     out->opacity = 0.0f;
-    out->trails.reset();
+    out->trails.clear();
     out->paths.clear();
     out->icons.clear();
 
@@ -228,45 +225,69 @@ void build(
     const Visibility marker_level = out->full_map ? options.map_markers : options.minimap_markers;
     const Visibility trail_level = out->full_map ? options.map_trails : options.minimap_trails;
     const float player_height = mumble.player_position.z;
-
-    out->trails = trails->get(live, details);
-    for (size_t i = 0; i < live.trails.size(); ++i) {
-        const runtime::LiveTrail& live_trail = live.trails[i];
-        const BakedTrail& trail = live_trail.trail;
-        if (live_trail.removed || out->trails->paths[i].count == 0 || !runtime::nodeVisible(live_trail.node, visible)) continue;
-        if (live_trail.behavior.filtered && !options.show_hidden) continue;
-        if (!allowed(trail_level, out->full_map ? trail.map_visibility : trail.minimap_visibility)) continue;
-        out->paths.push_back(out->trails->paths[i]);
-    }
-
     const glm::vec3 camera = mumble.camera_position;
-    for (size_t i = 0; i < live.markers.size(); ++i) {
-        const runtime::LiveMarker& live_marker = live.markers[i];
-        const BakedMarker& marker = live_marker.marker;
-        if (live_marker.removed || !runtime::nodeVisible(live_marker.node, visible)) continue;
-        if (live_marker.behavior.filtered && !options.show_hidden) continue;
-        if (!allowed(marker_level, out->full_map ? marker.map_visibility : marker.minimap_visibility)) continue;
-        const ImTextureID image = texture(live_marker.texture_pack, marker.icon);
-        if (!image) continue;
 
-        const glm::vec3 position = markerPosition(marker);
-        Icon icon;
-        icon.marker = i;
-        icon.texture = image;
-        icon.colour = applyOpacity(marker.tint, marker.alpha * out->opacity);
-        icon.continent = map::continentPosition(details, marker.position);
-        icon.size = marker.map_display_size;
-        icon.scale_with_zoom = marker.scale_on_map_with_zoom;
-        if (options.above_below) {
-            const float rise = position.z - player_height;
-            if (std::abs(rise) > kAboveBelowMetres) icon.above_below = rise > 0.0f ? 1 : -1;
+    for (size_t layer = 0; layer < layers.size(); ++layer) {
+        const runtime::LiveMap& live = *layers[layer].live;
+        const std::vector<char>& visible = *layers[layer].visible;
+        const TextureLookup& texture = layers[layer].texture;
+
+        const std::shared_ptr<const TrailLines> lines = layers[layer].trails->get(live, details);
+        out->trails.push_back(lines);
+        for (size_t i = 0; i < live.trails.size(); ++i) {
+            const runtime::LiveTrail& live_trail = live.trails[i];
+            const BakedTrail& trail = live_trail.trail;
+            if (live_trail.removed || lines->paths[i].count == 0 || !runtime::nodeVisible(live_trail.node, visible)) continue;
+            if (live_trail.behavior.filtered && !options.show_hidden) continue;
+            if (!allowed(trail_level, out->full_map ? trail.map_visibility : trail.minimap_visibility)) continue;
+            Path path = lines->paths[i];
+            path.layer = layer;
+            out->paths.push_back(path);
         }
-        const glm::vec3 d = position - camera;
-        icon.depth = glm::dot(d, d);
-        out->icons.push_back(icon);
+
+        for (size_t i = 0; i < live.markers.size(); ++i) {
+            const runtime::LiveMarker& live_marker = live.markers[i];
+            const BakedMarker& marker = live_marker.marker;
+            if (live_marker.removed || !runtime::nodeVisible(live_marker.node, visible)) continue;
+            if (live_marker.behavior.filtered && !options.show_hidden) continue;
+            if (!allowed(marker_level, out->full_map ? marker.map_visibility : marker.minimap_visibility)) continue;
+            const ImTextureID image = texture(live_marker.texture_pack, marker.icon);
+            if (!image) continue;
+
+            const glm::vec3 position = markerPosition(marker);
+            Icon icon;
+            icon.layer = layer;
+            icon.marker = i;
+            icon.texture = image;
+            icon.colour = applyOpacity(marker.tint, marker.alpha * out->opacity);
+            icon.continent = map::continentPosition(details, marker.position);
+            icon.size = marker.map_display_size;
+            icon.scale_with_zoom = marker.scale_on_map_with_zoom;
+            if (options.above_below) {
+                const float rise = position.z - player_height;
+                if (std::abs(rise) > kAboveBelowMetres) icon.above_below = rise > 0.0f ? 1 : -1;
+            }
+            const glm::vec3 d = position - camera;
+            icon.depth = glm::dot(d, d);
+            out->icons.push_back(icon);
+        }
     }
     // Farthest first, so the nearest lands on top; a stable sort keeps the packs' order between equals.
     std::stable_sort(out->icons.begin(), out->icons.end(), [](const Icon& a, const Icon& b) { return a.depth > b.depth; });
+}
+
+void build(
+    const runtime::LiveMap& live,
+    const std::vector<char>& visible,
+    const map::MapDetails& details,
+    const MumbleState& mumble,
+    const Options& options,
+    float opacity,
+    float ui_scale,
+    const TextureLookup& texture,
+    TrailCache* trails,
+    MapScene* out) {
+    build({Layer{&live, &visible, texture, trails}}, details, mumble, options, opacity, ui_scale, out);
 }
 
 bool iconRect(const Icon& icon, const map::View& view, glm::vec2* min, glm::vec2* max) {
@@ -291,7 +312,7 @@ void draw(ImDrawList* list, const MapScene& scene, const map::View& view, float 
     for (const Path& path : scene.paths) {
         if (outside(view, path.min, path.max)) continue;
         for (size_t i = path.first; i < path.first + path.count; ++i) {
-            const Line& line = scene.trails->lines[i];
+            const Line& line = scene.trails[path.layer]->lines[i];
             glm::vec2 from = map::project(view, line.from);
             glm::vec2 to = map::project(view, line.to);
             if (!clipSegment(&from, &to, view.min, view.max)) continue;
