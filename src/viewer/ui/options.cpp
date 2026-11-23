@@ -50,25 +50,53 @@ bool drawPack(settings::Settings* settings, bool* show_hidden) {
     return changed;
 }
 
-bool drawMaps(settings::Settings* settings) {
-    bool changed = ImGui::Checkbox("Show markers on maps", &settings->map_pathables);
-    if (!settings->map_pathables) return changed;
+namespace {
 
-    ImGui::Indent();
-    changed |= visibilityCombo("Markers on the full map", &settings->map_marker_visibility);
-    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Default follows each marker's own choice; Always and Never override it.");
-    changed |= visibilityCombo("Trails on the full map", &settings->map_trail_visibility);
-    changed |= slider("Opacity on the full map", &settings->map_opacity, 0.0f, 1.0f, "%.2f");
-    changed |= visibilityCombo("Markers on the minimap", &settings->minimap_marker_visibility);
-    changed |= visibilityCombo("Trails on the minimap", &settings->minimap_trail_visibility);
-    changed |= slider("Opacity on the minimap", &settings->minimap_opacity, 0.0f, 1.0f, "%.2f");
-    changed |= slider("Trail width on maps", &settings->map_trail_width, 0.5f, 4.5f, "%.1f");
-    changed |= ImGui::Checkbox("Show above/below indicators", &settings->map_above_below);
-    changed |= ImGui::Checkbox("Fade trail segments high above or below", &settings->map_fade_far_trails);
-    changed |= ImGui::Checkbox("Show tooltips on maps", &settings->map_tooltips);
-    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Hold Shift to see a marker's categories instead; right-click to hide one.");
-    ImGui::Unindent();
+void sharedTooltip(const char* also = nullptr) {
+    if (!ImGui::IsItemHovered()) return;
+    if (also) {
+        ImGui::SetTooltip("%s\nShared by the minimap and the full map.", also);
+    } else {
+        ImGui::SetTooltip("Shared by the minimap and the full map.");
+    }
+}
+
+// One map's section: its own settings, then those both maps share, which the other section shows too.
+bool drawMap(const char* id, settings::Settings* settings, int* markers, int* trails, float* opacity) {
+    ImGui::PushID(id);
+    bool changed = ImGui::Checkbox("Show markers on maps", &settings->map_pathables);
+    sharedTooltip();
+    if (settings->map_pathables) {
+        changed |= visibilityCombo("Markers", markers);
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("Default follows each marker's own choice; Always and Never override it.");
+        changed |= visibilityCombo("Trails", trails);
+        changed |= slider("Opacity", opacity, 0.0f, 1.0f, "%.2f");
+        changed |= slider("Trail width", &settings->map_trail_width, 0.5f, 4.5f, "%.1f");
+        sharedTooltip();
+        changed |= ImGui::Checkbox("Show above/below indicators", &settings->map_above_below);
+        sharedTooltip();
+        changed |= ImGui::Checkbox("Fade trail segments high above or below", &settings->map_fade_far_trails);
+        sharedTooltip();
+        changed |= ImGui::Checkbox("Show tooltips", &settings->map_tooltips);
+        sharedTooltip("Hold Shift to see a marker's categories instead; right-click to hide one.");
+    }
+    ImGui::PopID();
     return changed;
+}
+
+} // namespace
+
+bool drawMinimap(settings::Settings* settings) {
+    return drawMap(
+        "minimap",
+        settings,
+        &settings->minimap_marker_visibility,
+        &settings->minimap_trail_visibility,
+        &settings->minimap_opacity);
+}
+
+bool drawFullMap(settings::Settings* settings) {
+    return drawMap("full_map", settings, &settings->map_marker_visibility, &settings->map_trail_visibility, &settings->map_opacity);
 }
 
 } // namespace viewer::ui::options

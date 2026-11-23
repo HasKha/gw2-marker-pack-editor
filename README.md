@@ -37,8 +37,8 @@ what they are about when you walk up, and the game's Interact key, as Nexus's ga
 interacts, copying a waypoint or toggling a category. The options also hold Pathing's choices
 for whether markers may hide themselves, animate or copy to the clipboard. Markers and trails
 show on the minimap and the full map too, with a tooltip when you point at one — Shift shows
-its categories, a right click hides them — and Pathing's map settings under **Maps** in the
-options. With
+its categories, a right click hides them — and Pathing's map settings under **Minimap** and
+**Full map** in the options. With
 [GoodRender](https://github.com/HasKha/gw2-good-render) loaded, markers draw under the game's
 windows and hide behind walls; without it they draw over everything.
 

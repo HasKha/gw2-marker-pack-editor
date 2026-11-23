@@ -929,7 +929,8 @@ void drawOptions() {
     if (ImGui::CollapsingHeader("Markers")) {
         if (ui::options::drawPack(&persisted, &show_hidden)) settings::save(folder, persisted);
     }
-    if (ImGui::CollapsingHeader("Maps") && ui::options::drawMaps(&persisted)) settings::save(folder, persisted);
+    if (ImGui::CollapsingHeader("Minimap") && ui::options::drawMinimap(&persisted)) settings::save(folder, persisted);
+    if (ImGui::CollapsingHeader("Full map") && ui::options::drawFullMap(&persisted)) settings::save(folder, persisted);
 
     if (ImGui::Button("Reload packs")) reloadPacks();
     ImGui::SameLine();

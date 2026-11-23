@@ -11,7 +11,8 @@ namespace viewer::ui::options {
 // never saved.
 bool drawPack(settings::Settings* settings, bool* show_hidden);
 
-// Pathing's map settings.
-bool drawMaps(settings::Settings* settings);
+// Pathing's map settings, a section for each map. Those both maps share are in both.
+bool drawMinimap(settings::Settings* settings);
+bool drawFullMap(settings::Settings* settings);
 
 } // namespace viewer::ui::options
