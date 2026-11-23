@@ -36,7 +36,7 @@ it, save it back, and the edited markers show correctly in Blish HUD.**
 | Resources | the pack's images as a folder tree, with reference counts, a preview, and add / remove pending until a save |
 | Trail editor | map id, the point list, drag fields, point handles in the world, and a Trail menu: reload, export, add circle. A trail whose `.trl` the pack does not have says so and names the file |
 | Tree + properties | category tree with visibility toggles; attribute form generated from the attribute table, per-element attribute sets traced to Pathing, inheritance shown for categories as well as pathables |
-| World | billboards, trail ribbons, rotation, click-to-pick for markers and trail points; nothing drawn while the map is open. Selection is shown by an outline on a marker and by the point handles on a trail — a selected ribbon is left untinted on purpose, so what the pack actually looks like stays readable |
+| World | the open pack drawn by the viewer from the live model, as a player sees it; over it, click-to-pick for markers and trail points, and a dot where an icon is missing; nothing drawn while the map is open. Selection is shown by an outline on a marker and by the point handles on a trail — a selected ribbon is left untinted on purpose, so what the pack actually looks like stays readable |
 | Selection | two independent selections — nodes and trail points — sharing one click rule. ctrl+click in the tree and the world, shift+click ranges in the tree and the point list, world picks reveal the node in the tree. Cleared by a click that hits nothing — blank space in the tree, empty world in the viewport — where a miss lets go of the points first and keeps the trail |
 | 3D edit | ImGuizmo translate/rotate on the selection — markers and trail points alike — anchored on the first node selected; a group rotation orbits the rest about it |
 | Rename | a trail is named by its `traildata` path, and editing that in the details window moves the `.trl` with it, unless the new path already names data — that is a re-point, and nothing is written over |
@@ -46,7 +46,7 @@ it, save it back, and the edited markers show correctly in Blish HUD.**
 | Settings | the Settings toggles, gizmo mode, which windows are open and where the browsers start, kept in `settings.json` |
 | Create pack | `New Pack...` builds an empty pack in memory; Save As writes the first zip |
 | Write | serializes the owned document; comments, order, spelling, BOM, CRLF and the file split survive. 947/947 files stable on rewrite |
-| Tests | `mpe_test`, 44 cases over the real pack corpus, the selection rules and the trail editing layer; `mpe_viewer_test`, 154 over the camera, the quad path, textures, settings, the bake, the registry, the ribbon, the scene, the GoodRender sink, the Lua scripts, the behaviors, the maps and the catalog, the scripts over every scripted corpus pack, plus one hidden case that reaches the real catalog; and a check that nothing in `src/viewer/` includes the editor. All run by `ctest` |
+| Tests | `mpe_test`, 44 cases over the real pack corpus, the selection rules and the trail editing layer; `mpe_viewer_test`, 166 over the camera, the quad path, textures, settings, the bake, the registry, the ribbon, the scene, the GoodRender sink, the Lua scripts, the behaviors, the maps, the catalog, the edited pack and personal copies, the scripts over every scripted corpus pack, plus one hidden case that reaches the real catalog; and a check that nothing in `src/viewer/` includes the editor. All run by `ctest` |
 
 A pack can be edited end to end, grown new branches, and started from nothing. The test
 row's claims are measured against the corpus in [testing.md](testing.md).
@@ -289,11 +289,30 @@ Not in it: Pathing's pack optimizer (TmfLib's PackWriter, which rewrites a downl
 and a catalog other than the public one (Pathing's `PackRepoUrl` setting, which its UI does
 not offer).
 
-### 6. Edit from the viewer
+### 6. Edit from the viewer — done offline
 
-- The Edit button: close the source, hand the pack to the editor, draw it from the live
-  model, pause its scripts, give it back on save. A catalog pack is copied first.
-- The editor's own renderer is retired: its overlays draw through the viewer's hook.
+Built: the **Packs** window, every pack drawn and why one did not load, with Edit. A pack in
+Blish HUD's folder or ours is copied into `edits` on a worker first, and the copy, which stands
+in for the original from then on, is what the editor opens; Delete on a copy brings the
+original back. Whatever the editor has open, however it was opened, the viewer draws from the
+editor's model, baked again per revision, as a live map of its own beside the installed
+packs': GoodRender, fades, filters and all. Its scripts do not run. The editor's renderer is
+gone; what only an editor draws — outlines, picking, point handles, a dot for a missing icon —
+draws over the viewer's scene through `EditorHooks::draw_overlay`, picking by the shapes the
+scene drew.
+
+**Left: one pull in game**, deciding these in advance:
+- Edit a pack from Blish HUD's folder: is it copied, open in the editor, and drawn once, not
+  twice beside the original?
+- Drag a marker of Hero's pack with the gizmo, GoodRender loaded: does it follow without a
+  hitch, and hide behind a wall as it moves?
+- Click a marker, then a trail point: is what is outlined what was clicked, with GoodRender
+  and without it?
+- A marker whose icon is missing: is there a dot where it stands?
+- Save, then close: does the pack go back to drawing from disk, unchanged?
+
+Not in it: the edited pack on the minimap and the full map, which draw the installed packs
+only; its info text and interact prompt; a toggle to run its scripts while editing.
 
 ### 7. Later
 

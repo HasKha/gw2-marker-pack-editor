@@ -58,7 +58,7 @@ struct SourceNode {
 };
 
 // Deleting anything leaves its slot behind. Every index into `categories` and `pathables`
-// is positional — the selection, the tree's per-category lists, the renderer's cache and
+// is positional — the selection, the tree's per-category lists, the viewer's bake and
 // the trail editor all hold them — so erasing an entry would move every entry after it and
 // invalidate all of them at once. A tombstone moves nothing, and it is what makes undo a
 // flag flip rather than a rebuild.

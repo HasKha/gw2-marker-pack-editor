@@ -323,6 +323,7 @@ TEST_CASE("the GoodRender sink submits what the overlay would draw", "[good_rend
 
     viewer::Scene scene;
     viewer::SceneItem billboard;
+    billboard.texture = fakeTexture();
     billboard.kind = viewer::SceneItem::Kind::Billboard;
     billboard.centre = {0, 0, 40};
     billboard.size = 2.0f;
@@ -338,11 +339,17 @@ TEST_CASE("the GoodRender sink submits what the overlay would draw", "[good_rend
     scene.items.push_back(tiny);
 
     viewer::SceneItem quad;
+    quad.texture = fakeTexture();
     quad.corners[0] = {0, 0, 1};
     quad.corners[1] = {1, 0, 1};
     quad.corners[2] = {1, 1, 1};
     quad.corners[3] = {0, 1, 1};
     scene.items.push_back(quad);
+
+    // Kept for the editor's overlay, and drawn by no sink.
+    viewer::SceneItem imageless = quad;
+    imageless.texture = nullptr;
+    scene.items.push_back(imageless);
 
     const good_render::Camera moment_camera = momentCamera(camera);
     good_render::Moment moment{};

@@ -43,15 +43,14 @@ Elements (compared case-insensitively): `overlaydata`, `markercategory`, `pois`,
 `AddOrUpdateAttribute("mapid", ...)` — **overwriting** whatever the XML said. So for a
 trail the `.trl` header is authoritative and the XML `mapid` attribute is ignored.
 
-Two consequences for the renderer and the linter: a `mapid` on a `<trail>` is decorative, and
+Two consequences for drawing and for the linter: a `mapid` on a `<trail>` is decorative, and
 a disagreement between the two is not an error, just a dead attribute.
 
-**Our renderer has to read the header too**, or a trail whose two disagree would draw on a
-different map here than it does in Blish. It cannot be resolved with the rest of a trail's
-attributes, though: reading a `.trl` goes through the per-frame load budget, so
-`TrailDraw::map_id` starts unknown and the draw loop fills it in on the first frame the file
-is there — until then the trail is on no map, exactly as it already was while its geometry
-was still loading. See `editor/world/renderer.cpp`.
+**We read the header too**, or a trail whose two disagree would draw on a different map here
+than it does in Blish. It cannot be resolved with the rest of a trail's attributes, though:
+`BakedTrail::map_id` starts unknown and is filled in once the file is read — by the registry's
+worker for an installed pack, and for the pack open in the editor through the editor's
+per-frame load budget, the trail on no map until its file is there. See `viewer/edited.cpp`.
 
 The attribute is still worth writing, and the editor writes it on a trail it creates: it is
 how a reader tells which map a `<Trail>` is for without opening its `.trl`, which is why every
@@ -74,7 +73,7 @@ TmfLib requires `mapid` and all three of `xpos`/`ypos`/`zpos` on a POI and bails
 that is missing them. **Packs contain such POIs anyway**: `hero.blish.pack` has 679
 position-less POIs carrying `ingamevisibility="0"` and an `empty.png` icon, used as
 invisible anchors for toggles and achievements. Blish drops every one of them. Our reader
-keeps them so they round-trip; the renderer must skip anything without a position.
+keeps them so they round-trip; the bake must skip anything without a position.
 
 ### Explicit vs aggregated attributes
 

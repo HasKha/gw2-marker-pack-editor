@@ -20,7 +20,7 @@ viewer::LoadBudget budget{4};
 viewer::TextureCache textures{"MPE_"};
 
 // Misses are cached too, so a missing trail is not retried every frame.
-std::unordered_map<std::string, std::unique_ptr<pack::trl::Trail>> trails;
+std::unordered_map<std::string, std::shared_ptr<const pack::trl::Trail>> trails;
 
 // The bytes behind a normalized path. Added in the editor and not saved yet, those bytes are
 // the truth for this path: the trail editor writes its working copy back as a pending asset,
@@ -83,30 +83,29 @@ ImTextureID texture(const std::string& path) {
     return image(path).texture;
 }
 
-const pack::trl::Trail* trail(const std::string& path, bool* deferred) {
+std::shared_ptr<const pack::trl::Trail> trail(const std::string& path, bool* deferred) {
     if (deferred) *deferred = false;
     if (path.empty()) return nullptr;
 
     const std::string key = pack::normalizePath(path);
     auto it = trails.find(key);
-    if (it != trails.end()) return it->second.get();
+    if (it != trails.end()) return it->second;
 
     if (!budget.take()) {
         if (deferred) *deferred = true;
         return nullptr;
     }
 
-    std::unique_ptr<pack::trl::Trail> parsed;
+    std::shared_ptr<const pack::trl::Trail> parsed;
     std::vector<uint8_t> bytes;
     if (readAsset(key, &bytes)) {
-        auto candidate = std::make_unique<pack::trl::Trail>();
+        auto candidate = std::make_shared<pack::trl::Trail>();
         std::string error;
         if (pack::trl::read(bytes, candidate.get(), &error)) parsed = std::move(candidate);
     }
 
-    const pack::trl::Trail* result = parsed.get();
-    trails.emplace(key, std::move(parsed));
-    return result;
+    trails.emplace(key, parsed);
+    return parsed;
 }
 
 } // namespace resources

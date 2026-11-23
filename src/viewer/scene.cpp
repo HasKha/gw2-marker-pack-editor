@@ -23,24 +23,17 @@ float squaredDistance(const glm::vec3& a, const glm::vec3& b) {
     return glm::dot(d, d);
 }
 
-} // namespace
-
-void buildScene(
-    const runtime::LiveMap& live,
-    const std::vector<char>& visible,
+// Appends one layer's items to `out`, unsorted. `settings_opacity` is GetOpacity's settings,
+// the same for every marker and trail.
+void appendLayer(
+    const SceneLayer& layer,
     const Camera& camera,
     float seconds,
     const WorldOptions& options,
-    const TextureLookup& texture,
+    float settings_opacity,
     Scene* out) {
-    out->items.clear();
-
-    // With the map up the world is not on screen, and anything drawn would sit at positions
-    // that mean nothing over it.
-    if (!camera.valid || camera.map_open || !options.enabled) return;
-
-    // GetOpacity's settings, the same for every marker and trail.
-    const float settings_opacity = options.max_opacity * (options.combat_fade && options.in_combat ? 0.5f : 1.0f);
+    const runtime::LiveMap& live = *layer.live;
+    const std::vector<char>& visible = *layer.visible;
 
     for (const runtime::LiveMarker& live_marker : live.markers) {
         const BakedMarker& marker = live_marker.marker;
@@ -62,11 +55,12 @@ void buildScene(
         const float size = marker.icon_size * 2.0f * options.marker_scale;
         if (glm::dot(position - camera.position, camera.front) < -size) continue;
 
-        const ImTextureID image = texture(live_marker.texture_pack, marker.icon);
-        if (!image) continue;
+        const ImTextureID image = layer.texture(live_marker.texture_pack, marker.icon);
+        if (!image && !layer.edited) continue;
 
         SceneItem item;
         item.texture = image;
+        if (layer.edited) item.pathable = marker.pathable;
         item.colour = applyOpacity(marker.tint, opacity);
         item.depth = squaredDistance(position, camera.position);
         if (marker.has_rotation) {
@@ -86,7 +80,7 @@ void buildScene(
         out->items.push_back(item);
     }
 
-    // Kept between frames: the quads of one trail run are only needed until they are copied
+    // Kept between calls: the quads of one trail run are only needed until they are copied
     // into the scene.
     static std::vector<RibbonQuad> quads;
     for (const runtime::LiveTrail& live_trail : live.trails) {
@@ -94,8 +88,8 @@ void buildScene(
         if (live_trail.removed || !trail.in_game_visibility || !trail.geometry || !runtime::nodeVisible(live_trail.node, visible)) continue;
         if (live_trail.behavior.filtered && !options.show_hidden) continue;
 
-        const ImTextureID image = texture(live_trail.texture_pack, trail.texture);
-        if (!image) continue;
+        const ImTextureID image = layer.texture(live_trail.texture_pack, trail.texture);
+        if (!image && !layer.edited) continue;
 
         // StandardTrail.World.Render: the view distance caps the fade, in the fade's inches.
         const float fade_far = std::min(trail.fade_far, options.view_distance);
@@ -120,12 +114,40 @@ void buildScene(
                 std::copy(std::begin(quad.corners), std::end(quad.corners), item.corners);
                 std::copy(std::begin(quad.uv), std::end(quad.uv), item.uv);
                 item.depth = squaredDistance(middle, camera.position);
+                if (layer.edited) {
+                    item.pathable = trail.pathable;
+                    item.is_trail = true;
+                }
                 out->items.push_back(item);
             }
         }
     }
+}
+
+} // namespace
+
+void buildScene(const std::vector<SceneLayer>& layers, const Camera& camera, float seconds, const WorldOptions& options, Scene* out) {
+    out->items.clear();
+
+    // With the map up the world is not on screen, and anything drawn would sit at positions
+    // that mean nothing over it.
+    if (!camera.valid || camera.map_open || !options.enabled) return;
+
+    const float settings_opacity = options.max_opacity * (options.combat_fade && options.in_combat ? 0.5f : 1.0f);
+    for (const SceneLayer& layer : layers) appendLayer(layer, camera, seconds, options, settings_opacity, out);
 
     std::sort(out->items.begin(), out->items.end(), [](const SceneItem& a, const SceneItem& b) { return a.depth > b.depth; });
+}
+
+void buildScene(
+    const runtime::LiveMap& live,
+    const std::vector<char>& visible,
+    const Camera& camera,
+    float seconds,
+    const WorldOptions& options,
+    const TextureLookup& texture,
+    Scene* out) {
+    buildScene({SceneLayer{&live, &visible, texture, false}}, camera, seconds, options, out);
 }
 
 bool itemCorners(const Camera& camera, const SceneItem& item, glm::vec3 out_corners[4], const ImVec2** out_uv) {

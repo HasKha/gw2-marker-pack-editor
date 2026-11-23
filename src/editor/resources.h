@@ -44,12 +44,12 @@ void forget(const std::string& path);
 viewer::Image image(const std::string& path);
 ImTextureID texture(const std::string& path);
 
-// nullptr if the file is missing or unparseable. The returned Trail is owned by the
-// cache and stays valid until setSource or shutdown.
+// nullptr if the file is missing or unparseable. Shared, because the viewer draws the open
+// pack's trails from it and keeps one past setSource, forget or shutdown.
 //
 // `deferred` tells the two kinds of nullptr apart: true means the frame's budget was spent
 // before the read was attempted, so next frame will do better; false means it was tried and
 // the miss is cached, so no later frame will.
-const pack::trl::Trail* trail(const std::string& path, bool* deferred = nullptr);
+std::shared_ptr<const pack::trl::Trail> trail(const std::string& path, bool* deferred = nullptr);
 
 } // namespace resources

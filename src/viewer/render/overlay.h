@@ -9,7 +9,7 @@
 #include "viewer/scene.h"
 
 // World-space quads drawn into an ImGui draw list: the sink used when GoodRender is not
-// served, and how the editor draws the world.
+// served, and what the editor's overlay projects its outlines with.
 //
 // A draw list is two triangles with affine texture coordinates and no depth, so two things
 // the GPU would do for free are done here instead: clipping against the near plane, and

@@ -18,9 +18,9 @@
 // A pack resolved for drawing: every inherited attribute looked up once, so a frame never
 // walks the category chain.
 //
-// Both halves draw from this. The viewer bakes each pack once, on its worker; the editor bakes
-// its open pack again whenever State::revision moves. One reading of inheritance for both is
-// what keeps what an author sees and what a player sees from disagreeing.
+// Every pack is drawn from this. The viewer bakes each installed pack once, on its worker, and the
+// pack open in the editor again whenever State::revision moves. One reading of inheritance for
+// both is what keeps what an author sees and what a player sees from disagreeing.
 namespace viewer {
 
 // Where a POI sits and how it is oriented, resolved through the category chain.
@@ -91,8 +91,8 @@ struct BakedTrail {
     // does `AddOrUpdateAttribute("mapid", ...)`, overwriting whatever the XML said, so the
     // header is what decides which map Pathing draws a trail on and the attribute is dead
     // weight — see docs/format.md. So it is unknown until the file has been read, by
-    // whoever reads it: the registry does so for every trail on its worker, the editor one at
-    // a time as its load budget allows.
+    // whoever reads it: the registry does so for every trail on its worker, the edited pack's
+    // are read through the editor's cache as its load budget allows.
     int map_id = kMapUnknown;
 
     float alpha = 1.0f;
@@ -117,8 +117,8 @@ struct BakedTrail {
 
     std::shared_ptr<const behaviors::Behaviors> behaviors; // filters and script only; null for none
 
-    // The points, when they were read up front. Null in the editor, which reads them through
-    // its own cache so that an edit shows at once.
+    // The points, once read: up front for an installed pack; for the edited pack, from the
+    // editor's cache, which holds its unsaved edits, so that an edit shows at once.
     std::shared_ptr<const pack::trl::Trail> geometry;
 };
 

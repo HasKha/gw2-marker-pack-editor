@@ -87,6 +87,7 @@ void submit(const good_render::Moment& moment, const Scene& scene) {
     const Camera camera = cameraFromMoment(*moment.camera, glm::vec2(moment.width / scale, moment.height / scale));
 
     for (const SceneItem& item : scene.items) {
+        if (!item.texture) continue;
         // A billboard goes through world_quad as the overlay's quad, not through
         // world_billboard: Blish's billboard faces the ray to its own centre rather than the
         // camera's plane, and its size is clamped on its projected corners.

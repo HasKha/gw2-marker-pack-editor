@@ -18,6 +18,8 @@
 #include "viewer/camera.h"
 #include "viewer/catalog.h"
 #include "viewer/downloads.h"
+#include "viewer/edited.h"
+#include "viewer/edits.h"
 #include "viewer/map.h"
 #include "viewer/map_scene.h"
 #include "viewer/mumble.h"
@@ -35,6 +37,7 @@
 #include "viewer/ui/map_menu.h"
 #include "viewer/ui/options.h"
 #include "viewer/ui/pack_catalog.h"
+#include "viewer/ui/pack_list.h"
 #include "viewer/ui/script_console.h"
 #include "viewer/utc.h"
 
@@ -105,9 +108,23 @@ Recycled<map_scene::MapScene> map_scenes;
 std::filesystem::path edit_requested;
 std::filesystem::path edit_applied;
 
+// The pack open in the editor, drawn from its model. Its behaviors run, with no scripts and a
+// screen of their own that is not drawn: a marker's info and prompt index the live map it is
+// in, and the one the player sees belongs to the installed packs'.
+edited::Report edited_report;
+edited::EditedLive edited_live;
+behaviors::Screen edited_screen;
+
 bool markers_window = false;
 bool console_window = false;
 bool catalog_window = false;
+bool packs_window = false;
+
+// Edit's copy of a pack into the edits folder, which runs on a worker, where it goes, and what
+// Edit last had to say.
+std::unique_ptr<Background<std::string>> edit_copy;
+std::filesystem::path edit_copy_target;
+std::string edit_status;
 
 // The public catalog: its list, asked for at load; the downloads into our folder; the per-pack
 // choices; every pack on disk as the catalog sees them; and whether this session's automatic
@@ -166,6 +183,10 @@ std::filesystem::path packsFolder() {
     return folder.empty() ? folder : folder / PACKS_FOLDER;
 }
 
+std::filesystem::path editsFolder() {
+    return folder.empty() ? folder : folder / edits::FOLDER;
+}
+
 std::filesystem::path catalogFile() {
     return folder.empty() ? folder : folder / catalog::STATE_FILE_NAME;
 }
@@ -216,14 +237,17 @@ void runScripts() {
     scripts->tick(ImGui::GetTime(), io.DeltaTime);
 }
 
-// Every pack in our own folder and, unless turned off, in Blish HUD's, less those of Blish
-// HUD's one of ours stands in for.
-std::vector<std::filesystem::path> discoverAll() {
+// Lists every pack: the personal copies, our own folder's and, unless turned off, Blish HUD's,
+// each hiding the later ones' packs of the same name. The catalog sees the last two only: a
+// personal copy is the player's, not the catalog's.
+void discover() {
+    std::vector<std::filesystem::path> copies;
     std::vector<std::filesystem::path> ours;
     if (!folder.empty()) {
         std::error_code ec;
         std::filesystem::create_directories(packsFolder(), ec);
         ours = registry::discoverPacks(packsFolder());
+        if (std::filesystem::is_directory(editsFolder(), ec)) copies = registry::discoverPacks(editsFolder());
     }
     std::vector<std::filesystem::path> blish;
     if (persisted.read_blish_folder) {
@@ -231,12 +255,8 @@ std::vector<std::filesystem::path> discoverAll() {
         std::error_code ec;
         if (!blish_folder.empty() && std::filesystem::is_directory(blish_folder, ec)) blish = registry::discoverPacks(blish_folder);
     }
-    return registry::mergeSources(std::move(ours), blish);
-}
-
-void setDiscovered(std::vector<std::filesystem::path> paths) {
-    discovered = std::move(paths);
-    local_packs = catalog::localPacks(discovered, packsFolder());
+    local_packs = catalog::localPacks(registry::mergeSources({ours, blish}), packsFolder());
+    discovered = registry::mergeSources({copies, ours, blish});
 }
 
 bool isDiscovered(const std::filesystem::path& path) {
@@ -246,7 +266,7 @@ bool isDiscovered(const std::filesystem::path& path) {
 }
 
 void discoverAndLoad() {
-    setDiscovered(discoverAll());
+    discover();
     loader.add(discovered);
 }
 
@@ -259,7 +279,7 @@ void syncPacks() {
         return;
     }
     sync_pending = false;
-    setDiscovered(discoverAll());
+    discover();
 
     std::vector<std::filesystem::path> gone;
     for (const std::unique_ptr<runtime::InstalledPack>& pack : installed.packs) {
@@ -269,7 +289,10 @@ void syncPacks() {
 
     std::vector<std::filesystem::path> added;
     for (const std::filesystem::path& path : discovered) {
-        if (!runtime::isInstalled(installed, path) && !registry::samePack(path, edit_applied)) added.push_back(path);
+        if (runtime::isInstalled(installed, path) || registry::samePack(path, edit_applied) || registry::samePack(path, edit_requested)) {
+            continue;
+        }
+        added.push_back(path);
     }
     loader.add(std::move(added));
 }
@@ -337,6 +360,12 @@ void runBehaviors() {
     const behaviors::Frame frame = behaviorFrame();
     behaviors::update(&live, visible, host, frame);
 
+    behaviors::Host edited_host = host;
+    edited_host.script = nullptr;
+    edited_host.screen = &edited_screen;
+    // Its markers belong to no node of the shared tree: the editor's tree decided what is in it.
+    behaviors::update(&edited_live.live(), {}, edited_host, frame);
+
     // Not while typing — in chat, or in one of our own text fields.
     const bool typing = mumble_state.is_text_input_focused || ImGui::GetIO().WantTextInput;
     if (interact_pressed.exchange(false) && !typing) behaviors::interact(&live, host, frame);
@@ -380,7 +409,8 @@ void installDownloads() {
     if (any) syncPacks();
 }
 
-// Deletes one of our own packs from disk. Blish HUD's folder is only ever read.
+// Deletes one of our own packs, or a personal copy, from disk. Blish HUD's folder is only ever
+// read.
 void deletePack(const std::filesystem::path& path) {
     if (registry::samePack(path, edit_applied)) return;
     runtime::uninstall(&installed, path);
@@ -467,9 +497,82 @@ void drawCatalog() {
     if (retry) startCatalogRequest();
 }
 
+// Hands `path` to the editor, which draws it from then on, and lists the packs again: a new
+// personal copy stands in for the pack it was copied from.
+void openInEditor(const std::filesystem::path& path) {
+    edit_status = editor.open_pack(path);
+    if (!edit_status.empty()) return;
+    edit_requested = path;
+    syncPacks();
+}
+
+// Edit: a personal copy in place, any other pack by way of a copy into the edits folder, made on
+// a worker since a large pack takes a while.
+void editPack(const std::filesystem::path& path) {
+    if (!editor.open_pack || edit_copy) return;
+    const std::filesystem::path target = edits::target(path, editsFolder());
+    if (target.empty()) {
+        edit_status = "A folder pack is edited in place: open it from the editor's File menu.";
+        return;
+    }
+    std::error_code ec;
+    if (std::filesystem::exists(target, ec)) {
+        openInEditor(target);
+        return;
+    }
+    edit_status = "Copying " + path.filename().string() + " into your edits...";
+    edit_copy_target = target;
+    edit_copy = std::make_unique<Background<std::string>>();
+    edit_copy->start([from = path, to = target]() -> std::optional<std::string> { return edits::copy(from, to); });
+}
+
+// Opens the copy Edit made, once it is made.
+void finishEditCopy() {
+    if (!edit_copy || !edit_copy->finished()) return;
+    const std::string error = edit_copy->get() ? *edit_copy->get() : "the copy did not finish";
+    edit_copy.reset();
+    if (error.empty()) {
+        openInEditor(edit_copy_target);
+    } else {
+        edit_status = error;
+    }
+}
+
 std::string loadingStatus() {
     if (!loader.busy()) return std::to_string(installed.packs.size()) + " packs";
     return "Loading packs: " + std::to_string(installed.packs.size()) + " of " + std::to_string(discovered.size());
+}
+
+// Which folder a pack is in, as the player knows it.
+std::string packFolderName(const std::filesystem::path& path, const std::filesystem::path& blish_folder) {
+    if (registry::isInside(path, editsFolder())) return "your edits";
+    if (registry::isInside(path, packsFolder())) return "downloaded";
+    if (registry::isInside(path, blish_folder)) return "Blish HUD's";
+    return path.parent_path().string();
+}
+
+void drawPackList() {
+    finishEditCopy();
+    if (!packs_window) return;
+
+    std::vector<ui::pack_list::Row> rows;
+    std::vector<std::filesystem::path> paths;
+    const std::filesystem::path blish_folder = registry::blishMarkersFolder();
+    const auto add = [&](const std::filesystem::path& path, const std::string& error, bool in_editor) {
+        rows.push_back(
+            {path.filename().string(), packFolderName(path, blish_folder), error, registry::isInside(path, editsFolder()), in_editor});
+        paths.push_back(path);
+    };
+    if (!edit_applied.empty()) add(edit_applied, "", true);
+    for (const std::unique_ptr<runtime::InstalledPack>& pack : installed.packs) add(pack->loaded->path, pack->loaded->error, false);
+
+    const std::string status = edit_status.empty() ? loadingStatus() : edit_status;
+    const std::optional<ui::pack_list::Action> action = ui::pack_list::draw(rows, editor.open_pack && !edit_copy, status, &packs_window);
+    if (!action) return;
+    switch (action->kind) {
+    case ui::pack_list::Action::Kind::Edit: editPack(paths[action->row]); break;
+    case ui::pack_list::Action::Kind::Delete: deletePack(paths[action->row]); break;
+    }
 }
 
 // Screen pixels per UI pixel: Nexus's own scaling, which follows the interface size and the
@@ -557,6 +660,12 @@ void preRender() {
     if (camera.valid && (live.map_id != static_cast<int>(camera.map_id) || live.revision != installed.revision)) {
         replaceLiveMap(static_cast<int>(camera.map_id));
     }
+    const edited::TrailLookup edited_trail = [](const std::string& path, bool* deferred) {
+        return editor.trail ? editor.trail(path, deferred) : nullptr;
+    };
+    const int edited_map = camera.valid ? static_cast<int>(camera.map_id) : edited_live.live().map_id;
+    // What the old entities put on screen goes with them, as with the installed packs' live map.
+    if (edited_live.update(edited_report, edited_map, edited_trail)) edited_screen = behaviors::Screen{};
     mumble_state = mumbleState(mumble_link);
     runScripts();
 
@@ -583,8 +692,17 @@ void preRender() {
         return installed_pack.textures.get(pack::normalizePath(path), texture_budget, read).texture;
     };
 
+    const TextureLookup edited_texture = [](size_t, const std::string& path) -> ImTextureID {
+        return editor.texture ? editor.texture(path) : nullptr;
+    };
+    static const std::vector<char> kNoNodes;
+    const std::vector<SceneLayer> layers{
+        SceneLayer{&live, &visible, texture, false},
+        SceneLayer{&edited_live.live(), &kNoNodes, edited_texture, true},
+    };
+
     const std::shared_ptr<Scene> next = scenes.take();
-    buildScene(live, visible, camera, static_cast<float>(ImGui::GetTime()), worldOptions(), texture, next.get());
+    buildScene(layers, camera, static_cast<float>(ImGui::GetTime()), worldOptions(), next.get());
     scenes.keep(next);
     publish(next);
 
@@ -592,17 +710,16 @@ void preRender() {
 }
 
 void render() {
+    const ImVec2 display = ImGui::GetIO().DisplaySize;
+    const Camera camera = fromMumble(mumble_link, glm::vec2(display.x, display.y));
+    const std::shared_ptr<const Scene> scene = published();
+
     // The overlay only on a frame GoodRender did not reach: no service, a loading screen.
-    if (!good_render_sink::takeDrawn()) {
-        if (const std::shared_ptr<const Scene> scene = published()) {
-            const ImVec2 display = ImGui::GetIO().DisplaySize;
-            const Camera camera = fromMumble(mumble_link, glm::vec2(display.x, display.y));
-            // Behind our own windows and the editor's, but over the game.
-            if (camera.valid) overlay::drawScene(ImGui::GetBackgroundDrawList(), camera, *scene);
-        }
-    }
+    // Behind our own windows and the editor's, but over the game.
+    if (!good_render_sink::takeDrawn() && scene && camera.valid) overlay::drawScene(ImGui::GetBackgroundDrawList(), camera, *scene);
+    // Over the world however it was drawn: the editor's outlines, handles and missing images.
+    if (editor.draw_overlay && scene && camera.valid && !camera.map_open) editor.draw_overlay(camera, *scene);
     if (!good_render_sink::takeMapDrawn()) {
-        const ImVec2 display = ImGui::GetIO().DisplaySize;
         map_scene::drawPublished(ImGui::GetBackgroundDrawList(), mumble_link, glm::vec2(display.x, display.y));
     }
     drawMapMenu();
@@ -614,9 +731,8 @@ void render() {
     if (ui::category_menu::draw(installed.tree, &category_states, &markers_window, loadingStatus(), script_menu)) saveStates();
     ui::script_console::draw(*scripts, installed, &console_window);
     drawCatalog();
+    drawPackList();
 
-    const ImVec2 display = ImGui::GetIO().DisplaySize;
-    const Camera camera = fromMumble(mumble_link, glm::vec2(display.x, display.y));
     if (camera.valid && !camera.map_open &&
         ui::interaction::draw(
             screen,
@@ -666,6 +782,8 @@ void drawOptions() {
     ImGui::Checkbox("Script console", &console_window);
     ImGui::SameLine();
     ImGui::Checkbox("Pack catalog", &catalog_window);
+    ImGui::SameLine();
+    ImGui::Checkbox("Packs", &packs_window);
 
     if (editor.draw_options) {
         ImGui::Separator();
@@ -677,6 +795,7 @@ void drawQuickAccess() {
     if (ImGui::MenuItem("Markers")) markers_window = !markers_window;
     if (ImGui::MenuItem("Script console")) console_window = !console_window;
     if (ImGui::MenuItem("Pack catalog")) catalog_window = !catalog_window;
+    if (ImGui::MenuItem("Packs")) packs_window = !packs_window;
 }
 
 void onMarkersKeybind(const char*, bool is_release) {
@@ -748,6 +867,7 @@ void unload() {
     loader.stop();
     downloads.stop();
     catalog_request.reset();
+    edit_copy.reset();
     festivals.stop();
     maps.stop();
     saveStates();
@@ -759,6 +879,9 @@ void unload() {
     map_scenes.clear();
     map_trails = map_scene::TrailCache{};
     live = runtime::LiveMap{};
+    edited_live.clear();
+    edited_report = {};
+    edited_screen = behaviors::Screen{};
     installed = runtime::Installed{};
     editor = {};
     api = nullptr;
@@ -772,8 +895,9 @@ void connectEditor(const EditorHooks& hooks) {
     editor = hooks;
 }
 
-void setEditedPack(const std::filesystem::path& path) {
-    edit_requested = path;
+void setEditedPack(const edited::Report& report) {
+    edited_report = report;
+    edit_requested = report.path;
 }
 
 } // namespace viewer

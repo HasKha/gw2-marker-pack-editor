@@ -50,8 +50,8 @@ bool Camera::billboardQuad(const glm::vec3& world_position, float world_size, gl
     // The formula is copied verbatim, but the space is not: Blish's is right-handed and
     // Mumble's is left-handed, so the `right` that comes out points the opposite way —
     // screen right here, screen left there. That is not a bug to correct. It is what
-    // cancels the horizontal half of Blish's inverted UVs, and the renderer's UV table
-    // depends on it. See kBillboardUv in renderer.cpp.
+    // cancels the horizontal half of Blish's inverted UVs, and the billboard's UV table
+    // depends on it. See kBillboardUv in bake.cpp.
     glm::vec3 right = glm::cross(glm::vec3(0.0f, 1.0f, 0.0f), direction);
     const float right_length = glm::length(right);
     if (right_length < 0.0001f) {

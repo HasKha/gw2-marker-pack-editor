@@ -55,7 +55,7 @@ void AddonLoad(AddonAPI* aApi) {
     // Off means inert: with editing disabled the editor registers nothing at all.
     if (viewer::editingEnabled()) {
         marker_editor::load(aApi, mumble_link);
-        viewer::connectEditor(viewer::EditorHooks{marker_editor::drawOptions});
+        viewer::connectEditor(marker_editor::hooks());
     }
 }
 

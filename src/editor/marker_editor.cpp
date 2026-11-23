@@ -22,7 +22,7 @@
 #include "editor/ui/windows.h"
 #include "editor/undo.h"
 #include "editor/world/gizmo.h"
-#include "editor/world/renderer.h"
+#include "editor/world/overlay.h"
 #include "pack/source.h"
 #include "pack/writer.h"
 #include "pack/xml_reader.h"
@@ -171,8 +171,8 @@ void openPack(std::filesystem::path path) {
         return;
     }
 
-    // The renderer reads icons and .trl data straight out of the source as markers become
-    // visible, so it has to outlive the load.
+    // Icons and .trl data are read straight out of the source as markers become visible, so
+    // it has to outlive the load.
     resources::setSource(std::move(source));
 
     state.rebuildIndex();
@@ -263,8 +263,8 @@ UINT onWndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 
     // A trail point handle wins over the marker behind it: the handles are small, only the
     // open trail has them, and they are drawn precisely to be aimed at.
-    const size_t point = world::renderer::hoveredTrailPoint();
-    const size_t hovered = world::renderer::hoveredPathable();
+    const size_t point = world::overlay::hoveredTrailPoint();
+    const size_t hovered = world::overlay::hoveredPathable();
     if (point == pack::kNoIndex && hovered == pack::kNoIndex) {
         // Nothing under the cursor. A plain click here deselects, so watch for the button
         // coming back up without a drag in between. Not with ctrl or shift held: those mean
@@ -293,6 +293,20 @@ std::string assetSummary(const pack::SaveResult& result) {
     if (result.assets_added > 0 && result.assets_removed > 0) summary += ", ";
     if (result.assets_removed > 0) summary += "-" + std::to_string(result.assets_removed) + " removed";
     return summary + ")";
+}
+
+// The viewer draws the open pack from its model, and lets go of the file it was read from so a
+// save can replace it. Every frame, after the frame's edits, so the viewer bakes what is there.
+void reportToViewer() {
+    viewer::edited::Report report;
+    // Only while a pack is open: one that failed to open leaves the last path behind.
+    if (state.loaded) {
+        report.path = open_pack_path;
+        report.pack = &state.pack;
+        report.revision = state.revision;
+        report.shown = &state.pathable_visible;
+    }
+    viewer::setEditedPack(report);
 }
 
 // Writes the pack back to `target`. A folder pack updates its changed .xml files in place;
@@ -936,8 +950,6 @@ void render() {
 
     resources::beginFrame();
     undo::beginFrame();
-    // The viewer lets go of the pack open here, so it is drawn once and a save can replace it.
-    viewer::setEditedPack(open_pack_path);
     // Compares and writes only when something moved, so this is free on almost every frame.
     settings::update(state.settings, last_folder, last_image_folder);
 
@@ -952,14 +964,14 @@ void render() {
         trail_edit::close(state);
     }
 
-    // The world is drawn whether or not any editor window is open — the point is to see
-    // the pack in the game.
-    // ImGui's display size, not NexusLinkData's — see fromMumble. Everything below draws
-    // into an ImGui draw list, so that is the space the projection has to land in.
+    // ImGui's display size, not NexusLinkData's — see fromMumble. The gizmo draws into an ImGui
+    // draw list, so that is the space the projection has to land in.
     const ImVec2 display = ImGui::GetIO().DisplaySize;
     const viewer::Camera camera = viewer::fromMumble(mumble_link, glm::vec2(display.x, display.y));
     frame_camera = camera;
-    world::renderer::draw(state, camera);
+    // The viewer draws the pack, and the overlay over it, only while the world is on screen;
+    // otherwise nothing may stay hovered for a click to pick.
+    if (!state.loaded || !camera.valid || camera.map_open) world::overlay::clearHovered();
 
     // After the markers so it draws over them, and so it can claim the click first.
     const bool gizmo_active = world::gizmo::draw(state, camera);
@@ -995,6 +1007,18 @@ void render() {
     drawResourcesWindow();
 
     applyPendingAction();
+    reportToViewer();
+}
+
+// The viewer's Edit. Refused while the pack open now has edits not saved: those are the
+// author's to save or discard, in the editor's own prompt.
+std::string openFromViewer(const std::filesystem::path& path) {
+    if (state.dirty) return "The pack open in the editor has changes not saved: save or close it first.";
+    openPack(path);
+    if (!state.loaded) return status_message;
+    // The tree is where editing starts, wherever the windows were left.
+    ui::windows::visible(ui::windows::Id::Tree) = true;
+    return {};
 }
 
 void drawQuickAccess() {
@@ -1027,6 +1051,16 @@ void drawOptions() {
     ImGui::Text("Editor windows");
     ui::windows::drawOptions();
     ImGui::Text("The keybind and the Nexus menu item hide and restore all of them at once.");
+}
+
+viewer::EditorHooks hooks() {
+    viewer::EditorHooks hooks;
+    hooks.draw_options = drawOptions;
+    hooks.open_pack = openFromViewer;
+    hooks.texture = resources::texture;
+    hooks.trail = [](const std::string& path, bool* deferred) { return resources::trail(path, deferred); };
+    hooks.draw_overlay = [](const viewer::Camera& camera, const viewer::Scene& scene) { world::overlay::draw(state, camera, scene); };
+    return hooks;
 }
 
 void load(AddonAPI* _api, Mumble::Data* _mumble_link) {
@@ -1063,6 +1097,8 @@ void unload() {
     api->InputBinds.Deregister(KEYBIND_UNDO_ID);
     api->InputBinds.Deregister(KEYBIND_REDO_ID);
     api->WndProc.Deregister(onWndProc);
+    // The viewer must not read a model that is about to go.
+    viewer::setEditedPack({});
     file_dialog::shutdown();
     resources::shutdown();
 }

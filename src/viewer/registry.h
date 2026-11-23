@@ -29,14 +29,19 @@ std::filesystem::path blishMarkersFolder();
 // names — in the same order every time.
 std::vector<std::filesystem::path> discoverPacks(const std::filesystem::path& folder);
 
-// Our folder's packs, then `others` less any that one of ours stands in for: a pack whose
-// file name, less its extension, is one of ours, ignoring case. A catalog pack updated into our
-// folder is then not drawn twice beside Blish HUD's older copy of it.
-std::vector<std::filesystem::path> mergeSources(std::vector<std::filesystem::path> ours, const std::vector<std::filesystem::path>& others);
+// Every tier's packs, first tier first, less any that a pack of an earlier tier stands in for:
+// one whose file name, less its extension, is the same, ignoring case. A catalog pack updated
+// into our folder is then not drawn twice beside Blish HUD's older copy of it, nor a personal
+// copy beside the pack it was copied from.
+std::vector<std::filesystem::path> mergeSources(const std::vector<std::vector<std::filesystem::path>>& tiers);
 
 // Whether two paths name the same pack: the same file or folder however spelled, or — when
 // one is gone from disk — the same path once normalized. Never for an empty path.
 bool samePack(const std::filesystem::path& a, const std::filesystem::path& b);
+
+// Whether `path` is `folder` or under it, by their spelling once normalized. Never for an empty
+// folder.
+bool isInside(const std::filesystem::path& path, const std::filesystem::path& folder);
 
 // One pack, read and baked, with its XML dropped: everything the viewer needs and none of
 // the parsed documents, which for a large pack are most of its memory.

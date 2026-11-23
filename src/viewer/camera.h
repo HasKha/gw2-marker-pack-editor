@@ -142,7 +142,7 @@ float quadPixelHeight(const glm::vec2* points, int count = 4);
 // would resize a marker for walking into it.
 float clampedBillboardSize(const Camera& camera, const glm::vec3& centre, float world_size, float min_size, float max_size);
 
-// The most ways a quad is ever split. The renderer sizes a stack grid on this, so it is a
+// The most ways a quad is ever split. The overlay sizes a stack grid on this, so it is a
 // bound rather than a preference.
 constexpr int kMaxQuadSubdivisions = 16;
 

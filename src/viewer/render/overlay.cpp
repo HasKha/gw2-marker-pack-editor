@@ -174,6 +174,7 @@ void drawTexturedQuad(
 
 void drawScene(ImDrawList* list, const Camera& camera, const Scene& scene) {
     for (const SceneItem& item : scene.items) {
+        if (!item.texture) continue;
         glm::vec3 corners[4];
         const ImVec2* uv = nullptr;
         ClippedQuad quad;

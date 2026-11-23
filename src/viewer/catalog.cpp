@@ -7,6 +7,7 @@
 #include <chrono>
 
 #include "viewer/json_file.h"
+#include "viewer/registry.h"
 
 namespace viewer::catalog {
 
@@ -89,7 +90,6 @@ bool safeFileName(std::string_view name) {
 
 std::vector<LocalPack> localPacks(const std::vector<std::filesystem::path>& paths, const std::filesystem::path& own_folder) {
     std::vector<LocalPack> locals;
-    const std::filesystem::path own = own_folder.lexically_normal();
     for (const std::filesystem::path& path : paths) {
         std::error_code ec;
         if (!std::filesystem::is_regular_file(path, ec)) continue;
@@ -100,8 +100,7 @@ std::vector<LocalPack> localPacks(const std::vector<std::filesystem::path>& path
         local.written = std::chrono::duration_cast<std::chrono::milliseconds>(
                             std::chrono::clock_cast<std::chrono::system_clock>(written).time_since_epoch())
                             .count();
-        const std::filesystem::path relative = path.lexically_normal().lexically_relative(own);
-        local.ours = !own_folder.empty() && !relative.empty() && *relative.begin() != "..";
+        local.ours = registry::isInside(path, own_folder);
         locals.push_back(std::move(local));
     }
     return locals;

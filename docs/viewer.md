@@ -29,7 +29,7 @@ renderer natively anyway, while keeping Blish HUD and a fork of an 18k-line modu
 | Addon shape | **one DLL**: the viewer always, the editor behind a setting | one release stream; "Edit" is a function call, not a protocol; the editor draws through the viewer's renderer |
 | Signature | the existing `AddonDef.Signature` stays | an editor install updates in place through Nexus; there is never a second addon drawing the same packs |
 | Separation | three static libraries, linked one way | see [Layout](#layout); the build enforces what a convention would only ask |
-| GoodRender | **optional**: used when `served()`, a draw-list fallback otherwise | the addon still works without the service; the fallback is the editor's existing renderer |
+| GoodRender | **optional**: used when `served()`, a draw-list fallback otherwise | the addon still works without the service; the fallback is the quad path the editor's renderer was built on |
 | Frame split | everything is decided at Present; a moment callback only draws | the moment runs inside the game's frame, so anything slow there stalls the game |
 | Packs in memory | parsed once, on a worker; a map change only switches which part is live | faster than Pathing's reread per map, and 55k markers baked is a few megabytes |
 | Category tree | **merged across packs** by namespace | Pathing's `SharedPackCollection` does it, and packs that extend another pack's categories rely on it |
@@ -53,6 +53,8 @@ src/
     registry.*     installed packs: discovery, enable/disable, loading on a worker, the merged tree
     bake.*         pack::Pack -> the runtime model: resolved attributes, grouped by map id
     runtime.*      the live map: visibility, fade state, behaviors' state, markers scripts made
+    edited.*       the pack open in the editor as a live map of its own, baked per revision
+    edits.*        personal copies: where Edit takes a pack, and the copy into `edits`
     behaviors/     Pathing's Behavior/: attributes.* (what a pathable's behavior attributes say,
                    baked once), update.* (filters, focus, interaction, per frame), entity.* (what
                    one live pathable remembers), states.* (what `behavior` hid, timers.txt),
@@ -63,7 +65,7 @@ src/
                    os_library.cpp, lson.*, console.*
     guid.*         Pathing's Guid: from the pack's base64, or an MD5 of any other text
     identity.*     MumbleLink's identity JSON, read once per change
-    scene.*        this frame's world quads and billboards, built from runtime
+    scene.*        this frame's world quads and billboards, built from the live maps
     map.*          where the world lands on the minimap and the full map: the maps' rectangles
                    from the API and maps.json, the compass's bounds, the projection
     map_scene.*    what the maps show, built from runtime; drawn into any draw list
@@ -79,7 +81,7 @@ src/
     store.*        what outlives a session: category toggles, script Storage
     ui/            the category menu, the script console, interaction.* (info and prompt),
                    map_menu.* (the maps' tooltip and menu), options.* (Pathing's settings),
-                   pack_catalog.* (the catalog's window)
+                   pack_catalog.* (the catalog's window), pack_list.* (Packs, and Edit)
   editor/          mpe_editor, links mpe_pack and mpe_viewer
 ```
 
@@ -91,11 +93,12 @@ overlays — it calls a hook `entry.cpp` connects, null while editing is off. So
 builds and tests without the editor, and an editor change cannot reach a player who never
 turned editing on.
 
-The editor's `editor/world/renderer.*` is split along the same line. Its quad path —
+The editor's renderer was split along the same line, and is gone. Its quad path —
 world-space subdivision and near-plane clipping, the reason a draw-list quad is
-perspective-correct at all — is `render/overlay.*`. What only an editor draws stays in
-`editor/`: the selection outline, the open trail's point handles, the gizmo. What to draw and
-how it fades is still the editor renderer's until the scene exists.
+perspective-correct at all — is `render/overlay.*`. What to draw and how it fades is the
+scene's: the viewer draws the edited pack as it draws every other. What only an editor draws
+stays in `editor/world/`: the selection outline, the picking, the open trail's point handles,
+a dot where an icon is missing, the gizmo.
 
 ## Threading and the frame
 
@@ -103,7 +106,7 @@ how it fades is still the editor renderer's until the scene exists.
 |---|---|
 | worker | parsing and baking packs; the catalog's list and each download; festivals; maps |
 | `ERenderType_PreRender` | MumbleLink, map changes, behaviors, Lua `OnTick`, building the scenes, publishing them |
-| `ERenderType_Render` | the viewer's and the editor's windows, the map's tooltip; the overlay sink for a scene no moment drew |
+| `ERenderType_Render` | the viewer's and the editor's windows, the map's tooltip; the overlay sink for a scene no moment drew; the editor's overlay over the world |
 | GoodRender moments | the latest published scenes, submitted. Nothing else |
 
 **The scene is world space and carries no camera.** It is built at one Present and drawn at
@@ -152,11 +155,13 @@ moment sets a flag and the Nexus render takes it (`good_render_sink::takeDrawn`)
 screen, the full map, or no service at all, and the overlay draws.
 
 **A marker without its icon is not drawn**, as Pathing draws nothing without a texture —
-including while the icon waits for its turn in the load budget. The editor draws a dot
-instead, so that a missing icon can be found.
+including while the icon waits for its turn in the load budget. The edited pack's are kept in
+the scene with no texture, which no sink draws, and the editor's overlay draws a dot there
+instead, so that a missing icon can be found; a trail without its texture, its ribbon flat.
 
-**Picking comes from the sink.** The sink projects each marker once, for min/max size, and
-keeps those screen rectangles for the frame; hit tests read them. The editor's rule — what
+**Picking comes from the scene.** The edited pack's items carry their pathable, and the
+editor's overlay projects each through `itemCorners`, the call both sinks draw with, under the
+Present's camera: the outline and the hit test are the shape drawn. The editor's rule — what
 you click is exactly what you see, never a separate ray cast — holds through both sinks.
 
 ## Lua
@@ -325,7 +330,7 @@ Pathing's FlatMap and each pathable's `RenderToMiniMap`, in `map.*` and `map_sce
   downloaded again. Blish HUD's copies are updated only when asked: Blish HUD updates those
   itself.
 - **A pack from the catalog is never edited in place**: the next update would overwrite the
-  edits. Edit offers a personal copy instead.
+  edits. Edit offers a personal copy instead — see [The editor inside](#the-editor-inside).
 
 ## Packs across packs
 
@@ -346,22 +351,41 @@ bake moves after the merge.
 - **It applies at the next load.** Nexus holds its render mutex across every callback, so the
   options page cannot register the editor's callbacks from inside one, and unloading it there
   would drop unsaved edits. The page says so when the box and the session disagree.
-- **Edit, on a pack in the pack manager**, closes that pack's source in the registry — the save
-  later renames over the zip, which Windows refuses while it is open — and hands its path to
-  the editor. From then on the viewer draws that pack from the editor's live model, baked again
-  whenever `State::revision` moves: **what the author sees is what a player sees**, fades,
-  behaviors and all. The editor's outline, handles and gizmo draw on top through the hook.
-- **Scripts of the pack being edited are paused** by default. A script that moves markers
-  would fight the gizmo; a toggle in the editor turns them back on.
-- **Save** writes the zip as today, and the pack goes back to the registry as a normal one.
-- **Before the Edit button**, the editor reports the pack it has open through
-  `viewer::setEditedPack` every frame. The viewer drops that pack and closes its file — the
-  save's rename needs it closed — and reads it again once the editor lets go, if it was one of
-  the installed packs. Meanwhile the editor draws it with its own renderer.
+- **Edit, in the Packs window**, opens a pack in the editor. A pack in Blish HUD's folder or
+  ours came from the catalog, or may have, so it is never changed in place: Edit copies it into
+  `edits` on a worker and opens the copy. A pack in `edits` stands in for any other of the same
+  name, as ours does for Blish HUD's, so the copy is drawn instead of the original from then on,
+  and an update of the original cannot reach it. Deleting the copy brings the original back. A
+  folder pack outside `edits` is not copied — Blish HUD's markers folder is one when it holds
+  loose XML — and is opened from the editor's File menu, in place, as any pack can be.
+- **Whatever the editor has open is drawn from its model.** The editor reports the pack every
+  frame through `viewer::setEditedPack`, after the frame's edits: its path, the model, its
+  revision and the tree's eye toggles. The viewer drops the installed pack at that path and
+  closes its file — a save renames over it — and reads it again once the editor lets go, if it
+  was one of the installed packs.
+- **It is a live map of its own** (`edited.*`), baked again whenever `State::revision` moves,
+  not part of the installed packs' live map. A gizmo drag is a revision every frame, and
+  rebuilding the installed packs' would reset their scripts and behaviors every frame. Its
+  markers belong to no node of the shared tree: the editor's tree decides what shows, and the
+  Markers window does not list its categories meanwhile. The scene draws both maps sorted
+  together: **what the author sees is what a player sees**, fades and filters and all.
+- **Its scripts are paused**: they never load, since the engine runs the installed packs. A
+  script that moves markers would fight the gizmo. A toggle to run them anyway is not built.
+- **Its behaviors run, but say nothing**: filters hide and bounce lifts, but its info text and
+  interact prompt go to a screen of their own that is not drawn, since a prompt indexes the
+  live map it came from.
+- **Its images and trails are the editor's** (`EditorHooks::texture`, `trail`), which see an
+  image added or a trail edited before it is saved.
+- **The editor's overlay draws over the world** through `EditorHooks::draw_overlay`, at Nexus's
+  render: outlines, handles, missing images, from the scene — see Drawing.
+- **Save** writes the zip as before; the pack stays drawn from the model until the editor
+  closes it, then goes back to the registry as a normal one.
+- **Not yet on the maps.** The minimap and the full map draw the installed packs' live map
+  only.
 
-A gizmo drag is a revision every frame, and baking a 55k-marker pack every frame would hitch.
-The live bake starts with the current map only; the undo records already name what each edit
-touched, if that turns out not to be enough.
+A gizmo drag is a revision every frame, and each is a bake of the whole pack, as the editor's
+own renderer did before. If a 55k-marker pack hitches under a drag, the bake narrows to the
+current map; the undo records already name what each edit touched.
 
 ## Testing
 

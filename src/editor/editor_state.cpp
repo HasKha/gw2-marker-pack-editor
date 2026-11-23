@@ -134,7 +134,7 @@ void State::rebuildVisibility() {
 }
 
 void State::reset() {
-    // Caches keyed on the revision — the renderer's, the resources window's — would
+    // Caches keyed on the revision — the viewer's bake, the resources window's — would
     // otherwise survive into the next pack, since `this` does not move between packs.
     ++revision;
 

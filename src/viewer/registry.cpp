@@ -50,18 +50,25 @@ std::vector<std::filesystem::path> discoverPacks(const std::filesystem::path& fo
     return archives;
 }
 
-std::vector<std::filesystem::path> mergeSources(std::vector<std::filesystem::path> ours, const std::vector<std::filesystem::path>& others) {
+std::vector<std::filesystem::path> mergeSources(const std::vector<std::vector<std::filesystem::path>>& tiers) {
     const auto key = [](const std::filesystem::path& path) {
         std::string stem = path.stem().string();
         for (char& c : stem) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
         return stem;
     };
+    std::vector<std::filesystem::path> merged;
     std::set<std::string> taken;
-    for (const std::filesystem::path& path : ours) taken.insert(key(path));
-    for (const std::filesystem::path& path : others) {
-        if (!taken.count(key(path))) ours.push_back(path);
+    for (const std::vector<std::filesystem::path>& tier : tiers) {
+        // A tier never hides its own packs, only later tiers'.
+        std::set<std::string> tier_keys;
+        for (const std::filesystem::path& path : tier) {
+            if (taken.count(key(path))) continue;
+            merged.push_back(path);
+            tier_keys.insert(key(path));
+        }
+        taken.insert(tier_keys.begin(), tier_keys.end());
     }
-    return ours;
+    return merged;
 }
 
 bool samePack(const std::filesystem::path& a, const std::filesystem::path& b) {
@@ -69,6 +76,12 @@ bool samePack(const std::filesystem::path& a, const std::filesystem::path& b) {
     std::error_code ec;
     // equivalent() needs both to exist; a pack deleted from disk is still the same path.
     return std::filesystem::equivalent(a, b, ec) || a.lexically_normal() == b.lexically_normal();
+}
+
+bool isInside(const std::filesystem::path& path, const std::filesystem::path& folder) {
+    if (folder.empty()) return false;
+    const std::filesystem::path relative = path.lexically_normal().lexically_relative(folder.lexically_normal());
+    return !relative.empty() && *relative.begin() != "..";
 }
 
 LoadedPack loadPack(const std::filesystem::path& path) {

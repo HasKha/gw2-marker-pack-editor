@@ -3,6 +3,8 @@
 #include <Mumble.h>
 #include <Nexus.h>
 
+#include "viewer/viewer.h"
+
 namespace marker_editor {
 
 constexpr const char* QUICKACCESS_ID = "QA_MarkerPackEditor";
@@ -16,5 +18,9 @@ void unload();
 // The editor's part of the addon's options page. Not registered with Nexus: the viewer owns
 // the page and draws this under its own, through viewer::EditorHooks.
 void drawOptions();
+
+// What the viewer reaches the editor through: the options above, opening a pack from the
+// viewer, the open pack's files, and what the editor draws over the world.
+viewer::EditorHooks hooks();
 
 } // namespace marker_editor

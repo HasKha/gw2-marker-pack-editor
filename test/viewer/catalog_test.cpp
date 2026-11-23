@@ -165,7 +165,7 @@ TEST_CASE("catalog: Keep updated is on unless turned off, and kept") {
 
 TEST_CASE("catalog: our copy of a pack stands in for Blish HUD's") {
     const std::vector<std::filesystem::path> merged =
-        viewer::registry::mergeSources({"ours/TehsTrails.taco", "ours/mine.zip"}, {"blish/tehstrails.TACO", "blish/Hero.zip"});
+        viewer::registry::mergeSources({{"ours/TehsTrails.taco", "ours/mine.zip"}, {"blish/tehstrails.TACO", "blish/Hero.zip"}});
     REQUIRE(merged.size() == 3);
     CHECK(merged[0] == "ours/TehsTrails.taco");
     CHECK(merged[2] == "blish/Hero.zip");

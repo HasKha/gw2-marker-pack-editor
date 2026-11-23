@@ -32,7 +32,7 @@ size_t addTrail(editor::State& state, int32_t map_id);
 //
 // Why the exception: a pack that declares `MapID` once on a category should not collect a
 // redundant copy on every marker the editor adds beneath it. Why it is needed at all: a
-// marker with no map id resolves to none, and both Blish and our own renderer file a marker
+// marker with no map id resolves to none, and both Blish and our own viewer file a marker
 // by map before anything else, so one with no map is one that never draws. (A *trail* takes
 // its map from its `.trl` header in both, so there the attribute is documentation only.)
 //

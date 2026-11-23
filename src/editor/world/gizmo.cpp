@@ -91,7 +91,7 @@ std::vector<Target> collectTargets(const editor::State& state) {
         if (node.kind != editor::NodeKind::Pathable) continue;
         if (node.index >= state.pack.pathables.size() || state.pack.pathables[node.index].grave.deleted) continue;
 
-        // The bake's own resolution, the one the renderer draws with, so the handles land
+        // The bake's own resolution, the one the viewer draws with, so the handles land
         // on the drawn icon.
         viewer::MarkerTransform transform;
         if (!viewer::markerTransform(state.pack, state.pack.pathables[node.index], &transform)) continue;

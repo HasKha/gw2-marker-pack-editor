@@ -30,6 +30,9 @@ struct SceneItem {
     };
     Kind kind = Kind::Quad;
 
+    // Null only for the pack open in the editor, whose markers and trails are kept without
+    // their image so the editor can show where they are. The sinks draw nothing for it, as
+    // Pathing draws nothing without a texture.
     ImTextureID texture = nullptr;
     ImU32 colour = IM_COL32_WHITE; // tint with every fade already in its alpha
 
@@ -42,6 +45,12 @@ struct SceneItem {
     ImVec2 uv[4];
 
     float depth = 0.0f; // squared distance from the camera it was sorted with
+
+    // For the pack open in the editor, the pathable this draws, into its Pack::pathables, and
+    // whether it is a piece of trail: what the editor outlines and picks. kNoIndex for every
+    // other pack's.
+    size_t pathable = pack::kNoIndex;
+    bool is_trail = false;
 };
 
 struct Scene {
@@ -67,10 +76,23 @@ struct WorldOptions {
 // marker, means it is not drawn this frame, as Pathing draws nothing without one.
 using TextureLookup = std::function<ImTextureID(size_t pack, const std::string& path)>;
 
-// Builds the scene from the live map: what is on it, not removed, in game, under a visible
-// category and not filtered by its behaviors. `camera` sorts and culls, and its `player` is
-// what fades are measured from; `seconds` is the time trail textures scroll by and markers
-// bounce by; `visible` is runtime::visibleNodes.
+// One live map going into the scene.
+struct SceneLayer {
+    const runtime::LiveMap* live = nullptr;
+    const std::vector<char>* visible = nullptr; // runtime::visibleNodes over its nodes
+    TextureLookup texture;
+    // The pack open in the editor: its items carry their pathable, and keep no texture when
+    // their image is missing — see SceneItem.
+    bool edited = false;
+};
+
+// Builds the scene from live maps: what is on them, not removed, in game, under a visible
+// category and not filtered by its behaviors, every layer's items sorted together. `camera`
+// sorts and culls, and its `player` is what fades are measured from; `seconds` is the time
+// trail textures scroll by and markers bounce by.
+void buildScene(const std::vector<SceneLayer>& layers, const Camera& camera, float seconds, const WorldOptions& options, Scene* out);
+
+// The same over one live map, `visible` being runtime::visibleNodes.
 void buildScene(
     const runtime::LiveMap& live,
     const std::vector<char>& visible,

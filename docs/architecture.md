@@ -35,8 +35,9 @@ The invariants every change keeps. The sections below are why.
 - **Every edit is an `undo::Step`** with the matching capture inside, or it is the one edit
   Ctrl+Z cannot take back. See [Undo](#undo-records-images-not-inverses).
 - **The editor reports its open pack to the viewer every frame**, through
-  `viewer::setEditedPack` in `marker_editor::render`. The viewer would otherwise keep the zip
-  open, and a save renames over it.
+  `viewer::setEditedPack` at the end of `marker_editor::render`, after the frame's edits. The
+  viewer draws the pack from that model, and would otherwise keep the zip open, which a save
+  renames over.
 - **Nothing is erased from `Pack::categories` or `Pack::pathables`**, and nothing is inserted
   into their middle: delete tombstones, add appends. Every index into them stays valid. A new
   category also grows the per-category indexes, through `State::categoryAdded` alone.
@@ -105,7 +106,7 @@ no target has to be described by subtracting another's sources.
 files a second time. Only the objects a test reaches get linked in, so nothing there needs
 a live Nexus or an imgui context; what does touch Nexus goes through an `AddonAPI*` that
 stays null, which `editor/resources.cpp` already has to handle for a pack made in the
-editor. The windows and the renderer are in the library and simply never pulled in.
+editor. The windows and the overlay are in the library and simply never pulled in.
 
 Why there are two test targets, and what they are pointed at, is [testing.md](testing.md).
 
@@ -143,8 +144,8 @@ src/
       resource_window.* the pack's images, what references them, add / remove
       trail_editor.*   the open trail: map id, point list, the Trail menu, shape tools
     world/
-      renderer.*       billboards + trail ribbons into an ImGui draw list, through
-                       viewer/render/overlay; hit testing, the selection outline, point handles
+      overlay.*        over the viewer's scene: hit testing, the selection outline, point
+                       handles, a dot where an icon is missing
       gizmo.*          ImGuizmo translate/rotate over the selection, writes to attributes
 test/
   corpus.*             where the real packs are
@@ -157,11 +158,12 @@ test/
 
 Three mechanisms that exist for non-obvious reasons.
 
-**The world renderer caches resolved values per `State::revision`.** Resolving inherited
+**The open pack is baked per `State::revision`, by the viewer.** Resolving inherited
 attributes walks the category chain, and the largest pack tested has 55,887 markers — doing
 that per marker per frame is not viable inside the render callback. Any edit calls
-`State::touch()`, which bumps the revision and invalidates the cache. Visibility toggles
-deliberately do *not* bump it: they are view state, not edits.
+`State::touch()`, which bumps the revision, and `viewer/edited.*` bakes again. Visibility
+toggles deliberately do *not* bump it: they are view state, not edits, and the viewer compares
+the flags themselves.
 
 **`resources` decodes at most a few assets per frame.** Arriving on a map with hundreds of
 unseen markers would otherwise decode them all in one frame and hitch. A miss is only
@@ -237,7 +239,7 @@ and which one applies is decided by **lifetime**:
 
 Two live examples, one of each:
 
-- **Which trail is open** fails the lifetime test: the world renderer draws its handles and
+- **Which trail is open** fails the lifetime test: the world overlay draws its handles and
   the gizmo targets its points, and neither is the trail editor. So `followSelection` lives
   in `trail_edit` and runs from `render()`. It used to run from the window body, and a
   collapsed trail editor would then keep an unselected trail open — handles still in the
@@ -265,7 +267,7 @@ is the viewer's — Nexus shows one options callback per addon — and the edito
 
 `trail_edit` holds the trail being edited as a mutable copy of its `.trl`, and it is a
 module of its own rather than part of the trail editor window because the window is not the
-only thing editing it: the gizmo drags the same points, and the renderer draws handles for
+only thing editing it: the gizmo drags the same points, and the overlay draws handles for
 them. All three go through the one model.
 
 - **Points are addressed by a flat index** across segments — a `.trl` is one or more runs of
@@ -377,11 +379,11 @@ working copy is a cache of bytes that just changed underneath it.
 
 Nothing is ever erased from `Pack::categories` or `Pack::pathables`. Both are indexed
 positionally by the selection, `State::pathables_by_category`, the hidden flags, the
-renderer's cache and the trail editor, so erasing one entry would move every entry after it
+viewer's bake and the trail editor, so erasing one entry would move every entry after it
 and invalidate all of them at once. Instead each entry carries a `Tombstone`:
 
 - `deleted` marks it gone. Everything that walks either list skips it — the tree, the
-  renderer's rebuild, `countByType`, the writer's attribute sync, the resources window's
+  bake, `countByType`, the writer's attribute sync, the resources window's
   reference scan, the gizmo. A missed check shows up as a deleted thing still doing
   something.
 - `detached` owns the element itself, lifted out of the file's document into a document of
@@ -404,7 +406,7 @@ for an editor session is nothing.
 
 ## A new marker is appended, not inserted
 
-`Pack::pathables`, `State::pathables_by_category`, the selection and the renderer cache are
+`Pack::pathables`, `State::pathables_by_category`, the selection and the viewer's bake are
 all positional, so inserting into the middle of the pathable vector would shift every index
 after it and invalidate all four at once. `Pack::addPathable` therefore **appends** to the
 vector, always, and no existing index ever moves.
@@ -449,7 +451,7 @@ Two things fall out of that:
 What references an image comes from the attribute table: every attribute whose kind is
 `Path` is a reference, so `iconfile`, `texture`, `traildata` and anything added later are
 all counted without being named in the UI. The counts and the folder tree are rebuilt per
-`State::revision`, not per frame, for the same reason the world renderer caches.
+`State::revision`, not per frame, for the same reason the open pack is baked per revision.
 
 The resources window previews **only the selected image**, deliberately. Nexus never
 releases a texture, so drawing a thumbnail per row would pin every image in a 1,375-image
@@ -633,10 +635,13 @@ than being dropped, so a broken `type` is visible instead of silent.
 
 ## Rendering
 
-Half of this is the viewer's code, used by the editor: the camera is `viewer/camera.*`, and
-clipping, subdividing and emitting a textured quad is `viewer/render/overlay.*`. What to draw,
-the picking and everything only an editor draws — the outline, the point handles, the gizmo —
-is `editor/world/`.
+The editor does not draw its pack: the viewer does, from the editor's model, as it draws every
+other pack — through GoodRender, or its own overlay sink without it (viewer.md, *The editor
+inside*). What only an editor draws — the outline, the picking, the point handles, a dot where
+an icon is missing, the gizmo — is `editor/world/`, over the viewer's scene, through
+`EditorHooks::draw_overlay`. The camera is `viewer/camera.*`, and clipping, subdividing and
+emitting a textured quad, which the overlay sink and the outlines both use, is
+`viewer/render/overlay.*`. What follows is how that overlay path works.
 
 Nexus hands us `AddonAPI::SwapChain` and, via `Textures.GetOrCreateFromMemory`, an
 `ID3D11ShaderResourceView*` per image — directly usable as an `ImTextureID`. So no
@@ -702,20 +707,20 @@ too, and inventing a height would resize a marker for the crime of being walked 
 
 Nothing is drawn into the world while the **full map is open** (`Context.IsMapOpen` from
 MumbleLink, carried on `Camera`). The camera keeps updating behind the map, so without the
-check the markers would sit at positions that mean nothing over it. `renderer::draw` bails
-*after* clearing its hover state, so a click on the map cannot select whatever the mouse
-was last over in the world either.
+check the markers would sit at positions that mean nothing over it. The viewer does not call
+the overlay then, and the editor clears its hover state, so a click on the map cannot select
+whatever the mouse was last over in the world either.
 
-Known limitation: no depth buffer, so markers are not occluded by world geometry. That
-matches how the pack looks in Blish HUD with `occlude` off and is acceptable for an
-editor. Keep the renderer behind a narrow interface so a DX11 backend can be added
-later if occlusion becomes necessary.
+A draw list has no depth buffer, so through the overlay sink markers are not occluded by
+world geometry. Through GoodRender they are: `world_quad` hides each pixel behind what the
+game drew in front of it. The editor's outlines and handles stay on the draw list, over
+everything, which is what they are for.
 
 ImGuizmo takes the same view/projection matrices plus a model matrix per selected
 object, so it drops straight in once step 2 is correct.
 
-**The gizmo resolves a marker's placement through the renderer, not its own copy.**
-`renderer::markerTransform` is what both use: position with `heightOffset` applied, and
+**The gizmo resolves a marker's placement through the bake, not its own copy.**
+`viewer::markerTransform` is what both use: position with `heightOffset` applied, and
 rotation, resolved through the category chain. The handles are supposed to sit on the drawn
 icon, so a second implementation is a second chance to disagree with the picture — and the
 two did, once. One took `rotate="90"` the lenient way Blish does, filling the rest with
@@ -730,7 +735,7 @@ Everything runs on the Nexus render callback (render thread). Three exceptions:
 - The native file dialog runs on a worker thread; `render()` polls `takeResult()`.
 - **`onWndProc` runs on the game's message thread.** A world click cannot reach ImGui (see
   CLAUDE.md), so the marker under the cursor is read there and handed to the render thread
-  through atomics — `pending_select`, `pending_select_point`, and the renderer's
+  through atomics — `pending_select`, `pending_select_point`, and the overlay's
   `hovered_pathable`. The handoff *out* is atomic; the reads *in* (`state.loaded`,
   `state.settings.select_in_viewport`, `io.WantCaptureMouse`) are plain and are a data race
   in the letter of the model. They are single words that change between frames rather than

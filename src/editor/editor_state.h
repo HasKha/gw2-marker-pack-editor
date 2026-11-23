@@ -203,7 +203,7 @@ struct State {
     std::vector<std::vector<size_t>> pathables_by_category;
     std::vector<size_t> orphan_pathables; // category could not be resolved
 
-    // Bumped by every edit. The world renderer caches resolved per-marker values and
+    // Bumped by every edit. The viewer bakes the pack's resolved per-marker values and
     // rebuilds when this changes, so it never walks the category chain per frame.
     uint64_t revision = 1;
 

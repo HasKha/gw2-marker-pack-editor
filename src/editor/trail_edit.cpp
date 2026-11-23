@@ -57,7 +57,7 @@ void commit(editor::State& state) {
     undo::asset(state, open_path);
 
     state.pack.addAsset(open_path, pack::trl::write(trail));
-    // The cache holds the parsed trail the renderer draws; drop it so the next frame reads
+    // The cache holds the parsed trail the viewer draws; drop it so the next frame reads
     // the bytes we just wrote.
     resources::forget(open_path);
     state.touch();
@@ -121,7 +121,7 @@ bool open(editor::State& state, size_t pathable_index) {
     // miss and never will. Holding the previous trail open over that second case is what
     // made two differently named trails look like they shared a point list.
     bool deferred = false;
-    const pack::trl::Trail* parsed = resources::trail(data, &deferred);
+    const std::shared_ptr<const pack::trl::Trail> parsed = resources::trail(data, &deferred);
     if (!parsed) {
         if (!deferred) close(state);
         return false;
@@ -166,7 +166,7 @@ void setMapId(editor::State& state, int32_t map_id) {
     trail.map_id = map_id;
     commit(state);
 
-    // The header above is authoritative and is what both Blish and our renderer go by. The
+    // The header above is authoritative and is what both Blish and our viewer go by. The
     // `MapID` attribute is not read, but a pack that ships the two disagreeing is a pack
     // saying two different things, so it follows along rather than being left to rot.
     if (open_pathable >= state.pack.pathables.size()) return;

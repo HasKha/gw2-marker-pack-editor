@@ -112,6 +112,12 @@ or how the catalog is read:
 bin/Release/mpe_viewer_test.exe "[.web]"
 ```
 
+The pack open in the editor is tested from the viewer's side, over a small pack written in the test:
+`edited_test.cpp` bakes its model into a live map of its own as the revision, the map, the tree's eye
+toggles and a trail's deferred read change, and checks the scene layer that carries its pathables to the
+editor's overlay. `edits_test.cpp` covers personal copies: where Edit takes a pack, the copy by way of
+`.part`, and a copy standing in for the original.
+
 ## Above the pack layer
 
 `mpe_test` links `mpe_editor`, so anything in the editor a test reaches is linked in, and what touches
