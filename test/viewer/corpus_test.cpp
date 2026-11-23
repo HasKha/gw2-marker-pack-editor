@@ -3,6 +3,9 @@
 // These are the claims docs/plan.md makes about the reader and the writer, turned into
 // assertions. They ran as printf output from mpe_probe before, which meant reading nine
 // blocks of numbers and remembering what they were last time.
+//
+// The format's sweep, in mpe_viewer_test rather than mpe_pack_test because the same pass
+// checks the viewer's bake of every pack it loads.
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
@@ -180,7 +183,7 @@ TEST_CASE("every pack in the corpus holds its invariants", "[corpus]") {
             }
 
             // ── The viewer's bake ─────────────────────────────────────────────
-            // Here rather than in mpe_viewer_test because loading the corpus is most of
+            // Here rather than in a case of its own because loading the corpus is most of
             // this case's time, and ctest runs every case in a process of its own: a sweep
             // of its own would load every pack a second time.
             const viewer::BakedPathables baked = viewer::bake(model);

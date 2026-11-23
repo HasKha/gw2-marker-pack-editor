@@ -12,12 +12,12 @@
 #include <vector>
 
 #include "corpus.h"
-#include "viewer/draw_list.h"
+#include "draw_list.h"
+#include "test_camera.h"
 #include "viewer/render/good_render.h"
 #include "viewer/runtime.h"
 #include "viewer/scene.h"
 #include "viewer/store.h"
-#include "viewer/test_camera.h"
 
 using Catch::Approx;
 

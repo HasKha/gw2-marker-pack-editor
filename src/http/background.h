@@ -6,11 +6,12 @@
 #include <thread>
 #include <utility>
 
-#include "viewer/http.h"
+#include "http/http.h"
 
-// One job run once on a thread of its own, whose answer is read from frames: what the viewer
-// asks the web for at load. The festivals on, the maps' rectangles.
-namespace viewer {
+// One job run once on a thread of its own, whose answer is read from frames: a request to the
+// web, mostly, which is why the job is handed a Cancel. The viewer's festivals and maps'
+// rectangles, the catalog, and the Blish HUD import, which makes no request at all.
+namespace http {
 
 template <class T>
 class Background
@@ -62,4 +63,4 @@ private:
     T value_{};
 };
 
-} // namespace viewer
+} // namespace http

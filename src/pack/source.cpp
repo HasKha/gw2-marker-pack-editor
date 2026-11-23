@@ -4,8 +4,8 @@
 #include <fstream>
 #include <unordered_map>
 
-#include "pack/path_text.h"
 #include "pack/zip.h"
+#include "util/path_text.h"
 
 namespace pack {
 
@@ -24,7 +24,7 @@ public:
     bool open(const std::filesystem::path& folder, std::string* error) {
         std::error_code ec;
         if (!std::filesystem::is_directory(folder, ec)) {
-            if (error) *error = "Not a folder: " + pathText(folder);
+            if (error) *error = "Not a folder: " + util::pathText(folder);
             return false;
         }
 
@@ -78,7 +78,7 @@ public:
 
         std::ifstream file(it->second, std::ios::binary | std::ios::ate);
         if (!file) {
-            if (error) *error = "Could not open " + pathText(it->second);
+            if (error) *error = "Could not open " + util::pathText(it->second);
             return false;
         }
 
@@ -87,7 +87,7 @@ public:
 
         out->resize(static_cast<size_t>(size));
         if (size > 0 && !file.read(reinterpret_cast<char*>(out->data()), size)) {
-            if (error) *error = "Could not read " + pathText(it->second);
+            if (error) *error = "Could not read " + util::pathText(it->second);
             out->clear();
             return false;
         }

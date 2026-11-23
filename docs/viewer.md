@@ -44,12 +44,14 @@ What `src/` becomes; [plan.md](plan.md#the-viewer) says which parts exist.
 
 ```
 src/
-  entry.cpp        AddonDefinition; loads the viewer, and the editor when the setting is on
+  addon/entry.cpp  AddonDefinition; loads the viewer, and the editor when the setting is on
+  util/            mpe_util: paths as UTF-8 text, small JSON files (architecture.md#build-targets)
+  http/            mpe_http: HTTPS GETs and downloads on a worker, through WinHTTP, that cancel;
+                   Background, one job on a thread of its own, its answer read from frames
   pack/            mpe_pack — unchanged. The format, nothing else
-  viewer/          mpe_viewer, links mpe_pack
+  viewer/          mpe_viewer, links mpe_pack and mpe_http
     viewer.*       lifecycle, the addon's name and folder, its options page, EditorHooks: start, render, WndProc
     settings.*     viewer.json: the menu's places, and Pathing's settings by its names
-    json_file.*    lenient reads and writes of small JSON files, the editor's too
     registry.*     installed packs: discovery, enable/disable, loading on workers, the merged tree
     blish_import.* what Blish HUD's Pathing has — packs, category choices, Storage, timers
     bake.*         pack::Pack -> the runtime model: resolved attributes, grouped by map id
@@ -70,10 +72,8 @@ src/
                    from the API and maps.json, the compass's bounds, the projection
     map_scene.*    what the maps show, built from runtime; drawn into any draw list
     render/        the sinks: good_render.* (moments) and overlay.* (Nexus render, draw list)
-    background.h   one job on a thread of its own, its answer read from frames
     camera.*       MumbleLink -> view/projection
     mumble.*       MumbleLink as Blish HUD names it, for scripts and behaviors; Gw2Sharp's enums
-    http.*         HTTPS GETs on a worker, through WinHTTP: festivals, maps, then the catalog
     textures.*     budgeted texture decoding: LoadBudget, TextureCache
     catalog.*      the public pack catalog: its list, packs on disk, which are stale, Keep updated
     downloads.*    catalog packs downloading into our folder, a thread each
@@ -92,8 +92,8 @@ src/
 
 **The dependency only points one way.** `editor/` includes `viewer/`; `viewer/` never
 includes `editor/`, and two things hold it: `mpe_viewer_test` links `mpe_viewer` without
-`mpe_editor`, and the ctest case `viewer_includes_no_editor` fails on any `editor/` include
-under `src/viewer/`. Where the viewer has to reach the editor — the Edit button, the editor's
+`mpe_editor`, and the ctest case `viewer_layering` fails on any `editor/` include under
+`src/viewer/`. Where the viewer has to reach the editor — the Edit button, the editor's
 overlays — it calls a hook `entry.cpp` connects, null while editing is off. So the viewer
 builds and tests without the editor, and an editor change cannot reach a player who never
 turned editing on.

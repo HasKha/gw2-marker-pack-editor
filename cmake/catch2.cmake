@@ -1,7 +1,7 @@
 include_guard()
 include(FetchContent)
 
-# Test framework for mpe_test. Test-only: nothing in src/ links it, and the addon does
+# Test framework for the test binaries. Test-only: nothing in src/ links it, and the addon does
 # not know it exists.
 #
 # v3 is the compiled-library generation rather than the old single header, so it comes

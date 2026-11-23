@@ -12,7 +12,7 @@
 // These are exactly the kind of file that gets hand-edited or half-written, and they are
 // read from inside a render callback. A bad value leaves the default standing; it never
 // takes the addon down.
-namespace viewer::json_file {
+namespace util::json_file {
 
 // The JSON object in `file`. Nothing when the file is missing, will not parse, or holds
 // something other than an object: in every case the defaults stand and the next write
@@ -36,4 +36,4 @@ int readInt(const nlohmann::json& object, const char* key, int fallback);
 float readFloat(const nlohmann::json& object, const char* key, float fallback); // any number
 std::string readString(const nlohmann::json& object, const char* key);
 
-} // namespace viewer::json_file
+} // namespace util::json_file

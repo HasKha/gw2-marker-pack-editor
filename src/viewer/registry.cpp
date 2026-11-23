@@ -6,16 +6,16 @@
 #include <cctype>
 #include <set>
 
-#include "pack/path_text.h"
 #include "pack/trl.h"
 #include "pack/xml_reader.h"
+#include "util/path_text.h"
 
 namespace viewer::registry {
 
 namespace {
 
 std::string lowercaseExtension(const std::filesystem::path& path) {
-    std::string extension = pack::pathText(path.extension());
+    std::string extension = util::pathText(path.extension());
     std::transform(extension.begin(), extension.end(), extension.begin(), [](unsigned char c) {
         return static_cast<char>(std::tolower(c));
     });

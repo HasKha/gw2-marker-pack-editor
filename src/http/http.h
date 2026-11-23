@@ -10,10 +10,10 @@
 #include <string>
 #include <string_view>
 
-// HTTP and HTTPS requests from a worker thread, through WinHTTP: what the viewer asks the web
-// for — the festivals on today, the maps' rectangles, the pack catalog and its packs. Never
-// called from a frame.
-namespace viewer::http {
+// HTTP and HTTPS requests from a worker thread, through WinHTTP: the festivals on today, the
+// maps' rectangles, the pack catalog and its packs. Every call blocks, so none is made from a
+// frame. Knows nothing of the viewer, the packs or the game; only util/ is below it.
+namespace http {
 
 // What we call ourselves, unless a request says otherwise.
 constexpr const wchar_t* kUserAgent = L"MarkerPackEditor";
@@ -64,4 +64,4 @@ std::string download(
     const Cancel& cancel,
     const wchar_t* user_agent = kUserAgent);
 
-} // namespace viewer::http
+} // namespace http

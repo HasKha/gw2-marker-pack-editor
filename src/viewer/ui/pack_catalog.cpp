@@ -1,5 +1,5 @@
 #include "viewer/ui/pack_catalog.h"
-#include "pack/path_text.h"
+#include "util/path_text.h"
 #include "viewer/ui/fonts.h"
 
 #include <IconsFontAwesome7.h>
@@ -113,7 +113,7 @@ bool drawRow(const Row& row, size_t index, Action* action) {
         ImGui::SameLine();
         if (ImGui::Button(fonts::label(ICON_FA_TRASH, "Delete").c_str())) ImGui::OpenPopup("##delete");
         if (ImGui::BeginPopup("##delete")) {
-            ImGui::Text("Delete %s from disk?", pack::pathText(row.local->path.filename()).c_str());
+            ImGui::Text("Delete %s from disk?", util::pathText(row.local->path.filename()).c_str());
             if (ImGui::Button("Delete")) {
                 *action = Action{Action::Kind::Delete, index};
                 acted = true;

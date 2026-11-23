@@ -16,8 +16,9 @@ planned, not built.
 - **The [README's contributing rules](README.md#contributing) apply to every session.** Never push to `main` unless the maintainer
   says so in this session, and a session's review of its own code does not count.
 - **Don't verify by launching the game.** A run in game is a deliberate single check with a question
-  decided in advance; whatever can be checked offline is. The pack layer is checked by `mpe_test` over
-  the real packs, and a fix comes with a case that fails before it: see [testing.md](docs/testing.md).
+  decided in advance; whatever can be checked offline is. The pack layer is checked by `mpe_pack_test`
+  and the corpus sweep in `mpe_viewer_test` over the real packs, and a fix comes with a case that
+  fails before it: see [testing.md](docs/testing.md).
 - **Keep [plan.md](docs/plan.md) true.** A change that finishes, starts or reorders something on it
   updates it in the same change.
 - **Scratch goes in `tmp/`**, gitignored, and nothing committed references it.

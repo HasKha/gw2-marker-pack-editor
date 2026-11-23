@@ -4,7 +4,7 @@
 #include <fstream>
 #include <string>
 
-#include "viewer/json_file.h"
+#include "util/json_file.h"
 
 namespace viewer::behaviors {
 
@@ -132,7 +132,7 @@ void BehaviorStates::merge(const BehaviorStates& other) {
 bool BehaviorStates::save(const std::filesystem::path& file) {
     std::string text;
     for (const auto& [guid, expiry] : until_time_) text += toString(guid) + ",t" + formatUtc(expiry) + "\n";
-    if (!json_file::writeText(file, text)) return false;
+    if (!util::json_file::writeText(file, text)) return false;
     dirty_ = false;
     return true;
 }

@@ -1,7 +1,7 @@
 #include "viewer/downloads.h"
 
-#include "pack/path_text.h"
 #include "pack/source.h"
+#include "util/path_text.h"
 
 namespace viewer::catalog {
 
@@ -27,8 +27,8 @@ void Downloads::start(const Package& package, const std::filesystem::path& folde
 
     auto job = std::make_unique<Job>();
     job->file_name = package.file_name;
-    job->target = folder / pack::pathFromText(package.file_name);
-    job->part = folder / pack::pathFromText(package.file_name + ".part");
+    job->target = folder / util::pathFromText(package.file_name);
+    job->part = folder / util::pathFromText(package.file_name + ".part");
     Job* raw = job.get();
     raw->thread = std::thread([this, raw, url = package.download, folder] {
         std::error_code ec;

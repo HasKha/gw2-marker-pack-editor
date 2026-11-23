@@ -1,6 +1,6 @@
 #include "viewer/store.h"
 
-#include "viewer/json_file.h"
+#include "util/json_file.h"
 
 namespace viewer::store {
 
@@ -31,7 +31,7 @@ void CategoryStates::load(const std::filesystem::path& file) {
     states_.clear();
     ++revision_;
 
-    const std::optional<nlohmann::json> parsed = json_file::readObject(file);
+    const std::optional<nlohmann::json> parsed = util::json_file::readObject(file);
     if (!parsed) return;
     const auto categories = parsed->find("categories");
     if (categories == parsed->end() || !categories->is_object()) return;
@@ -45,7 +45,7 @@ bool CategoryStates::save(const std::filesystem::path& file) const {
     nlohmann::json out;
     out["categories"] = nlohmann::json::object();
     for (const auto& [id, enabled] : states_) out["categories"][id] = enabled;
-    return json_file::write(file, out);
+    return util::json_file::write(file, out);
 }
 
 const std::string& KeyValues::upsert(const std::string& key, std::string value) {
@@ -71,7 +71,7 @@ void KeyValues::load(const std::filesystem::path& file) {
     values_.clear();
     dirty_ = false;
 
-    const std::optional<nlohmann::json> parsed = json_file::readObject(file);
+    const std::optional<nlohmann::json> parsed = util::json_file::readObject(file);
     if (!parsed) return;
     for (const auto& [key, value] : parsed->items()) {
         if (value.is_string()) values_.emplace(key, value.get<std::string>());
@@ -81,7 +81,7 @@ void KeyValues::load(const std::filesystem::path& file) {
 bool KeyValues::save(const std::filesystem::path& file) {
     nlohmann::json out = nlohmann::json::object();
     for (const auto& [key, value] : values_) out[key] = value;
-    if (!json_file::write(file, out)) return false;
+    if (!util::json_file::write(file, out)) return false;
     dirty_ = false;
     return true;
 }

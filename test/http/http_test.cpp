@@ -1,4 +1,5 @@
 // Requests that end when told to: the addon unloading must not wait out a server's silence.
+// And Background, the one job on a thread of its own that most of them run in.
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -11,8 +12,8 @@
 #include <string>
 #include <thread>
 
-#include "viewer/background.h"
-#include "viewer/http.h"
+#include "http/background.h"
+#include "http/http.h"
 
 namespace {
 
@@ -50,12 +51,27 @@ private:
 
 } // namespace
 
+TEST_CASE("a background job's answer is there once it is done, and only if it gave one", "[http]") {
+    http::Background<int> answered;
+    CHECK(answered.get() == nullptr);
+    answered.start([](const http::Cancel&) { return std::optional<int>(42); });
+    answered.start([](const http::Cancel&) { return std::optional<int>(7); }); // once only
+    answered.stop();
+    REQUIRE(answered.get());
+    CHECK(*answered.get() == 42);
+
+    http::Background<int> unanswered;
+    unanswered.start([](const http::Cancel&) { return std::optional<int>(); });
+    unanswered.stop();
+    CHECK(unanswered.get() == nullptr);
+}
+
 TEST_CASE("a request waiting on a silent server ends when cancelled", "[http]") {
     const SilentServer server;
-    viewer::http::Cancel cancel;
+    http::Cancel cancel;
 
     // Thirty seconds a step if nothing ends it: well past what this test waits.
-    auto answer = std::async(std::launch::async, [&] { return viewer::http::get(server.url(), cancel, std::chrono::seconds(30)); });
+    auto answer = std::async(std::launch::async, [&] { return http::get(server.url(), cancel, std::chrono::seconds(30)); });
     CHECK(answer.wait_for(std::chrono::milliseconds(300)) == std::future_status::timeout);
 
     cancel.cancel();
@@ -63,13 +79,13 @@ TEST_CASE("a request waiting on a silent server ends when cancelled", "[http]") 
     CHECK_FALSE(answer.get());
 
     // Once cancelled, a request ends before it starts.
-    CHECK_FALSE(viewer::http::get(server.url(), cancel, std::chrono::seconds(30)));
+    CHECK_FALSE(http::get(server.url(), cancel, std::chrono::seconds(30)));
 }
 
 TEST_CASE("stopping a background job cancels the request it waits on", "[http]") {
     const SilentServer server;
-    viewer::Background<std::string> job;
-    job.start([&](const viewer::http::Cancel& cancel) { return viewer::http::get(server.url(), cancel, std::chrono::seconds(30)); });
+    http::Background<std::string> job;
+    job.start([&](const http::Cancel& cancel) { return http::get(server.url(), cancel, std::chrono::seconds(30)); });
 
     // Long enough to be waiting on the server rather than not yet started.
     std::this_thread::sleep_for(std::chrono::milliseconds(300));

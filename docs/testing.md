@@ -20,9 +20,13 @@ pack-layer work by launching the game, or by hand.
 
 | Target | Answers | Does |
 |---|---|---|
-| `mpe_test` | *is it broken?* | asserts, under Catch2, and fails a build |
-| `mpe_viewer_test` | *is the viewer broken?* | the same, for `src/viewer/`, linked without the editor |
+| `mpe_pack_test`, `mpe_http_test`, `mpe_viewer_test`, `mpe_editor_test` | *is it broken?* | assert, under Catch2, and fail a build: one binary per library, from `test/<library>/`, linking that library and nothing above it |
 | `mpe_probe` | *what does this pack look like?* | prints and lints: what it found, what it could not parse, what a save would change |
+
+The format's sweep over every corpus pack, `corpus_test.cpp`, is in `mpe_viewer_test` rather than
+`mpe_pack_test`: the same pass checks the viewer's bake, and loading the corpus is most of its time.
+Beside the binaries, ctest runs a `<folder>_layering` case per library under `src/`, which fails on an
+include of a library above it ([architecture.md](architecture.md#build-targets)).
 
 Both are worth having. The probe's lint, its byte-offset anchoring report and its round-trip diffs are how a
 format question gets settled in the first place; every format claim in [format.md](format.md) was measured
@@ -112,8 +116,8 @@ or how the catalog is read:
 bin/Release/mpe_viewer_test.exe "[.web]"
 ```
 
-What does not need the web runs with the rest: `http_test.cpp` points requests at a server on
-localhost that accepts and never answers, and checks that cancelling one ends it at once rather
+What does not need the web runs with the rest, in `mpe_http_test`: `http_test.cpp` points requests at a
+server on localhost that accepts and never answers, and checks that cancelling one ends it at once rather
 than after its timeouts.
 
 The pack open in the editor is tested from the viewer's side, over a small pack written in the test:
@@ -124,7 +128,7 @@ folder as Pathing does and reads it back: packs, both category file formats, Sto
 
 ## Above the pack layer
 
-`mpe_test` links `mpe_editor`, so anything in the editor a test reaches is linked in, and what touches
+`mpe_editor_test` links `mpe_editor`, so anything in the editor a test reaches is linked in, and what touches
 Nexus goes through an `AddonAPI*` left null ([architecture.md](architecture.md#build-targets)).
 `selection_test.cpp` covers the click rules, pruning and the two selections; `trail_test.cpp` covers
 creating trails, following the selection and renaming `traildata`. The rest of the editor is plain

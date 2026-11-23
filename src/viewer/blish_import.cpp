@@ -6,8 +6,8 @@
 #include <map>
 #include <set>
 
-#include "pack/path_text.h"
-#include "viewer/json_file.h"
+#include "util/json_file.h"
+#include "util/path_text.h"
 #include "viewer/registry.h"
 
 namespace viewer::blish_import {
@@ -72,7 +72,7 @@ Found find(const std::filesystem::path& markers) {
     const std::filesystem::path data = markers / "data";
     found.categories = readCategoryChoices(data / "states");
 
-    if (const std::optional<nlohmann::json> kv = json_file::readObject(data / "kv" / "kv.json")) {
+    if (const std::optional<nlohmann::json> kv = util::json_file::readObject(data / "kv" / "kv.json")) {
         for (const auto& [key, value] : kv->items()) {
             if (value.is_string()) found.storage.emplace_back(key, value.get<std::string>());
         }
@@ -88,7 +88,7 @@ Copied copyPacks(const std::vector<std::filesystem::path>& packs, const std::fil
     std::error_code ec;
     std::filesystem::create_directories(folder, ec);
     if (ec) {
-        result.errors.push_back("could not make " + pack::pathText(folder) + ": " + ec.message());
+        result.errors.push_back("could not make " + util::pathText(folder) + ": " + ec.message());
         return result;
     }
 
@@ -98,8 +98,8 @@ Copied copyPacks(const std::vector<std::filesystem::path>& packs, const std::fil
     std::set<std::string> targets;
     for (const std::filesystem::path& source : packs) {
         const std::filesystem::path target = folder / source.filename();
-        if (!targets.insert(lowercase(pack::pathText(source.filename()))).second) {
-            result.errors.push_back(pack::pathText(source) + ": another pack of that name is imported already");
+        if (!targets.insert(lowercase(util::pathText(source.filename()))).second) {
+            result.errors.push_back(util::pathText(source) + ": another pack of that name is imported already");
             continue;
         }
 
@@ -118,7 +118,7 @@ Copied copyPacks(const std::vector<std::filesystem::path>& packs, const std::fil
         std::filesystem::copy_file(source, part, std::filesystem::copy_options::overwrite_existing, ec);
         if (!ec) std::filesystem::rename(part, target, ec);
         if (ec) {
-            result.errors.push_back(pack::pathText(source.filename()) + ": " + ec.message());
+            result.errors.push_back(util::pathText(source.filename()) + ": " + ec.message());
             std::filesystem::remove(part, ec);
             continue;
         }

@@ -2,7 +2,7 @@
 
 #include <algorithm>
 
-#include "viewer/json_file.h"
+#include "util/json_file.h"
 
 namespace viewer::settings {
 
@@ -63,15 +63,15 @@ Settings load(const std::filesystem::path& folder) {
     Settings settings;
     if (folder.empty()) return settings; // Nexus gave no folder: nothing to read
 
-    if (const std::optional<nlohmann::json> parsed = json_file::readObject(folder / FILE_NAME)) {
+    if (const std::optional<nlohmann::json> parsed = util::json_file::readObject(folder / FILE_NAME)) {
         for (const Field<bool>& field : kBools) {
-            settings.*field.member = json_file::readBool(*parsed, field.key, settings.*field.member);
+            settings.*field.member = util::json_file::readBool(*parsed, field.key, settings.*field.member);
         }
         for (const Field<int>& field : kInts) {
-            settings.*field.member = std::clamp(json_file::readInt(*parsed, field.key, settings.*field.member), field.min, field.max);
+            settings.*field.member = std::clamp(util::json_file::readInt(*parsed, field.key, settings.*field.member), field.min, field.max);
         }
         for (const Field<float>& field : kFloats) {
-            settings.*field.member = std::clamp(json_file::readFloat(*parsed, field.key, settings.*field.member), field.min, field.max);
+            settings.*field.member = std::clamp(util::json_file::readFloat(*parsed, field.key, settings.*field.member), field.min, field.max);
         }
     }
     return settings;
@@ -84,7 +84,7 @@ bool save(const std::filesystem::path& folder, const Settings& settings) {
     for (const Field<bool>& field : kBools) out[field.key] = settings.*field.member;
     for (const Field<int>& field : kInts) out[field.key] = settings.*field.member;
     for (const Field<float>& field : kFloats) out[field.key] = settings.*field.member;
-    return json_file::write(folder / FILE_NAME, out);
+    return util::json_file::write(folder / FILE_NAME, out);
 }
 
 } // namespace viewer::settings

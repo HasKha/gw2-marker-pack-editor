@@ -4,7 +4,7 @@
 
 #include <string>
 
-#include "pack/path_text.h"
+#include "util/path_text.h"
 
 namespace viewer::ui::script_console {
 
@@ -56,7 +56,7 @@ void drawTimes(const script::Engine& engine, const runtime::Installed& installed
     for (size_t pack = 0; pack < installed.packs.size(); ++pack) {
         const double milliseconds = engine.frameSeconds(pack) * 1000.0;
         if (milliseconds <= 0.0) continue;
-        ImGui::Text("%8.3f ms  %s", milliseconds, pack::pathText(installed.packs[pack]->loaded->path.filename()).c_str());
+        ImGui::Text("%8.3f ms  %s", milliseconds, util::pathText(installed.packs[pack]->loaded->path.filename()).c_str());
     }
 }
 

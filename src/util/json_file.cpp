@@ -1,10 +1,10 @@
-#include "viewer/json_file.h"
+#include "util/json_file.h"
 
 #include <windows.h>
 
 #include <fstream>
 
-namespace viewer::json_file {
+namespace util::json_file {
 
 std::optional<nlohmann::json> readObject(const std::filesystem::path& file) {
     if (file.empty()) return std::nullopt;
@@ -59,4 +59,4 @@ std::string readString(const nlohmann::json& object, const char* key) {
     return it != object.end() && it->is_string() ? it->get<std::string>() : std::string();
 }
 
-} // namespace viewer::json_file
+} // namespace util::json_file

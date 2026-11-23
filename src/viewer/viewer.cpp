@@ -16,8 +16,8 @@
 #include <string>
 #include <vector>
 
-#include "pack/path_text.h"
 #include "pack/source.h"
+#include "util/path_text.h"
 #include "viewer/behaviors/festivals.h"
 #include "viewer/behaviors/states.h"
 #include "viewer/behaviors/update.h"
@@ -130,13 +130,13 @@ struct Imported {
     blish_import::Copied copied;
     blish_import::Found states; // what of Pathing's states was chosen
 };
-std::unique_ptr<Background<Imported>> import_job;
+std::unique_ptr<http::Background<Imported>> import_job;
 std::string import_status;
 
 // The public catalog: its list, asked for at load; the downloads into our folder; the per-pack
 // choices; every pack on disk as the catalog sees them; and whether this session's automatic
 // updates have been started.
-std::unique_ptr<Background<std::vector<catalog::Package>>> catalog_request;
+std::unique_ptr<http::Background<std::vector<catalog::Package>>> catalog_request;
 catalog::Downloads downloads;
 catalog::AutoUpdate auto_update;
 std::vector<catalog::LocalPack> local_packs;
@@ -418,7 +418,7 @@ void runBehaviors() {
 // drawn all the while.
 void updatePacks() {
     while (std::unique_ptr<registry::LoadedPack> loaded = loader.take()) {
-        if (!loaded->error.empty()) api->Log(ELogLevel_WARNING, ADDON_NAME, (pack::pathText(loaded->path) + ": " + loaded->error).c_str());
+        if (!loaded->error.empty()) api->Log(ELogLevel_WARNING, ADDON_NAME, (util::pathText(loaded->path) + ": " + loaded->error).c_str());
         runtime::uninstall(&installed, loaded->path);
         runtime::install(&installed, std::move(loaded));
     }
@@ -447,7 +447,7 @@ void installDownloads() {
         // An installed pack keeps its archive open, and Windows will not replace an open file.
         runtime::uninstall(&installed, finished.target);
         if (!MoveFileExW(finished.part.c_str(), finished.target.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_COPY_ALLOWED)) {
-            downloads.fail(finished, "could not replace " + pack::pathText(finished.target.filename()));
+            downloads.fail(finished, "could not replace " + util::pathText(finished.target.filename()));
         }
     }
     if (any) syncPacks();
@@ -458,12 +458,12 @@ void deletePack(const std::filesystem::path& path) {
     runtime::uninstall(&installed, path);
     std::error_code ec;
     std::filesystem::remove(path, ec);
-    if (ec) api->Log(ELogLevel_WARNING, ADDON_NAME, ("could not delete " + pack::pathText(path) + ": " + ec.message()).c_str());
+    if (ec) api->Log(ELogLevel_WARNING, ADDON_NAME, ("could not delete " + util::pathText(path) + ": " + ec.message()).c_str());
     syncPacks();
 }
 
 void startCatalogRequest() {
-    catalog_request = std::make_unique<Background<std::vector<catalog::Package>>>();
+    catalog_request = std::make_unique<http::Background<std::vector<catalog::Package>>>();
     catalog_request->start([](const http::Cancel& cancel) -> std::optional<std::vector<catalog::Package>> {
         const std::optional<std::string> body = http::get(catalog::REPO_URL, cancel, std::chrono::seconds(15));
         return body ? catalog::parse(*body) : std::nullopt;
@@ -563,7 +563,7 @@ void startImport() {
     chosen.states.timers = import_found.timers;
 
     import_status = "Importing...";
-    import_job = std::make_unique<Background<Imported>>();
+    import_job = std::make_unique<http::Background<Imported>>();
     import_job->start([packs, chosen, into = packsFolder()](const http::Cancel&) -> std::optional<Imported> {
         Imported done = chosen;
         done.copied = blish_import::copyPacks(packs, into);

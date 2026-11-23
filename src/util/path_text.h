@@ -11,7 +11,7 @@
 // named in Hungarian on a Western system, or in Japanese on any other. A pack's name reaches
 // labels, log lines and comparisons from inside a render callback or a loader thread, where a
 // throw takes the game down, so text about a path is made with these.
-namespace pack {
+namespace util {
 
 // `path` as UTF-8, for a label, a log line or a comparison.
 inline std::string pathText(const std::filesystem::path& path) {
@@ -24,4 +24,4 @@ inline std::filesystem::path pathFromText(std::string_view text) {
     return std::filesystem::path(std::u8string(text.begin(), text.end()));
 }
 
-} // namespace pack
+} // namespace util

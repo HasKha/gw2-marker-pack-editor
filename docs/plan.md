@@ -46,7 +46,7 @@ it, save it back, and the edited markers show correctly in Blish HUD.**
 | Settings | the Settings toggles, gizmo mode, which windows are open and where the browsers start, kept in `settings.json` |
 | Create pack | `New Pack...` builds an empty pack in memory; Save As writes the first zip |
 | Write | serializes the owned document; comments, order, spelling, BOM, CRLF and the file split survive. 947/947 files stable on rewrite |
-| Tests | `mpe_test`, 44 cases over the real pack corpus, the selection rules and the trail editing layer; `mpe_viewer_test`, 167 over the camera, the quad path, textures, settings, the bake, the registry, the ribbon, the scene, the GoodRender sink, the Lua scripts, the behaviors, the maps, the catalog, the edited pack and personal copies, the scripts over every scripted corpus pack, plus one hidden case that reaches the real catalog; and a check that nothing in `src/viewer/` includes the editor. All run by `ctest` |
+| Tests | `mpe_pack_test`, 22 cases over attributes, the model and saving; `mpe_editor_test`, 21 over the selection rules and the trail editing layer; `mpe_http_test`, 3 over cancelling requests and the one-job thread; `mpe_viewer_test`, 181 over the real pack corpus, the camera, the quad path, textures, settings, the bake, the registry, the ribbon, the scene, the GoodRender sink, the Lua scripts, the behaviors, the maps, the catalog, the edited pack and personal copies, the scripts over every scripted corpus pack, plus one hidden case that reaches the real catalog; and a check per library under `src/` that it includes nothing above it. All run by `ctest` |
 
 A pack can be edited end to end, grown new branches, and started from nothing. The test
 row's claims are measured against the corpus in [testing.md](testing.md).
@@ -77,7 +77,7 @@ Roughly in order.
   [format.md](format.md).
 - **Move pack loading off the render thread** if a large pack starts to stutter. 56k
   markers has not been slow enough to need it.
-- **Tests above the pack layer.** `mpe_test` links `mpe_editor`, so anything there is
+- **Tests above the pack layer.** `mpe_editor_test` links `mpe_editor`, so anything there is
   reachable: `selection_test.cpp` covers the click rules and `trail_test.cpp` covers
   creating trails, following the selection and renaming traildata. Undo itself and the
   editor's indexes are still covered by hand and could go the same way. The windows cannot.
@@ -151,7 +151,7 @@ between. How each part works is [viewer.md](viewer.md).
 draw-list quad path as `render/overlay.*`, and the lifecycle that owns the addon's options
 page. `entry.cpp` loaded the editor only when "Enable pack editing" was on (gone since: see
 milestone 7). Every case that passed before still passes,
-`mpe_viewer_test` links without `mpe_editor`, and `viewer_includes_no_editor` holds the
+`mpe_viewer_test` links without `mpe_editor`, and `viewer_layering` holds the
 include rule.
 
 **Left: one pull in game**, to answer one question: does the editor open, draw and save a pack

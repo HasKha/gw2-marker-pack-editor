@@ -1,4 +1,4 @@
-#include "viewer/http.h"
+#include "http/http.h"
 
 #include <windows.h>
 
@@ -8,9 +8,9 @@
 #include <memory>
 #include <vector>
 
-#include "pack/path_text.h"
+#include "util/path_text.h"
 
-namespace viewer::http {
+namespace http {
 
 namespace {
 
@@ -197,7 +197,7 @@ std::string download(
     if (!open(url, std::chrono::seconds(30), user_agent, cancel, &response, &error)) return error;
 
     std::ofstream out(file, std::ios::binary | std::ios::trunc);
-    if (!out) return "could not write " + pack::pathText(file.filename());
+    if (!out) return "could not write " + util::pathText(file.filename());
 
     uint64_t received = 0;
     const bool whole = readBody(response, [&](const char* data, size_t size) {
@@ -213,4 +213,4 @@ std::string download(
     return {};
 }
 
-} // namespace viewer::http
+} // namespace http

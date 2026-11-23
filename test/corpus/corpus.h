@@ -5,7 +5,7 @@
 #include <string_view>
 #include <vector>
 
-// Where the real marker packs live, shared by mpe_probe and mpe_test.
+// Where the real marker packs live, shared by mpe_probe and the test binaries.
 //
 // The corpus is deliberately *not* checked into the repo: these are other people's packs,
 // some of them hundreds of megabytes, and the whole point of testing against them is that

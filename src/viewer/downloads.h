@@ -9,8 +9,8 @@
 #include <thread>
 #include <vector>
 
+#include "http/http.h"
 #include "viewer/catalog.h"
-#include "viewer/http.h"
 
 // Catalog packs downloading into our folder, each on a thread of its own: PackHandlingUtil's
 // download, up to the point where the new archive is ready to take the old one's place. That

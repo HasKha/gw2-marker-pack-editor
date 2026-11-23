@@ -7,7 +7,7 @@
 #include <memory>
 #include <vector>
 
-#include "viewer/draw_list.h"
+#include "draw_list.h"
 #include "viewer/map.h"
 #include "viewer/map_scene.h"
 #include "viewer/runtime.h"

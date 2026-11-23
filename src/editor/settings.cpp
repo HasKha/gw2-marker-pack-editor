@@ -3,7 +3,7 @@
 #include <nlohmann/json.hpp>
 
 #include "editor/ui/windows.h"
-#include "viewer/json_file.h"
+#include "util/json_file.h"
 #include "viewer/settings.h"
 #include "viewer/viewer.h"
 
@@ -75,14 +75,14 @@ void init(AddonAPI* api) {
 void load(editor::Settings* editor, std::filesystem::path* last_folder, std::filesystem::path* last_image_folder) {
     if (!editor || !last_folder || !last_image_folder) return;
 
-    const std::optional<nlohmann::json> read = viewer::json_file::readObject(file);
+    const std::optional<nlohmann::json> read = util::json_file::readObject(file);
     if (!read) return;
     const nlohmann::json& parsed = *read;
 
-    editor->highlight_3d = viewer::json_file::readBool(parsed, "highlight_3d", editor->highlight_3d);
-    editor->select_in_viewport = viewer::json_file::readBool(parsed, "select_in_viewport", editor->select_in_viewport);
+    editor->highlight_3d = util::json_file::readBool(parsed, "highlight_3d", editor->highlight_3d);
+    editor->select_in_viewport = util::json_file::readBool(parsed, "select_in_viewport", editor->select_in_viewport);
 
-    const int gizmo = viewer::json_file::readInt(parsed, "gizmo", static_cast<int>(editor->gizmo));
+    const int gizmo = util::json_file::readInt(parsed, "gizmo", static_cast<int>(editor->gizmo));
     if (gizmo >= 0 && gizmo <= static_cast<int>(editor::GizmoMode::TranslateRotate)) {
         editor->gizmo = static_cast<editor::GizmoMode>(gizmo);
     }
@@ -91,12 +91,12 @@ void load(editor::Settings* editor, std::filesystem::path* last_folder, std::fil
     if (windows != parsed.end() && windows->is_object()) {
         for (size_t i = 0; i < kWindowCount; ++i) {
             bool& shown = ui::windows::visible(windowId(i));
-            shown = viewer::json_file::readBool(*windows, ui::windows::key(windowId(i)), shown);
+            shown = util::json_file::readBool(*windows, ui::windows::key(windowId(i)), shown);
         }
     }
 
-    *last_folder = viewer::json_file::readString(parsed, "last_folder");
-    *last_image_folder = viewer::json_file::readString(parsed, "last_image_folder");
+    *last_folder = util::json_file::readString(parsed, "last_folder");
+    *last_image_folder = util::json_file::readString(parsed, "last_image_folder");
 
     written = capture(*editor, *last_folder, *last_image_folder);
 }
@@ -112,7 +112,7 @@ void update(const editor::Settings& editor, const std::filesystem::path& last_fo
     out["last_folder"] = last_folder.string();
     out["last_image_folder"] = last_image_folder.string();
 
-    if (viewer::json_file::write(file, out)) written = capture(editor, last_folder, last_image_folder);
+    if (util::json_file::write(file, out)) written = capture(editor, last_folder, last_image_folder);
 }
 
 } // namespace settings

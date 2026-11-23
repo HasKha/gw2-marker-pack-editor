@@ -5,7 +5,7 @@
 #include <algorithm>
 #include <cctype>
 
-#include "viewer/http.h"
+#include "http/http.h"
 
 namespace viewer::behaviors {
 

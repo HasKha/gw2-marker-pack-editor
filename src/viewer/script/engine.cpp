@@ -6,8 +6,8 @@
 #include <unordered_map>
 #include <variant>
 
-#include "pack/path_text.h"
 #include "pack/source.h"
+#include "util/path_text.h"
 #include "viewer/registry.h"
 #include "viewer/runtime.h"
 #include "viewer/script/api.h"
@@ -35,7 +35,7 @@ void budgetHook(lua_State* L, lua_Debug*) {
 // "system" for a pack that is not installed: a handler may outlive its pack by a frame.
 std::string packLabel(const Context& ctx, size_t pack) {
     const auto& packs = ctx.host.installed->packs;
-    return pack < packs.size() ? pack::pathText(packs[pack]->loaded->path.filename()) : std::string("system");
+    return pack < packs.size() ? util::pathText(packs[pack]->loaded->path.filename()) : std::string("system");
 }
 
 const pack::DataSource* packSource(const Context& ctx, size_t pack) {

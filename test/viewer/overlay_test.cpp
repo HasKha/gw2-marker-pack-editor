@@ -8,9 +8,9 @@
 
 #include <cmath>
 
-#include "viewer/draw_list.h"
+#include "draw_list.h"
+#include "test_camera.h"
 #include "viewer/render/overlay.h"
-#include "viewer/test_camera.h"
 
 namespace {
 

@@ -11,7 +11,7 @@
 #include <string>
 
 #include "corpus.h"
-#include "viewer/background.h"
+#include "http/http.h"
 #include "viewer/map.h"
 #include "viewer/mumble.h"
 
@@ -184,21 +184,6 @@ TEST_CASE("maps: the interface sizes' scales, with Normal as one") {
     CHECK(uiScale(9) == 1.0f);
 }
 
-TEST_CASE("background: the answer is there once the job is done, and only if it gave one") {
-    viewer::Background<int> answered;
-    CHECK(answered.get() == nullptr);
-    answered.start([](const viewer::http::Cancel&) { return std::optional<int>(42); });
-    answered.start([](const viewer::http::Cancel&) { return std::optional<int>(7); }); // once only
-    answered.stop();
-    REQUIRE(answered.get());
-    CHECK(*answered.get() == 42);
-
-    viewer::Background<int> unanswered;
-    unanswered.start([](const viewer::http::Cancel&) { return std::optional<int>(); });
-    unanswered.stop();
-    CHECK(unanswered.get() == nullptr);
-}
-
 TEST_CASE("maps: the catalog keeps the cache until the API answers, then caches the answer") {
     const corpus::TempDir temp("map_catalog");
     const std::filesystem::path file = temp.path() / "maps.json";
@@ -208,7 +193,7 @@ TEST_CASE("maps: the catalog keeps the cache until the API answers, then caches 
 
     SECTION("no answer: the cache stands") {
         Catalog catalog;
-        catalog.start(file, [](const viewer::http::Cancel&) { return std::optional<std::string>(); });
+        catalog.start(file, [](const http::Cancel&) { return std::optional<std::string>(); });
         catalog.stop();
         REQUIRE(catalog.find(15));
         CHECK(catalog.find(15)->continent_size == glm::dvec2(3584.0, 2432.0));
@@ -217,7 +202,7 @@ TEST_CASE("maps: the catalog keeps the cache until the API answers, then caches 
 
     SECTION("an answer replaces it, and is written for the next session") {
         Catalog catalog;
-        catalog.start(file, [](const viewer::http::Cancel&) {
+        catalog.start(file, [](const http::Cancel&) {
             return std::optional<std::string>(R"([{"id": 16, "map_rect": [[0, 0], [10, 10]], "continent_rect": [[0, 0], [1, 1]]}])");
         });
         catalog.stop();
@@ -225,14 +210,14 @@ TEST_CASE("maps: the catalog keeps the cache until the API answers, then caches 
         REQUIRE(catalog.find(16));
 
         Catalog next;
-        next.start(file, [](const viewer::http::Cancel&) { return std::optional<std::string>(); });
+        next.start(file, [](const http::Cancel&) { return std::optional<std::string>(); });
         next.stop();
         CHECK(next.find(16));
     }
 
     SECTION("no cache yet") {
         Catalog catalog;
-        catalog.start(temp.path() / "missing.json", [](const viewer::http::Cancel&) { return std::optional<std::string>(); });
+        catalog.start(temp.path() / "missing.json", [](const http::Cancel&) { return std::optional<std::string>(); });
         catalog.stop();
         CHECK(catalog.find(15) == nullptr);
     }

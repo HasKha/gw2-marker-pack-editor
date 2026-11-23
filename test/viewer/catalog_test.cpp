@@ -173,8 +173,8 @@ TEST_CASE("downloads: a pack arrives beside its target, ready to replace it") {
     int progress_calls = 0;
     Downloads downloads([&](const std::string& url,
                             const std::filesystem::path& file,
-                            const viewer::http::Progress& progress,
-                            const viewer::http::Cancel&) {
+                            const http::Progress& progress,
+                            const http::Cancel&) {
         CHECK(url == "https://example.com/Teh.taco");
         std::filesystem::copy_file(pack, file, std::filesystem::copy_options::overwrite_existing);
         progress(10, 20);
@@ -207,7 +207,7 @@ TEST_CASE("downloads: what fails, or is no pack, leaves nothing behind") {
 
     SECTION("the fetch fails") {
         Downloads downloads(
-            [](const std::string&, const std::filesystem::path& file, const viewer::http::Progress&, const viewer::http::Cancel&) {
+            [](const std::string&, const std::filesystem::path& file, const http::Progress&, const http::Cancel&) {
                 corpus::writeFile(file, "half");
                 return std::string("the download broke off");
             });
@@ -220,7 +220,7 @@ TEST_CASE("downloads: what fails, or is no pack, leaves nothing behind") {
 
     SECTION("the body is not an archive") {
         Downloads downloads(
-            [](const std::string&, const std::filesystem::path& file, const viewer::http::Progress&, const viewer::http::Cancel&) {
+            [](const std::string&, const std::filesystem::path& file, const http::Progress&, const http::Cancel&) {
                 corpus::writeFile(file, "<html>not found</html>");
                 return std::string();
             });
@@ -232,7 +232,7 @@ TEST_CASE("downloads: what fails, or is no pack, leaves nothing behind") {
 
     SECTION("stopping cancels what is running") {
         Downloads downloads(
-            [](const std::string&, const std::filesystem::path&, const viewer::http::Progress&, const viewer::http::Cancel& cancel) {
+            [](const std::string&, const std::filesystem::path&, const http::Progress&, const http::Cancel& cancel) {
                 while (!cancel.cancelled()) std::this_thread::sleep_for(std::chrono::milliseconds(1));
                 return std::string("cancelled");
             });
@@ -248,8 +248,8 @@ TEST_CASE("downloads: what fails, or is no pack, leaves nothing behind") {
 // Hidden: it reaches the web, so ctest never runs it. Run it by hand after touching http.* or
 // the catalog's reading: mpe_viewer_test "[.web]".
 TEST_CASE("web: the real catalog reads, and its smallest pack downloads and opens", "[.web]") {
-    const viewer::http::Cancel cancel;
-    const std::optional<std::string> body = viewer::http::get(REPO_URL, cancel, std::chrono::seconds(15));
+    const http::Cancel cancel;
+    const std::optional<std::string> body = http::get(REPO_URL, cancel, std::chrono::seconds(15));
     REQUIRE(body);
     const auto packages = parse(*body);
     REQUIRE(packages);

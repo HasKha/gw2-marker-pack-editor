@@ -10,7 +10,7 @@
 #include <string_view>
 #include <unordered_map>
 
-#include "viewer/background.h"
+#include "http/background.h"
 #include "viewer/mumble.h"
 
 // Where a point of the world lands on the minimap and on the full map: Pathing's MapStates
@@ -106,7 +106,7 @@ public:
 
 private:
     MapTable cached_;
-    Background<MapTable> fresh_;
+    http::Background<MapTable> fresh_;
 };
 
 } // namespace viewer::map

@@ -5,7 +5,7 @@
 #include <string_view>
 #include <vector>
 
-#include "viewer/background.h"
+#include "http/background.h"
 
 // Which festivals are on, for the `festival` filter: Blish HUD's FestivalContext, which asks
 // the GW2 API and, when the API gets it wrong, Blish HUD's own service.
@@ -44,7 +44,7 @@ public:
     const std::vector<std::string>& active() const;
 
 private:
-    Background<std::vector<std::string>> request_;
+    http::Background<std::vector<std::string>> request_;
 };
 
 } // namespace viewer::behaviors

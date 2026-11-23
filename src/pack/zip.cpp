@@ -16,7 +16,7 @@
     #include <windows.h>
 #endif
 
-#include "pack/path_text.h"
+#include "util/path_text.h"
 
 namespace pack::zip {
 
@@ -70,14 +70,14 @@ bool Archive::open(const std::filesystem::path& file, std::string* error) {
 
     std::error_code ec;
     if (!std::filesystem::is_regular_file(file, ec)) {
-        if (error) *error = "Not a file: " + pathText(file);
+        if (error) *error = "Not a file: " + util::pathText(file);
         return false;
     }
 
     impl_ = std::make_unique<Impl>();
     impl_->file = openShared(file);
     if (!impl_->file) {
-        if (error) *error = "Could not open " + pathText(file);
+        if (error) *error = "Could not open " + util::pathText(file);
         impl_.reset();
         return false;
     }
