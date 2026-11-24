@@ -78,4 +78,36 @@ void appendRibbon(const std::vector<glm::vec3>& points, float half_width, bool i
     }
 }
 
+void cutStep(const RibbonQuad& quad, float most_length, std::vector<RibbonQuad>* out) {
+    const glm::vec3 start = (quad.corners[0] + quad.corners[1]) * 0.5f;
+    const glm::vec3 end = (quad.corners[2] + quad.corners[3]) * 0.5f;
+    const int count = most_length > 0.0f ? std::max(1, static_cast<int>(std::ceil(glm::distance(start, end) / most_length))) : 1;
+    if (count == 1) {
+        out->push_back(quad);
+        return;
+    }
+    // v runs the same along both long edges, corners 0→3 and 1→2, so a cut at t is a cut
+    // straight across.
+    const float v_start = quad.uv[0].y;
+    const float v_end = quad.uv[3].y;
+    for (int i = 0; i < count; ++i) {
+        const float from = static_cast<float>(i) / static_cast<float>(count);
+        const float until = static_cast<float>(i + 1) / static_cast<float>(count);
+        const float v_from = v_start + (v_end - v_start) * from;
+        const float v_until = v_start + (v_end - v_start) * until;
+        const float base = std::floor(std::min(v_from, v_until));
+
+        RibbonQuad piece;
+        piece.corners[0] = glm::mix(quad.corners[0], quad.corners[3], from);
+        piece.corners[1] = glm::mix(quad.corners[1], quad.corners[2], from);
+        piece.corners[2] = glm::mix(quad.corners[1], quad.corners[2], until);
+        piece.corners[3] = glm::mix(quad.corners[0], quad.corners[3], until);
+        piece.uv[0] = ImVec2(quad.uv[0].x, v_from - base);
+        piece.uv[1] = ImVec2(quad.uv[1].x, v_from - base);
+        piece.uv[2] = ImVec2(quad.uv[2].x, v_until - base);
+        piece.uv[3] = ImVec2(quad.uv[3].x, v_until - base);
+        out->push_back(piece);
+    }
+}
+
 } // namespace viewer

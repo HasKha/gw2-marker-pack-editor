@@ -10,7 +10,7 @@ include(FetchContent)
 FetchContent_Declare(
     good_render
     GIT_REPOSITORY https://github.com/HasKha/gw2-good-render.git
-    GIT_TAG aa3e3c1b05cbc135fe1420f58e43c15bf0f81e23
+    GIT_TAG 5540714924a20a158754a9f11f811604d8515f78
     SOURCE_SUBDIR no-cmake-here
 )
 

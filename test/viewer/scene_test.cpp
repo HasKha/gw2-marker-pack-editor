@@ -577,6 +577,62 @@ TEST_CASE("a trail is in the scene as its ribbon's quads", "[scene]") {
     for (const viewer::SceneItem& item : built.scene.items) CHECK(item.kind == viewer::SceneItem::Kind::Quad);
 }
 
+namespace {
+
+// One straight trail from `from` to `to`, with the fades given, alone in a pack.
+void installStraightTrail(Built* built, glm::vec3 from, glm::vec3 to, float fade_near, float fade_far) {
+    viewer::BakedPathables pathables;
+    viewer::BakedTrail trail;
+    trail.category = 0;
+    trail.map_id = kMap;
+    trail.texture = "trail.png";
+    trail.fade_near = fade_near;
+    trail.fade_far = fade_far;
+    auto geometry = std::make_shared<pack::trl::Trail>();
+    geometry->segments.push_back({{from, to}, 0});
+    trail.geometry = geometry;
+    pathables.trails = {trail};
+    viewer::runtime::install(&built->installed, loadedPack("pack", pathables));
+}
+
+glm::vec3 middleOf(const viewer::SceneItem& item) {
+    return (item.corners[0] + item.corners[1] + item.corners[2] + item.corners[3]) * 0.25f;
+}
+
+} // namespace
+
+TEST_CASE("a trail step is one quad, its texture repeating along it", "[scene]") {
+    // As Pathing's strip has it: v runs the step's whole length, and the sampler wraps it, as
+    // GoodRender's does since good_render.h says so. Cutting at every repeat instead cost a
+    // millisecond a frame on the corpus's busiest maps.
+    Built built;
+    installStraightTrail(&built, {0, -1, 2}, {0, -1, 12}, -1.0f, -1.0f);
+
+    built.build(test_camera::axisCamera());
+    REQUIRE(built.scene.items.size() == 1);
+    const viewer::SceneItem& item = built.scene.items[0];
+    CHECK(item.uv[0].y - item.uv[3].y == Approx(10.0f / (2.0f * viewer::kTrailHalfWidth)));
+}
+
+TEST_CASE("a long trail step is drawn up to fadeFar, however far its middle is", "[scene][regression]") {
+    // Teh's Trails' 3000 to 3500 inches, 76 to 89 m, and a 300 m step from the player's feet:
+    // faded by its middle, 150 m off, all of it went; Pathing clips each pixel at fadeFar.
+    Built built;
+    installStraightTrail(&built, {0, -1, 0}, {0, -1, 300}, 3000.0f, 3500.0f);
+
+    built.build(test_camera::axisCamera());
+    REQUIRE_FALSE(built.scene.items.empty());
+    float nearest = std::numeric_limits<float>::max();
+    float farthest = 0.0f;
+    for (const viewer::SceneItem& item : built.scene.items) {
+        for (const glm::vec3& corner : item.corners) nearest = std::min(nearest, corner.z);
+        farthest = std::max(farthest, middleOf(item).z);
+    }
+    CHECK(nearest == Approx(0.0f).margin(1e-3)); // from the player's feet
+    CHECK(farthest < 3500.0f * 0.0254f);
+    CHECK(farthest > 85.0f);
+}
+
 TEST_CASE("a moment's camera projects as ours does", "[good_render]") {
     const viewer::Camera ours = test_camera::axisCamera();
     const viewer::Camera theirs = viewer::good_render_sink::cameraFromMoment(momentCamera(ours), ours.viewport);

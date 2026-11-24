@@ -165,7 +165,10 @@ Pathing's `GetOpacity()` multiplies them before its shader sees them. What its s
   Max View Distance where it expects inches, so every marker is cut off there: 635 m at the
   default.
 - **A trail's distance fade, deliberately not.** trail.hlsl never reads `fadeNear`: Pathing's
-  trails stay whole up to `fadeFar` and are cut off there. Ours fade out between the two.
+  trails stay whole up to `fadeFar` and are cut off there. Ours fade out between the two. A
+  quad is one step between two points and can be hundreds of metres long, so a step that
+  crosses the fade is cut into 2 m pieces that fade on their own (`cutStep`), and still shows
+  up to `fadeFar` however far its middle is.
 - **Not drawn at all**: markers fading between the character and the camera, trails fading
   around the character, and their two settings. Both need a shader of our own bound in the
   moment, which is the one thing that would take us off `world_quad` ([plan.md](plan.md#9-later)).

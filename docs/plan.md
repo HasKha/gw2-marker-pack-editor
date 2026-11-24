@@ -46,7 +46,7 @@ it, save it back, and the edited markers show correctly in Blish HUD.**
 | Settings | the Settings toggles, gizmo mode, which windows are open and where the browsers start, kept in `settings.json` |
 | Create pack | `New Pack...` builds an empty pack in memory; Save As writes the first zip |
 | Write | serializes the owned document; comments, order, spelling, BOM, CRLF and the file split survive. 947/947 files stable on rewrite |
-| Tests | `markus_pack_test`, 22 cases over attributes, the model and saving; `markus_editor_test`, 21 over the selection rules and the trail editing layer; `markus_http_test`, 3 over cancelling requests and the one-job thread; `markus_viewer_test`, 185 over the real pack corpus, the folder moving across the rename, the camera, the quad path, textures, settings, the bake, the registry, the ribbon, the scene, the GoodRender sink, the Lua scripts, the behaviors, the maps, the catalog, the edited pack and personal copies, the scripts over every scripted corpus pack, plus one hidden case that reaches the real catalog; and a check per library under `src/` that it includes nothing above it. All run by `ctest` |
+| Tests | `markus_pack_test`, 22 cases over attributes, the model and saving; `markus_editor_test`, 21 over the selection rules and the trail editing layer; `markus_http_test`, 3 over cancelling requests and the one-job thread; `markus_viewer_test`, 215 over the real pack corpus, the folder moving across the rename, the camera, the quad path, textures, settings, the bake, the registry, the ribbon, the scene, the GoodRender sink, the Lua scripts, the behaviors, the maps, the catalog, the edited pack and personal copies, the scripts over every scripted corpus pack, plus one hidden case that reaches the real catalog; and a check per library under `src/` that it includes nothing above it. All run by `ctest` |
 
 A pack can be edited end to end, grown new branches, and started from nothing. The test
 row's claims are measured against the corpus in [testing.md](testing.md).
@@ -97,7 +97,10 @@ move-only nodes, an `undo::Step` around every edit, and new categories through
   `StandardTrail.World.cs` rather than taken from the old per-segment quads, which had flat
   trails mirrored and every trail's texture running backwards. Worked through by hand and
   pinned by `ribbon_test.cpp`; the next pull in game should look at an arrowed trail beside
-  Blish HUD to confirm it.
+  Blish HUD to confirm it. A step's texture repeats along its one quad, which needs the
+  sampler to wrap: GoodRender's clamped, which drew a long step as one arrow, and wraps since
+  `good_render.h` says so. **A GoodRender built before that still clamps**: the next release of
+  it is needed before this shows right in game.
 
 Everything built so far has now been driven in game: the tree and the property form, the
 world view, selection and the gizmo, save, add and delete, the resources window, the trail
@@ -415,9 +418,6 @@ Asked for after milestone 7, before its pull in game. Each step is a commit of i
 
 - **The addon's name**, and whether the repo is renamed to match. The signature stays either
   way; whether Nexus's GitHub update check follows a renamed repo needs checking first.
-- **Whether `world_quad` samples with wrap.** A trail texture repeats along its length; with
-  clamping, every repeat has to be its own quad. The ribbon keeps each quad's v near zero
-  either way, and one look at a long trail segment in the pull answers it.
 - **Whether the full map counts as a window** at `BEFORE_WINDOWS`, i.e. whether the map's
   markers drawn there land over it or under it. One pull answers it. Under it, the full map
   moves to `UI_FINISHED` and the minimap stays.

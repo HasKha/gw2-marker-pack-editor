@@ -98,3 +98,36 @@ TEST_CASE("fewer than two points, or no length, is no ribbon", "[ribbon]") {
     viewer::appendRibbon({{1, 2, 3}, {1, 2, 3}}, kHalf, false, 0.0f, &quads);
     CHECK(quads.empty());
 }
+
+TEST_CASE("a step cut across is the same strip, in equal pieces", "[ribbon]") {
+    std::vector<viewer::RibbonQuad> quads;
+    viewer::appendRibbon({{0, 0, 0}, {9, 0, 0}}, kHalf, false, 0.0f, &quads);
+    REQUIRE(quads.size() == 1);
+    const float v_span = quads[0].uv[0].y - quads[0].uv[3].y;
+
+    std::vector<viewer::RibbonQuad> pieces;
+    viewer::cutStep(quads[0], 2.0f, &pieces);
+    REQUIRE(pieces.size() == 5); // 9 m in pieces of at most 2: five of 1.8
+    CHECK(pieces.front().corners[0].x == Approx(0.0f));
+    CHECK(pieces.back().corners[2].x == Approx(9.0f));
+    for (size_t i = 0; i < pieces.size(); ++i) {
+        const viewer::RibbonQuad& piece = pieces[i];
+        CHECK(piece.corners[2].x - piece.corners[1].x == Approx(1.8f));
+        CHECK(piece.uv[0].y - piece.uv[3].y == Approx(v_span / 5.0f)); // v still counts down, as fast
+        CHECK(std::min(piece.uv[0].y, piece.uv[3].y) >= 0.0f);
+        CHECK(std::min(piece.uv[0].y, piece.uv[3].y) < 1.0f);
+        CHECK(piece.uv[0].x == 0.0f);
+        CHECK(piece.uv[1].x == 1.0f);
+        if (i > 0) {
+            CHECK(piece.corners[0].x == Approx(pieces[i - 1].corners[3].x));
+            CHECK(piece.corners[1].x == Approx(pieces[i - 1].corners[2].x));
+            // The same image across a cut: v the same but for whole lengths.
+            const float jump = pieces[i - 1].uv[3].y - piece.uv[0].y;
+            CHECK(jump == Approx(std::round(jump)).margin(1e-4));
+        }
+    }
+
+    pieces.clear();
+    viewer::cutStep(quads[0], 10.0f, &pieces);
+    CHECK(pieces.size() == 1); // short enough already: as it was
+}

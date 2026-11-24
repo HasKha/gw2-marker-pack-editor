@@ -23,9 +23,20 @@ std::atomic<std::shared_ptr<const Scene>> latest;
 // Below this an item is invisible: under one step of an 8-bit alpha.
 constexpr float kInvisibleOpacity = 0.003f;
 
+// The longest piece a trail step crossing its fade is cut into: how coarsely it fades out.
+constexpr float kFadePieceMetres = 2.0f;
+
 float squaredDistance(const glm::vec3& a, const glm::vec3& b) {
     const glm::vec3 d = a - b;
     return glm::dot(d, d);
+}
+
+// How far `point` is from the nearest point of the segment a→b.
+float distanceToSegment(const glm::vec3& point, const glm::vec3& a, const glm::vec3& b) {
+    const glm::vec3 along = b - a;
+    const float length_squared = glm::dot(along, along);
+    const float t = length_squared > 0.0f ? std::clamp(glm::dot(point - a, along) / length_squared, 0.0f, 1.0f) : 0.0f;
+    return glm::distance(point, a + along * t);
 }
 
 // SceneItem::front for a quad culled as `cull` says, whose first triangle as Blish draws it is
@@ -145,6 +156,7 @@ void appendLayer(
     // Kept between calls: the quads of one trail run are only needed until they are copied
     // into the scene.
     static std::vector<RibbonQuad> quads;
+    static std::vector<RibbonQuad> pieces;
     for (const runtime::LiveTrail& live_trail : live.trails) {
         const BakedTrail& trail = live_trail.trail;
         if (live_trail.removed || !trail.in_game_visibility || !trail.geometry || !runtime::nodeVisible(live_trail.node, visible)) continue;
@@ -158,37 +170,56 @@ void appendLayer(
         const float fade_near = std::min(trail.fade_near, options.view_distance - (trail.fade_far - trail.fade_near));
         const float scroll = seconds * std::min(trail.anim_speed, options.max_trail_speed);
         const float fade_in = fadeInOf(live_trail.in_view_since, seconds);
+        const auto fadeAt = [&](float metres) { return fadeFactor(metresToInches(metres), fade_near, fade_far); };
+        // `fade` is the quad's distance fade, from fadeNear to fadeFar. Pathing's trail.hlsl
+        // never reads fadeNear, so its trails stay whole up to fadeFar and are cut off there;
+        // fading them out instead is ours, on purpose.
+        const auto appendQuad = [&](const RibbonQuad& quad, float fade) {
+            const float opacity = trail.alpha * fade * settings_opacity * fade_in;
+            if (opacity <= kInvisibleOpacity) return;
+
+            SceneItem item;
+            item.kind = SceneItem::Kind::Quad;
+            item.texture = image;
+            item.colour = applyOpacity(trail.tint, opacity);
+            std::copy(std::begin(quad.corners), std::end(quad.corners), item.corners);
+            std::copy(std::begin(quad.uv), std::end(quad.uv), item.uv);
+            // Blish's strip starts each quad at its right corner at the first point, then its
+            // left, then the right at the next — see appendRibbon's corner order.
+            item.front = frontOf(trail.cull, quad.corners[1], quad.corners[0], quad.corners[2]);
+            // StandardTrail.DrawOrder is float.MaxValue: every trail under every marker, trails
+            // in the order loaded.
+            item.depth = std::numeric_limits<float>::max();
+            item.behind_terrain = behindTerrain(trail.render_layer, options);
+            if (layer.edited) {
+                item.pathable = trail.pathable;
+                item.is_trail = true;
+            }
+            out->items.push_back(item);
+        };
         for (const pack::trl::Segment& segment : trail.geometry->segments) {
             quads.clear();
             appendRibbon(segment.points, kTrailHalfWidth * trail.scale, trail.is_wall, scroll, &quads);
 
-            for (const RibbonQuad& quad : quads) {
-                // Faded per quad, from its middle, from fadeNear to fadeFar. Pathing's
-                // trail.hlsl never reads fadeNear, so its trails stay whole up to fadeFar and
-                // are cut off there; fading them out instead is ours, on purpose.
-                const glm::vec3 middle = (quad.corners[0] + quad.corners[1] + quad.corners[2] + quad.corners[3]) * 0.25f;
-                const float opacity = trail.alpha * fadeFactor(metresToInches(glm::distance(middle, camera.player)), fade_near, fade_far) *
-                                      settings_opacity * fade_in;
-                if (opacity <= kInvisibleOpacity) continue;
-
-                SceneItem item;
-                item.kind = SceneItem::Kind::Quad;
-                item.texture = image;
-                item.colour = applyOpacity(trail.tint, opacity);
-                std::copy(std::begin(quad.corners), std::end(quad.corners), item.corners);
-                std::copy(std::begin(quad.uv), std::end(quad.uv), item.uv);
-                // Blish's strip starts each quad at its right corner at the first point, then
-                // its left, then the right at the next — see appendRibbon's corner order.
-                item.front = frontOf(trail.cull, quad.corners[1], quad.corners[0], quad.corners[2]);
-                // StandardTrail.DrawOrder is float.MaxValue: every trail under every marker,
-                // trails in the order loaded.
-                item.depth = std::numeric_limits<float>::max();
-                item.behind_terrain = behindTerrain(trail.render_layer, options);
-                if (layer.edited) {
-                    item.pathable = trail.pathable;
-                    item.is_trail = true;
+            for (const RibbonQuad& step : quads) {
+                // A step is one quad per point and may be hundreds of metres long. Where it fades
+                // alike from where it comes nearest the player to where it goes farthest, it is
+                // drawn whole; where not, it is cut, so it shows up to fadeFar however far its
+                // middle is, and fades a piece at a time.
+                const glm::vec3 start = (step.corners[0] + step.corners[1]) * 0.5f;
+                const glm::vec3 end = (step.corners[2] + step.corners[3]) * 0.5f;
+                const float nearest = fadeAt(distanceToSegment(camera.player, start, end));
+                if (nearest <= 0.0f) continue;
+                if (fadeAt(std::max(glm::distance(camera.player, start), glm::distance(camera.player, end))) == nearest) {
+                    appendQuad(step, nearest);
+                    continue;
                 }
-                out->items.push_back(item);
+                pieces.clear();
+                cutStep(step, kFadePieceMetres, &pieces);
+                for (const RibbonQuad& piece : pieces) {
+                    const glm::vec3 middle = (piece.corners[0] + piece.corners[1] + piece.corners[2] + piece.corners[3]) * 0.25f;
+                    appendQuad(piece, fadeAt(glm::distance(middle, camera.player)));
+                }
             }
         }
     }
