@@ -10,15 +10,9 @@
 #include "editor/editor_state.h"
 #include "pack/trl.h"
 
-// The trail currently being edited, as a mutable working copy of its `.trl`.
-//
-// It lives here rather than in the trail editor window because the gizmo edits the same
-// points: the window lists them, the gizmo drags them, and both go through this one model.
-//
-// Every change writes the whole trail straight back into the pack as a pending asset — the
-// same mechanism the resources window uses — so the world redraws immediately and a pack
-// save picks the trail up with everything else. Points are addressed by a flat index across
-// segments, which is the order the file has them in and the order the editor lists them.
+// The open trail, as a working copy of its `.trl` shared by the trail editor, the gizmo and the
+// overlay. Every change writes the whole trail back as a pending asset. Points are addressed by a
+// flat index across segments.
 namespace trail_edit {
 
 bool isOpen();
@@ -42,16 +36,9 @@ bool open(editor::State& state, size_t pathable);
 // Takes State because the point selection is scoped to the open trail and goes with it.
 void close(editor::State& state);
 
-// Keeps the open trail in step with the node selection, both ways: a trail selected is a
-// trail opened, and selecting anything else closes it. Without the second half the handles
-// in the world would outlive the reason they were drawn, and the gizmo would stay on points
-// of a trail nobody has selected.
-//
-// Points do not enter into it — they are their own selection, so picking one leaves the
-// trail selected and this alone.
-//
-// Must be called every frame from somewhere that always runs. It cannot live in the trail
-// editor window: a window that is hidden, or merely collapsed, draws nothing.
+// Keeps the open trail in step with the node selection: a trail selected is opened, anything else
+// selected closes it. Call every frame from outside the trail editor's window body, which does not
+// run while hidden or collapsed.
 void followSelection(editor::State& state);
 
 void setMapId(editor::State& state, int32_t map_id);

@@ -12,18 +12,10 @@ namespace pack {
 // Indentation for written XML. Two spaces matches what hand-authored packs use.
 constexpr const char* kIndent = "  ";
 
-// Serializes one XML file from the model.
-//
-// The model's attributes are written back into the parsed document, then the document is
-// serialized. Comments, processing instructions, the declaration, attribute order and the
-// original attribute spelling all survive because the document still holds them; the BOM
-// and CRLF are reapplied from FileFormat.
-//
-// What is deliberately *not* preserved is whitespace inside a tag — wrapped attribute
-// lists and `<POI ... />` come back on one line with no space before the slash. pugixml
-// cannot represent that, so a pack reformats once on its first save. In exchange the
-// writer is a plain serializer, which is what makes adding, removing and creating nodes
-// possible at all. See docs/architecture.md.
+// Serializes one XML file: the model's attributes written back into the parsed document, which
+// still holds everything else, and the BOM and CRLF reapplied from FileFormat. Whitespace inside
+// tags is lost, so a pack reformats once on its first save; a serializer rather than a splice into
+// the original bytes is what lets nodes be added and removed.
 bool writeXmlFile(const Pack& pack, size_t file_index, std::string* out, std::string* error);
 
 struct SaveResult {
@@ -36,20 +28,10 @@ struct SaveResult {
     std::string error;
 };
 
-// Saving a zip is two steps on purpose.
-//
-// buildZip writes the complete new archive to `<target>.writing`, reading everything the
-// editor did not touch — icons, .trl files, the README — straight out of `source`, so a
-// save never loses what it did not understand. `source` must still be open for that.
-// Pack::added_assets are written in as well, and Pack::removed_assets are left out.
-//
-// `source` is null for a pack created in the editor, which has nothing to carry forward:
-// the archive is then made of the pack's own files and its added assets.
-//
-// commitZip then swaps it into place. It is separate because the usual target *is* the
-// pack we have open, and on Windows a live read handle blocks the rename: the caller has
-// to release the source in between. Building first also means a failure never leaves a
-// half-written pack where a working one used to be.
+// Writes the new archive to `<target>.writing`: the XML, Pack::added_assets, and every other entry
+// copied from `source` (null for a pack made in the editor), less Pack::removed_assets. commitZip
+// is separate because the target is usually `source` itself, which the caller has to release
+// before the rename.
 SaveResult buildZip(const Pack& pack, const DataSource* source, const std::filesystem::path& target);
 
 // Moves `<target>.writing` over `target`, keeping any previous file as `<target>.bak`.

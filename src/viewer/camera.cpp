@@ -43,15 +43,10 @@ bool Camera::billboardQuad(const glm::vec3& world_position, float world_size, gl
 
     const glm::vec3 direction = from_camera / distance;
 
-    // Matrix.CreateBillboard's basis, which Blish builds with the object-minus-camera
-    // direction, right = up x direction and up' = direction x right. Its up vector is
-    // (0,0,1) in Blish's Z-up space, i.e. ours below.
-    //
-    // The formula is copied verbatim, but the space is not: Blish's is right-handed and
-    // Mumble's is left-handed, so the `right` that comes out points the opposite way —
-    // screen right here, screen left there. That is not a bug to correct. It is what
-    // cancels the horizontal half of Blish's inverted UVs, and the billboard's UV table
-    // depends on it. See kBillboardUv in bake.cpp.
+    // Matrix.CreateBillboard's basis: right = up x direction, up' = direction x right, with
+    // direction from the camera to the object. In Mumble's left-handed space `right` points the
+    // other way from Blish's, which cancels the horizontal half of Blish's inverted UVs; see
+    // kBillboardUv in bake.cpp.
     glm::vec3 right = glm::cross(glm::vec3(0.0f, 1.0f, 0.0f), direction);
     const float right_length = glm::length(right);
     if (right_length < 0.0001f) {
@@ -91,20 +86,8 @@ void Camera::quadNearDepths(const glm::vec3 world[4], float out_depth[4]) const 
 }
 
 float clampedBillboardSize(const Camera& camera, const glm::vec3& centre, float world_size, float min_size, float max_size) {
-    // What minSize and maxSize multiply up to, in real pixels.
-    //
-    // StandardMarker.World.cs clamps between minSize*4 and maxSize*4, but the quantity it
-    // clamps is not a pixel height:
-    //
-    //     pixelSizeY = (maxY - minY) * Viewport.Height
-    //
-    // with maxY and minY in normalized device coordinates, which span **2** across the
-    // viewport, so multiplying an NDC extent by the viewport height without halving it yields
-    // twice the pixel height. Its floor of minSize*4 therefore bites at minSize*2 real pixels.
-    //
-    // Matching that is the point: the editor exists to show what Blish will show. With the
-    // literal *4 a marker pins to a fixed size twice as far out and twice as large, which is
-    // the "icons never get smaller in the distance" bug this replaced.
+    // What minSize and maxSize multiply up to, in real pixels. Blish clamps between *4 bounds, but
+    // on an NDC extent times the viewport height, which is twice the pixel height (docs/format.md).
     constexpr float kBlishSizeLimit = 2.0f;
 
     glm::vec2 corners[4];

@@ -1,19 +1,13 @@
 include_guard()
 include(FetchContent)
 
-# Test framework for the test binaries. Test-only: nothing in src/ links it, and the addon does
-# not know it exists.
-#
-# v3 is the compiled-library generation rather than the old single header, so it comes
-# in as a normal subproject. Its own CMakeLists asks for 3.16, comfortably above the 3.5
-# floor CMake 4 enforces, so unlike miniz this one needs no amalgamation trick.
+# Test framework for the test binaries. Test-only: nothing in src/ links it.
 FetchContent_Declare(
     Catch2
     GIT_REPOSITORY https://github.com/catchorg/Catch2.git
     GIT_TAG v3.7.1
 )
 
-# We only ever build the library, never Catch2's own test suite or its examples.
 set(CATCH_INSTALL_DOCS OFF CACHE BOOL "" FORCE)
 set(CATCH_INSTALL_EXTRAS OFF CACHE BOOL "" FORCE)
 set(CATCH_BUILD_TESTING OFF CACHE BOOL "" FORCE)

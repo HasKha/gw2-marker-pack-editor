@@ -20,12 +20,8 @@ struct NodeRef {
     bool operator==(const NodeRef& other) const { return kind == other.kind && index == other.index; }
 };
 
-// An ordered set of selected things. Ordered so bulk edits apply in a predictable sequence,
-// and so the first and last clicked items can act as the anchor and the primary.
-//
-// Templated because the editor selects two unrelated kinds of thing — tree nodes and the
-// points of a trail — and the container is the same for both. What differs is only what an
-// element is; see PointSelection for why they are not one list.
+// An ordered set of selected things, so bulk edits apply in a predictable sequence and the first and
+// last clicked can be the anchor and the primary. Used for tree nodes and trail points alike.
 template <typename T>
 class SelectionOf
 {
@@ -90,18 +86,9 @@ inline size_t SelectionOf<size_t>::none() {
 
 using Selection = SelectionOf<NodeRef>;
 
-// The selected points of the trail open in the trail editor.
-//
-// Deliberately not part of `Selection`. A trail point is not a sibling of a marker in the
-// tree; it is a sub-selection *inside* a trail that is itself selected. Folding the two into
-// one list meant clicking a point evicted its trail from the details panel, made deleting a
-// point look like deselecting the trail, and left every consumer filtering the mixture back
-// apart by kind. Keeping them apart also carries the trail index once, here, rather than on
-// every entry.
-//
-// The invariant every consumer relies on: `indices` only ever holds points that exist, in
-// the trail `trail` names. It is maintained here and in trail_edit, which is the only thing
-// that can know a trail's shape — so nothing downstream has to bounds-check a point again.
+// The selected points of the open trail: a sub-selection inside a selected trail, so not part of
+// `Selection`. `indices` only ever holds points that exist in `trail`, kept so here and by
+// trail_edit, the only thing that knows a trail's shape.
 struct PointSelection {
     size_t trail = pack::kNoIndex; // the pathable, or kNoIndex when no trail is open
     SelectionOf<size_t> indices;
@@ -186,10 +173,8 @@ struct State {
     // selected, and stays in the details window, while its points are picked over.
     PointSelection points;
 
-    // A click in the world asks the tree to open down to the node and scroll it into view.
-    // The tree consumes it on its next frame — deferred rather than done directly because
-    // the pick arrives from the game's message thread, and because only the tree knows
-    // which rows it is drawing.
+    // A click in the world asks the tree to open down to the node and scroll to it; the tree
+    // consumes it next frame, since only it knows which rows it draws.
     bool reveal_pending = false;
     NodeRef reveal_target;
     void requestReveal(NodeRef node) {
@@ -197,9 +182,8 @@ struct State {
         reveal_target = node;
     }
 
-    // Pathables grouped by owning category, built once per load. Without this the tree
-    // would rescan every pathable for every category it draws — 55k x 14k on the largest
-    // pack tested.
+    // Pathables grouped by owning category, in tree order, so the tree does not rescan every
+    // pathable per category.
     std::vector<std::vector<size_t>> pathables_by_category;
     std::vector<size_t> orphan_pathables; // category could not be resolved
 
@@ -208,10 +192,8 @@ struct State {
     uint64_t revision = 1;
 
     // ── Visibility ────────────────────────────────────────────────────────────
-    // Purely a view state for the 3D viewport. Never saved, never marks the pack dirty:
-    // hiding a category is about looking at the pack, not editing it. (A pack's own
-    // defaulttoggle / ishidden attributes are a different thing entirely and do get
-    // saved — they live in the attribute table like everything else.)
+    // View state only: never saved, never marks the pack dirty. Unrelated to the pack's own
+    // defaulttoggle / ishidden.
     std::vector<char> category_hidden;
     std::vector<char> pathable_hidden;
 
@@ -226,36 +208,28 @@ struct State {
 
     void rebuildIndex();
 
-    // Takes a newly created pathable into the editor's indexes. `after` is the sibling it
-    // should follow in the tree, or kNoIndex to put it last in its category.
-    //
-    // Order in the tree comes from `pathables_by_category`, not from the order of
-    // `Pack::pathables` — which is exactly why a new marker can be appended to the pack and
-    // still show up in the middle of a category. Appending is what keeps every existing
-    // index, selection entry and cache slot valid.
+    // Takes a newly created pathable into the editor's indexes. `after` is the sibling it follows in
+    // the tree, or kNoIndex to put it last in its category.
     void pathableAdded(size_t index, size_t after);
 
-    // The same for a new category. Its place in the tree comes from the model's
-    // parent/children, so all this has to do is grow the per-category vectors alongside it.
+    // The same for a new category, whose tree place is the model's: this grows the per-category
+    // vectors.
     void categoryAdded(size_t index);
 
     void reset();
 
-    // Marks the pack edited. Every mutation goes through here so the title bar, the save
-    // prompt, the render cache and (later) undo all see the same signal.
+    // Marks the pack edited and bumps the revision. Every mutation goes through here.
     void touch() {
         dirty = true;
         ++revision;
     }
 };
 
-// The attributes a node owns, or nullptr for a stale index. Lives here rather than in
-// whichever window needed it first, because by now three of them do.
+// The attributes a node owns, or nullptr for a stale index.
 pack::AttributeCollection* attributesOf(State& state, NodeRef node);
 const pack::AttributeCollection* attributesOf(const State& state, NodeRef node);
 
-// True for a node that has been deleted. Tombstones keep their slot, so an index alone
-// does not tell you whether the thing is still there.
+// True for a node that has been deleted: tombstones keep their slot.
 bool isDeleted(const State& state, NodeRef node);
 
 // Drops selected nodes that no longer name anything. The one place that checks, run after

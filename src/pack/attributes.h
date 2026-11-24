@@ -58,19 +58,9 @@ struct AttributeDef {
 
 const std::vector<AttributeDef>& attributeTable();
 
-// The node kinds an attribute may legitimately be *written* on, which is wider than
-// `applies_to`: a `markercategory` carries no `iconsize` of its own, but every marker
-// beneath it reads one through the category chain, so setting it there is the normal way to
-// give a whole category an icon size.
-//
-// TmfLib is what makes this true. `PathableCategoryBuilder` strips only the five structural
-// attributes off a category node and hands *everything else* to `SetAttributes`, and both
-// `StandardMarker` and `StandardTrail` populate from `GetAggregatedAttributes()`, which
-// walks `AttributeParent` up the category chain. So the category's contribution to a
-// pathable is limited by nothing but inheritance itself.
-//
-// This is the predicate the "add attribute" picker filters on. `applies_to` is the wrong
-// one and asking it directly is the bug it replaces.
+// The node kinds an attribute may be *written* on: `applies_to`, plus categories whenever it
+// inherits, since a category is where an author sets `iconsize` for a subtree
+// (docs/format.md). What anything filtering attributes by node kind wants.
 uint8_t settableOn(const AttributeDef& def);
 
 // Case-insensitive lookup. Returns nullptr for attributes we do not know about; those
@@ -84,13 +74,8 @@ const AttributeDef* findAttribute(std::string_view name);
 // round-trip and both show separately in the property panel.
 std::string attributeKey(std::string_view name);
 
-// True when `name` is already what attributeKey would return, so a lookup can use it
-// as-is. Nearly every call site passes a literal that is already a key, and the string
-// attributeKey would allocate shows up in effectiveValue — which does one lookup per
-// ancestor, per marker, on packs with 56k of them.
-//
-// Conservative: anything it is unsure about answers false and takes the copying path,
-// which is always correct, just slower.
+// True when `name` is already what attributeKey would return, so a lookup can skip the copy,
+// which effectiveValue pays per ancestor per marker. False when unsure.
 bool isAttributeKey(std::string_view name);
 
 // ── Value parsing ─────────────────────────────────────────────────────────────

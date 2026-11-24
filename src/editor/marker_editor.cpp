@@ -57,12 +57,10 @@ std::atomic<bool> redo_requested{false};
 std::filesystem::path open_pack_path;
 std::string status_message;
 
-// Where the folder browser starts next time. A pack repo rarely lives under the Blish
-// HUD markers folder, so defaulting there every time would be a nuisance.
+// Where the folder browser starts next time.
 std::filesystem::path last_folder;
 
-// Likewise for adding images: icons are authored wherever the user keeps them, and coming
-// back to the same place beats browsing from scratch for each one.
+// Likewise for adding images.
 std::filesystem::path last_image_folder;
 
 editor::State state;
@@ -103,12 +101,8 @@ POINT deselect_origin{};
 enum class DialogPurpose { OpenFile, OpenFolder, SaveAs, AddResource, ExportTrail };
 DialogPurpose dialog_purpose = DialogPurpose::OpenFile;
 
-// Close and Reload both throw away unsaved edits, so with a dirty pack they go through a
-// confirmation first rather than doing it silently.
-//
-// The confirmation belongs to whichever window's menu asked for it. An ImGui popup is
-// scoped to the window that opened it, and the same menu bar is now drawn in every large
-// window, so without an owner three windows would fight over one popup id.
+// Close and Reload with unsaved edits ask first. The confirmation belongs to the window whose
+// menu asked: an ImGui popup is scoped to its window, and every large window draws the menu bar.
 enum class PendingAction { None, Close, Reload, NewPack, CloseEditor };
 PendingAction pending_action = PendingAction::None;
 bool confirm_pending = false; // the action is waiting on the modal
@@ -130,12 +124,8 @@ void log(ELogLevel level, const std::string& message) {
     api->Log(level, viewer::ADDON_NAME, message.c_str());
 }
 
-// <Documents>/Guild Wars 2/addons/blishhud/markers — where Blish HUD's Pathing module
-// looks for packs, and so the sensible place to start browsing. Resolved rather than
-// hardcoded so this works on anyone's machine.
-//
-// Falls back to the deepest ancestor that exists: a dialog handed a folder that is not
-// there opens wherever Windows was last instead — see file_dialog.h.
+// <Documents>/Guild Wars 2/addons/blishhud/markers, where Pathing looks for packs, or its deepest
+// ancestor that exists: a dialog handed a missing folder opens wherever Windows was last.
 std::filesystem::path blishhudMarkersFolder() {
     std::filesystem::path path = viewer::registry::blishMarkersFolder();
 
@@ -172,8 +162,7 @@ std::filesystem::path imageFolder() {
 // By value on purpose: Reload passes open_pack_path, which this function reassigns
 // partway through. A reference would alias it and change under us.
 void openPack(std::filesystem::path path) {
-    // TODO: move off the render thread once a pack is big enough to stutter. The largest
-    // pack tested (56k markers) loads fast enough that it has not been worth it yet.
+    // On the render thread: 56k markers has not stuttered (docs/editor_plan.md).
     state.reset();
     // Its pathable index and its working copy both belong to the pack going away, and so
     // does every undo record.
@@ -227,28 +216,10 @@ bool isCursorVisible() {
     return (info.flags & CURSOR_SHOWING) != 0;
 }
 
-// Selecting a marker in the world cannot go through ImGui. Nexus only forwards a click to
-// ImGui when io.WantCaptureMouse is already true:
-//
-//     case WM_LBUTTONDOWN:
-//         if (io.WantCaptureMouse && !Inputs::IsCursorHidden()) { io.MouseDown[0] = true; ... }
-//
-// so a click on the world — which is exactly the case where WantCaptureMouse is false —
-// never reaches io.MouseDown at all and ImGui::IsMouseClicked can never fire for it. The
-// message has to be taken from Nexus's WndProc chain instead.
-//
-// Returning 0 consumes the message (RiApi.cpp), which we only do when a marker was
-// actually hit, so ordinary clicks still drive the camera.
-// Clicking nothing clears the selection, which is the only way to clear it out here. The
-// catch is that a left *drag* on nothing is how the camera turns, and a drag begins with the
-// same WM_LBUTTONDOWN — so the deselect cannot be decided until the button comes back up.
-//
-// Telling the two apart by comparing the down and up positions does not work. GW2 hides the
-// cursor while it turns the camera, and Nexus's `MouseResetFix` optionally clips it to a 1x1
-// rect and `SetCursorPos`es it back to where it went down, so a long drag can report an up
-// position identical to its down position. The cursor going hidden is the reliable signal,
-// and it is the game telling us it has taken the mouse for mouselook. Movement past a few
-// pixels is checked too, for a drag where the cursor stays visible.
+// A click on nothing clears the selection, but a left drag on nothing turns the camera, so it is
+// decided when the button comes back up. Down and up positions cannot tell them apart: Nexus's
+// `MouseResetFix` puts the cursor back where it went down. The cursor going hidden (mouselook)
+// can, with movement past a few pixels for a drag that keeps it visible.
 //
 // Returns 1 throughout: the game has to keep seeing these, or the camera stops working.
 UINT trackDeselectClick(UINT uMsg, WPARAM wParam) {
@@ -277,6 +248,9 @@ UINT trackDeselectClick(UINT uMsg, WPARAM wParam) {
     return 1;
 }
 
+// A world click never reaches ImGui: Nexus forwards WM_LBUTTONDOWN to it only when
+// io.WantCaptureMouse is already true. So picking happens here, on the message thread. Returning 0
+// consumes the message (Nexus's RiApi.cpp), done only when something was hit.
 UINT onWndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
     if (!active.load()) return 1;
     if (uMsg != WM_LBUTTONDOWN) return trackDeselectClick(uMsg, wParam);
@@ -642,8 +616,7 @@ void drawConfirmPopup(ui::windows::Id owner) {
     }
 }
 
-// The details a pack cannot be started without: what its one category is called, and what
-// file to put it in. Everything else is added afterwards like any other edit.
+// What a new pack needs: its one category's name and the file to put it in.
 void drawNewPackPopup(ui::windows::Id owner) {
     if (owner != confirm_owner) return;
 
@@ -737,7 +710,7 @@ void drawDetailsWindow() {
     ImGui::End();
 }
 
-// imgui 1.80 predates BeginDisabled (see CLAUDE.md), so a disabled button is one drawn dim
+// imgui 1.80 predates BeginDisabled (docs/code_style.md), so a disabled button is one drawn dim
 // whose press is ignored. It still hovers, which is what carries the reason why.
 bool button(const char* label, bool enabled) {
     if (!enabled) ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.4f);
@@ -962,20 +935,15 @@ void drawResourcesWindow() {
     ImGui::End();
 }
 
-// A viewport click that hit nothing. The points let go first: editing a trail means aiming
-// at its handles one at a time and they are 4px dots, so a miss that dropped the trail as
-// well would close the editor and cost a trip back to the tree before the next point could
-// be touched. Letting go of the points and keeping the trail means the next click can go
-// straight at another handle.
+// A viewport click that hit nothing. Only the points let go: the handles are small, and a miss
+// that dropped the trail too would close the trail editor before the next aim.
 void deselectInViewport(editor::State& state) {
     if (!state.points.empty()) {
         state.points.indices.clear();
         return;
     }
 
-    // Nothing but the trail left to take, and taking it would close the editor — the same
-    // reason as above, one step later. A trail is deselected from the tree, or by picking
-    // something else.
+    // Nor the trail alone: it is deselected from the tree, or by picking something else.
     const editor::NodeRef open_trail{editor::NodeKind::Pathable, trail_edit::pathable()};
     if (trail_edit::isOpen() && state.selection.size() == 1 && state.selection.primary() == open_trail) return;
 
@@ -1017,9 +985,7 @@ void bindHistory(bool bound) {
     }
 }
 
-// Open Editor. Shows the tree, the window editing starts from, wherever the others were
-// left. Starting registers no render callback, so it is safe from inside one: the viewer's
-// render drives the editor's.
+// Open Editor. Registers no render callback, so it is safe from inside one.
 void start() {
     if (!active) {
         if (!settings_loaded) {
@@ -1072,11 +1038,7 @@ void render() {
     // Compares and writes only when something moved, so this is free on almost every frame.
     settings::update(state.settings, last_folder, last_image_folder);
 
-    // Which trail is open follows the selection, and the trail editor's window decides
-    // whether one is open at all. Both belong out here rather than in the window body: a
-    // window that is hidden — or merely collapsed — draws nothing, and an open trail left
-    // behind would keep its handles in the world and the gizmo on its points. The working
-    // copy is committed on every edit, so closing costs nothing.
+    // Outside the window body, which does not run while hidden or collapsed.
     if (ui::windows::visible(ui::windows::Id::TrailEditor)) {
         trail_edit::followSelection(state);
     } else {
@@ -1166,8 +1128,7 @@ void load(AddonAPI* _api, Mumble::Data* _mumble_link) {
 }
 
 void unload() {
-    // Saved or not, what is open goes with the addon, as it did when the editor registered
-    // its own callbacks.
+    // Saved or not, what is open goes with the addon.
     stop();
     file_dialog::shutdown();
     resources::shutdown();

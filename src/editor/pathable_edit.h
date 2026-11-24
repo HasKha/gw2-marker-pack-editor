@@ -27,30 +27,18 @@ size_t addPoi(editor::State& state, const glm::vec3& position, int32_t map_id);
 // with no points draws nothing yet, so its points come next in the trail editor.
 size_t addTrail(editor::State& state, int32_t map_id);
 
-// Gives `attributes` an explicit `MapID` of `map_id` unless the value it already resolves to
-// — set on the node, or inherited from `category` and its ancestors — says the same thing.
-//
-// Why the exception: a pack that declares `MapID` once on a category should not collect a
-// redundant copy on every marker the editor adds beneath it. Why it is needed at all: a
-// marker with no map id resolves to none, and both Blish and our own viewer file a marker
-// by map before anything else, so one with no map is one that never draws. (A *trail* takes
-// its map from its `.trl` header in both, so there the attribute is documentation only.)
-//
-// Returns true when it wrote something. Shared with the trail editor, which has to hold a
-// trail's `.trl` header and its attribute to the same value.
+// Gives `attributes` an explicit `MapID` of `map_id` unless what it resolves to, through `category`,
+// already says so: a marker with no map never draws, but a pack declaring `MapID` on a category
+// should not collect a copy on every new marker. Returns true when it wrote something.
 bool setMapId(const editor::State& state, pack::AttributeCollection* attributes, size_t category, int32_t map_id);
 
 // Side effects of an attribute edit beyond the value itself. `previous` is what the
 // attribute held before the edit; call it once the value has settled, not per keystroke,
 // and inside the caller's undo::Step.
 //
-// One attribute needs this: `traildata` is a trail's only name — the tree labels it with
-// that path and the trail editor shows it — so renaming it is how a trail gets named, and
-// the `.trl` has to move too or the points are left behind under the old path. A new path
-// that already names data is a re-point, not a rename: nothing is written over. The old
-// file is dropped only when the editor added it and no other trail resolves to it.
-//
-// A no-op for everything else.
+// Only `traildata` needs it: it is a trail's name, so renaming it moves the `.trl`. A new path that
+// already names data is a re-point, and nothing is written over. The old file is dropped only when
+// the editor added it and no other trail uses it.
 void attributeRenamed(editor::State& state, editor::NodeRef node, const std::string& key, const std::string& previous);
 
 // Adds a category at the dotted id `name` — e.g. "root.foo.bar" — nested under whatever
@@ -87,8 +75,7 @@ struct Removal {
 Removal wouldRemove(const editor::State& state, editor::NodeRef node);
 
 // Deletes `node`, and drops it from the selection: the thing it pointed at is gone. What
-// else was selected stays. Nothing is erased from the pack's vectors — see the tombstone note in docs/architecture.md — so
-// every other index survives.
+// else was selected stays.
 Removal remove(editor::State& state, editor::NodeRef node);
 
 } // namespace pathable_edit

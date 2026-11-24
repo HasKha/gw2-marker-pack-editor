@@ -8,15 +8,9 @@
 #include "viewer/camera.h"
 #include "viewer/scene.h"
 
-// The sink that draws the published scenes into the game's own frame through GoodRender. The
-// world at MOMENT_WORLD_FINISHED, under the game's whole UI, all of it through world_quad in the
-// scene's order, each hidden behind what its Occlusion names of what the game drew in front of
-// it. The GPU draws those, so a texture foreshortens as it should, which through
-// a flat draw list it only does as far as the overlay's subdivision takes it. The map at
-// MOMENT_BEFORE_WINDOWS, over the HUD and under the windows.
-//
-// GoodRender is optional. Subscribing costs nothing while no service is loaded, and every
-// frame no moment draws a scene — no service — the Nexus render callback draws it instead.
+// The sink that draws the published scenes into the game's frame through GoodRender: the world at
+// MOMENT_WORLD_FINISHED through world_quad, the map at MOMENT_BEFORE_WINDOWS. Optional: whatever no
+// moment drew, the Nexus render draws instead.
 namespace viewer::good_render_sink {
 
 // Subscribes, whether or not the service is loaded yet: it calls once it is. The map is

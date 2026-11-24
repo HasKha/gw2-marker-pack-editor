@@ -8,8 +8,7 @@ struct ID3D11Device;
 //
 // A copy of the host's window font with the icons merged into it, in an ImGui atlas of our own
 // uploaded to the game's device. Not added to Nexus's atlas: Nexus builds every font it is handed
-// with its own glyph ranges, which leave the icons out. Adapted from gw2-community-challenge-mode's
-// ccm/src/render/fonts.*; the font and its licence are in assets/fonts/.
+// with its own glyph ranges, which leave the icons out. The font and its licence are in assets/fonts/.
 namespace viewer::ui::fonts {
 
 // Keeps the device the atlas is uploaded to. Nothing is built until the first push(). Without a

@@ -16,19 +16,15 @@ namespace pack {
 
 constexpr size_t kNoIndex = static_cast<size_t>(-1);
 
-// One attribute exactly as it appeared in the file.
-//
-// The value is kept as text and never reformatted. That is deliberate: reparsing
-// xpos="-118.300" into a float and writing it back would emit "-118.3" and dirty a file
-// the user never edited. Typed access goes through the parse* helpers on demand.
+// One attribute exactly as it appeared in the file. The value stays text, so xpos="-118.300" is
+// never rewritten as "-118.3" in a file nobody edited.
 struct Attribute {
     std::string name; // original spelling, e.g. "fadeNear"
     std::string key; // lowercased lookup key, e.g. "fadenear"
     std::string value; // verbatim
 };
 
-// Source order is preserved, so this is a vector rather than a map. Attribute counts per
-// node are small enough that linear lookup is not worth optimizing.
+// In source order, so a vector rather than a map.
 class AttributeCollection
 {
 public:
@@ -48,22 +44,14 @@ private:
     std::vector<Attribute> attributes_;
 };
 
-// Where a model node lives in the parsed document.
-//
-// The document is kept alive for the pack's whole lifetime and is what gets serialized on
-// save, so the handle stays valid and doubles as the anchor for adding and removing nodes.
+// Where a model node lives in the parsed document, which lives as long as the pack.
 struct SourceNode {
     size_t file = kNoIndex; // index into Pack::files
     pugi::xml_node node;
 };
 
-// Deleting anything leaves its slot behind. Every index into `categories` and `pathables`
-// is positional — the selection, the tree's per-category lists, the viewer's bake and
-// the trail editor all hold them — so erasing an entry would move every entry after it and
-// invalidate all of them at once. A tombstone moves nothing, and it is what makes undo a
-// flag flip rather than a rebuild.
-//
-// Everything that walks either list skips these. See docs/architecture.md.
+// Deleting leaves the slot behind, so no index into `categories` or `pathables` ever moves and undo
+// is a flag flip. Everything that walks either list skips these.
 // Where an element sat, so undo can put it back in its place rather than at the end.
 struct Anchor {
     pugi::xml_node parent;
@@ -137,9 +125,7 @@ struct Warning {
     std::string message;
 };
 
-// Move-only: it owns the parsed documents, and the model's node handles point into them.
-// Copying would leave two packs sharing one document, where an edit through either would
-// silently change both.
+// Move-only: it owns the parsed documents the model's handles point into.
 struct Pack {
     Pack() = default;
     Pack(Pack&&) = default;
@@ -150,9 +136,7 @@ struct Pack {
     // The .zip/.taco file, or the folder, this pack was read from.
     std::filesystem::path source_path;
 
-    // True when source_path is an unzipped folder. Saving writes files back in place
-    // rather than rebuilding an archive — and a folder is an editing convenience only,
-    // since Blish HUD does not reliably load unzipped packs.
+    // source_path is a folder: a save writes files in place rather than rebuilding an archive.
     bool from_directory = false;
 
     std::vector<XmlFile> files;
@@ -162,10 +146,7 @@ struct Pack {
     std::vector<Warning> warnings;
 
     // ── Pending asset changes ─────────────────────────────────────────────────
-    // Images and other non-XML files the editor has added or marked for deletion. They
-    // cannot be applied as they are made: the DataSource is read-only, and for a zip it is
-    // the very archive still open for reading. A save resolves both and the lists are
-    // cleared.
+    // Non-XML files added or marked for deletion, until a save: the DataSource is read-only.
     struct AddedAsset {
         std::string path; // normalized, for lookups
         std::string original_path; // the spelling a save writes
@@ -215,38 +196,23 @@ struct Pack {
     // Creates a pathable: a new element in the document plus the model entry that indexes
     // it. Returns its index in `pathables`, or kNoIndex when there is nowhere to put it.
     //
-    // It is **appended** to `pathables`, never inserted, so no existing index moves. Where
-    // it sits in the *file* is decided by `after`: right behind that pathable's element
-    // when one is given, otherwise at the end of a <POIs> block in `file` — created if the
-    // file has none. The editor's own ordering is a separate concern; see
-    // State::pathableAdded.
+    // Appended to `pathables`. In the file it goes right behind `after`'s element, else at the end
+    // of a <POIs> block in `file`, created if needed. Tree order is State::pathableAdded's.
     size_t addPathable(PathableType type, size_t category, size_t after, size_t file, AttributeCollection attributes);
 
     // Creates a category under `parent` (kNoIndex for a root one) and returns its index, or
     // kNoIndex when the name is unusable or already taken at that level.
     //
-    // The element is nested inside the parent's declaration — which is what makes it a
-    // child — so `file` only decides anything for a root category, and for a child it is
-    // taken from whichever declaration the element goes into. Always appended to
-    // `categories`, so no existing index moves.
-    //
-    // `after`, when it names a live category that is also a child of `parent` (kNoIndex
-    // included, for two roots), places the new category as its next sibling — both in the
-    // XML, right behind that category's own declaration, and in `parent`'s `children` (or
-    // `roots`), which is what decides tree order. Left at kNoIndex, or given a category that
-    // is not `parent`'s child, the new category is appended at the end instead.
+    // Appended to `categories`, its element nested inside the parent's declaration, so `file` only
+    // matters for a root. `after`, a live sibling under the same parent, places it right behind
+    // that sibling in the XML and in `children` (or `roots`); otherwise it goes last.
     size_t addCategory(size_t parent, std::string_view name, size_t file, size_t after = kNoIndex);
 
     // Tombstones a pathable and lifts its element out of the document.
     void removePathable(size_t index);
 
-    // Tombstones a category and everything nested under it. Removing a category's
-    // declarations takes its child categories' elements with them — they are nested inside
-    // — so the children are tombstoned here too and their now-dead node handles cleared.
-    //
-    // Markers are *not* touched: they live in <POIs>, not inside the category, and the
-    // caller decides what happens to them. `out_removed` receives every category index
-    // that was tombstoned, so the caller can find them.
+    // Tombstones a category and its nested categories, whose elements go with it. Markers live in
+    // <POIs> and are the caller's to remove. `out_removed` receives every category tombstoned.
     void removeCategorySubtree(size_t index, std::vector<size_t>* out_removed);
 
     // The other half of both, for undo. The element goes back where it was — same parent,
@@ -257,12 +223,8 @@ struct Pack {
     void restoreCategorySubtree(size_t index, std::vector<size_t>* out_restored);
 };
 
-// Builds an empty pack in memory: one XML file holding an `<OverlayData>` root and a single
-// root category, ready for categories and markers to be added to it.
-//
-// It has **no DataSource** — there is nothing on disk to read from — so it must be saved
-// with Save As before it can be reopened, and everything that reads through a source has to
-// cope with there not being one.
+// An empty pack in memory: one XML file with an `<OverlayData>` and one root category. It has no
+// DataSource, so it is saved with Save As, and anything reading through a source copes without.
 Pack createPack(std::string_view file_name, std::string_view category_name, std::string_view display_name);
 
 } // namespace pack

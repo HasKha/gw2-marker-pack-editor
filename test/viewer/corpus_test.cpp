@@ -102,9 +102,7 @@ TEST_CASE("every pack in the corpus holds its invariants", "[corpus]") {
             }
 
             // ── The writer is stable ──────────────────────────────────────────
-            // A pack reformats once, on its first save, and is byte-identical from then
-            // on. That is the deal docs/architecture.md strikes in "Saving serializes, it
-            // does not diff", and it is what makes the reformat acceptable.
+            // A pack reformats once, on its first save, and is byte-identical from then on.
             const std::vector<std::string> first = rewriteAll(model);
 
             pack::Pack reparsed;

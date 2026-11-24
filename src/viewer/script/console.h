@@ -55,7 +55,7 @@ struct CensusEntry {
 };
 
 // Run over the corpus offline, this is the list of what is left to implement, measured from
-// what packs call rather than guessed from Pathing's source — see docs/viewer.md#the-census.
+// what packs call rather than guessed from Pathing's source — see docs/viewer.md#lua.
 // Each member at each place is recorded once.
 class Census
 {

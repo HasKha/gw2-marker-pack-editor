@@ -13,10 +13,8 @@
 // Images decoded into Nexus textures on demand, a few per frame.
 namespace viewer {
 
-// How many assets may be read and decoded in one frame, shared by everything that loads
-// them. Decoding is synchronous, so arriving on a map with hundreds of unseen markers would
-// otherwise decode them all in one frame and visibly hitch; instead a few are admitted per
-// frame and the rest appear over the next handful.
+// How many assets may be read and decoded in one frame, shared by everything that loads them, so
+// arriving on a map with hundreds of new icons does not hitch.
 class LoadBudget
 {
 public:
@@ -78,12 +76,9 @@ private:
     std::string prefix_;
     AddonAPI* api_ = nullptr;
 
-    // Nexus owns its texture cache and exposes no way to release one, and it hands back the
-    // *existing* texture for an identifier it has already seen. So an identifier must never
-    // be reused for different bytes: bumping a generation whenever cached bytes may have
-    // changed keeps every new load under a name Nexus has not seen.
-    //
-    // The cost is that superseded textures stay resident for the session.
+    // Nexus never releases a texture and returns the existing one for an identifier it has seen,
+    // so a generation bumped whenever bytes may have changed keeps new loads under new names.
+    // Superseded textures stay resident.
     uint32_t generation_ = 0;
 
     // Misses are cached too, so a missing image is not retried every frame.

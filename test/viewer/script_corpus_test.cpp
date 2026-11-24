@@ -1,7 +1,7 @@
 // Every script in the corpus, run the way the viewer runs it: on each map its pack has
 // anything on, a fresh state, pack.lua, and a few ticks — against a fake MumbleLink that puts
 // the player on the map. Pathing's Lua API has no documentation of its own, so this, and the
-// census it fills, is how the API is known to be enough. See docs/viewer.md#the-census.
+// census it fills, is how the API is known to be enough. See docs/viewer.md#lua.
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -24,7 +24,7 @@ namespace {
 constexpr int kTicks = 3;
 constexpr double kTickSeconds = 1.0;
 
-// The packs the census has to be empty for, the bar docs/viewer.md#testing sets.
+// The packs the census has to be empty for.
 bool censusMustBeEmpty(const std::string& file) {
     return file == "hero.blish.pack.zip" || file == "TehsTrails.taco";
 }

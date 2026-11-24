@@ -16,13 +16,8 @@
 // perspective-correct texturing by subdividing in world space.
 namespace viewer::overlay {
 
-// A world-space quad once the near plane has had it, ready to draw and to click.
-//
-// A quad only ever gets drawn through this, because a marker large enough to matter is
-// routinely one you are standing inside: its centre goes behind you while most of it is
-// still on screen. Dropping a quad because a corner — or the centre — is behind the camera
-// is a marker that vanishes as you walk up to it. Blish never faces the question; the GPU
-// clips for it.
+// A world-space quad clipped against the near plane, ready to draw and to click. Never culled on
+// its centre or a corner: a large marker you stand inside would vanish while still on screen.
 struct ClippedQuad {
     glm::vec3 world[4]; // kQuadCorners order
     // How far each corner is in front of the near plane, negative behind it. Kept because
@@ -55,10 +50,9 @@ void drawTexturedQuad(
     const ImVec2 uv[4],
     ImU32 colour);
 
-// Draws `scene` into `list`, projected with `camera`, in the scene's order: the items something
-// of the world hides when `occluded`, the others when `over`. Hidden behind nothing, as a draw
-// list has no depth. The sink when no GoodRender service draws the frame, over everything, and GoodRender's
-// own for what goes over the world.
+// Draws `scene` into `list`, projected with `camera`, in the scene's order: the items something of
+// the world would hide when `occluded`, the others when `over`. A draw list has no depth, so
+// nothing is hidden. The sink without GoodRender, and GoodRender's fallback over the world.
 void drawScene(ImDrawList* list, const Camera& camera, const Scene& scene, bool occluded = true, bool over = true);
 
 } // namespace viewer::overlay

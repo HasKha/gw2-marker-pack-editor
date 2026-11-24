@@ -4,18 +4,8 @@
 
 #include "editor/editor_state.h"
 
-// Undo and redo, recorded as before/after images rather than as inverse operations.
-//
-// Every edit in the editor is one of three things: a node's attributes changed, a node came
-// into or went out of existence, or a file's bytes changed. Each is cheap to snapshot —
-// attribute collections are a handful of strings, existence is a flag, and the only bulky
-// one is a `.trl` or an image — and a snapshot cannot get the inverse subtly wrong the way
-// a hand-written undo for each operation can.
-//
-// This works because deleting tombstones rather than erases: no index ever moves, so a
-// record taken now still points at the same thing later. See docs/architecture.md.
-//
-// Usage: open a Step, capture whatever is about to change, then change it.
+// Undo and redo as before/after images of attributes, existence and files, which works because no
+// index ever moves (docs/architecture.md). Open a Step, capture what is about to change, change it:
 //
 //     {
 //         undo::Step step(state, "Move marker", "gizmo");

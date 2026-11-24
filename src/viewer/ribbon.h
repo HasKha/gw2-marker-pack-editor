@@ -33,12 +33,9 @@ struct RibbonQuad {
 // - **An offset that reverses flips**, as Pathing's flipOver does, so a hairpin does not
 //   cross the ribbon over itself.
 //
-// Each quad's v is shifted by a whole number of texture lengths to keep it near zero, and
-// spans as many lengths as its step is long: one quad per point, as Pathing's strip has, the
-// texture repeating along it. **That needs a sampler that wraps**: Nexus's ImGui does, and
-// GoodRender's draw_list and world_quad do as good_render.h says. Through one that clamped, as
-// GoodRender's did at first, a step showed its image once and then its edge, which on a trail
-// texture is usually transparent.
+// Each quad's v is shifted by a whole number of texture lengths to keep it near zero, and spans
+// as many lengths as its step is long, so **the sampler must wrap**: Nexus's ImGui and
+// GoodRender's draw_list and world_quad do.
 //
 // `scroll` is added to every v: animspeed times seconds, as trail.hlsl adds it.
 void appendRibbon(const std::vector<glm::vec3>& points, float half_width, bool is_wall, float scroll, std::vector<RibbonQuad>* out);

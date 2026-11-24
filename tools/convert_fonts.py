@@ -9,8 +9,7 @@ table, with its copyright and licence; ImGui's own binary_to_compressed_c then w
 ImFontAtlas::AddFontFromMemoryCompressedTTF reads. Both the header and the tool come from what the
 build fetches, so configure the build first; the tool is built once into build/tools/, beside them.
 
-Adapted from gw2-community-challenge-mode's scripts/convert_assets.py. The font's licence and source
-are in assets/fonts/NOTICES.md.
+The font's licence and source are in assets/fonts/NOTICES.md.
 """
 import re
 import subprocess

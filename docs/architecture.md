@@ -1,767 +1,258 @@
 # Architecture
 
-How the editor is built and why. For the pack format itself see [format.md](format.md);
-for what is left on the editor see [editor_plan.md](editor_plan.md); for how code is written,
-[code_style.md](code_style.md).
+How the editor is built and why, and the layout every library shares. The viewer is [viewer.md](viewer.md);
+the format is [format.md](format.md); what is left on the editor is [editor_plan.md](editor_plan.md).
 
-The addon is two halves in one DLL: a viewer that every player runs, and this editor, started
-on demand from the menu. The viewer, and the `viewer/` library that sits between `pack/` and
-`editor/` with the dependency running one way, are [viewer.md](viewer.md). The editor reaches
-into `viewer/` for the camera, textures and the draw-list quad path; nothing in `viewer/`
-reaches back. What follows describes the editor.
+The addon is one DLL: a viewer every player runs, and the editor, started on demand from its menu. The
+editor uses `viewer/` for the camera, textures and drawing; nothing in `viewer/` reaches back.
 
 ## Rules
 
-The invariants every change keeps. The sections below are why.
-
-- **Nothing may be specific to one pack.** The editor's main use is editing
-  [`gw2-markers`](https://github.com/HasKha/gw2-markers), and it has to work as well on any
-  other.
-- **`markus_pack` knows nothing of Nexus, imgui or the game.** `src/pack/` links only `markus_util`,
-  pugixml, miniz and glm, which is what lets the whole format be tested offline. Never add an
-  addon header to it.
-- **An attribute is defined once, in the attribute table.** Parsing, serialization, the
-  property form and the resources window's reference counts are all generated from it; an
-  attribute named anywhere else is a second definition. See
-  [The attribute table](#the-attribute-table-is-the-core-abstraction).
-- **Never block the render thread.** Anything modal or slow, such as the native file dialogs,
-  runs on a worker and is polled from `render()`.
-- **One pack open at a time.** The loaded pack is the single source of truth in memory; the
-  zip on disk is touched only on open and on save.
-- **The parsed XML document is the storage.** `Pack` owns a `pugi::xml_document` per file for
-  its whole lifetime; the model indexes into it, saving serializes it, and adding or removing a
-  marker is a node insert or erase. `Pack` is move-only as a result, and so are `Category` and
-  `Pathable`, since a tombstone owns a document: never "fix" that with a copy constructor.
-- **Nothing a pack author wrote is dropped on save** — no unknown attribute, no comment.
-  Whitespace is the one thing given up: a pack reformats once, on its first save. See
-  [Saving serializes](#saving-serializes-it-does-not-diff).
-- **Every edit is an `undo::Step`** with the matching capture inside, or it is the one edit
-  Ctrl+Z cannot take back. See [Undo](#undo-records-images-not-inverses).
-- **The viewer draws the editor's pack**, as it draws an installed one, from the live map the
-  editor hands it through `EditorHooks::edited_live`; the editor draws only what an editor
-  needs over it. `render` is not a Nexus callback: the viewer's render calls it through
-  `EditorHooks`, and it does nothing while the editor does not run (see
-  [viewer.md](viewer.md#the-editor-inside)).
-- **Nothing is erased from `Pack::categories` or `Pack::pathables`**, and nothing is inserted
-  into their middle: delete tombstones, add appends. Every index into them stays valid. A new
-  category also grows the per-category indexes, through `State::categoryAdded` alone.
-- **World rendering is ImGui draw lists**, not a pipeline of our own. See
-  [Rendering](#rendering).
-- **Each module is a `snake_case` namespace** with a matching `.h`/`.cpp` pair, and its header
-  exposes only what other modules need.
-- **`src/addon/entry.cpp` stays minimal**: it fills in the `AddonDefinition`, resolves the DataLink
-  pointers, connects the editor's hooks to the viewer and loads the viewer. The editor's own
-  `load` registers nothing with Nexus. No feature logic, no globals beyond `AddonDef` and `hSelf`. **Its flags never include `EAddonFlags_IsVolatile`**, which is for
-  addons that hook the game: Nexus refuses to load a volatile addon once the game build is
-  more than 350 past the one it last recorded, until the player re-enables it by hand
-  (`IsVolatileDisabled` in Nexus's `Host/Addons/Addon.cpp`).
-- **Every dependency comes in through FetchContent**, one `cmake/<dep>.cmake` each, pinned to a
-  tag or commit. Nothing is vendored into `src/`: the one font compiled in is generated there from
-  `assets/fonts/`, whose `NOTICES.md` holds its licence and source.
-
-## Decisions
-
-| Decision | Choice | Why |
-|---|---|---|
-| Dependencies | FetchContent only, one `cmake/*.cmake` per dep | nothing vendored into `src/` |
-| entry.cpp | oops-wrong-template's minimal form | no globals beyond `AddonDef`/`hSelf`, no feature logic |
-| World rendering | ImGui draw list + hand-built matrices | see [Rendering](#rendering) |
-| Tree top level | categories only; XML files never appear as nodes | see [The tree is categories](#the-tree-is-categories) |
-| Packs open | exactly one at a time | keeps the model a single source of truth |
-| UI shape | several small windows, not one big one | see [The UI is windows](#the-ui-is-windows) |
-| Group transform | anchored on the first node selected; a rotation orbits the rest | see [The gizmo anchor](#the-gizmo-anchor) |
-| Shipping format | zip in, zip out | Blish HUD fails to load images from unzipped folders |
-
-## Dependencies
-
-Each is a `cmake/<dep>.cmake`, whose comments say why it is fetched as it is.
-
-| Dep | Purpose |
-|---|---|
-| `imgui` | the RaidcoreGG fork Nexus draws with, 1.80 (see [code_style.md](code_style.md#ui)) |
-| `nexus`, `mumble` | the addon API and MumbleLink's layout |
-| `nlohmann_json` | the small JSON files kept between sessions |
-| `pugixml` | XML read/write; keeps comments and attribute order as real nodes |
-| `miniz` | zip read/write |
-| `nativefiledialog-extended` | native open/save dialogs |
-| `ImGuizmo` | 3D translate/rotate/scale gizmo |
-| `glm` | vec3/mat4 for the projection and the matrices ImGuizmo consumes |
-| `stb` | `stb_image`, to decode a trail's texture for its colour on the map, which Nexus decodes without handing the pixels back |
-| `lua`, `sol2` | Lua 5.4 and its C++ bindings, for packs' scripts ([viewer.md](viewer.md#lua)) |
-| `good_render` | GoodRender's header, the whole of its contract; nothing of it is linked |
-| `iconfontcppheaders` | Font Awesome's icon names |
-| `Catch2` | test framework. **Test-only** — nothing in `src/` links it |
+- **Nothing may be specific to one pack.** The editor's main use is
+  [`gw2-markers`](https://github.com/HasKha/gw2-markers), and it has to work as well on any other.
+- **`markus_pack` knows nothing of Nexus, imgui or the game**, which is what lets the format be tested
+  offline.
+- **An attribute is defined once, in the attribute table** (`pack/attributes.*`). Parsing, serialization,
+  the property form and the resources window's reference counts are generated from it; an attribute named
+  anywhere else is a second definition.
+- **Never block the render thread.** Anything modal or slow, such as the native file dialogs, runs on a
+  worker and is polled from `render()`.
+- **One pack open at a time**, the single source of truth in memory; its file is touched only on open and
+  save.
+- **The parsed XML document is the storage.** `Pack` owns a `pugi::xml_document` per file; the model
+  indexes into it, saving serializes it, adding or removing a node is an insert or erase. So `Pack`,
+  `Category` and `Pathable` are move-only: never "fix" that with a copy constructor.
+- **Nothing a pack author wrote is dropped on save**, no unknown attribute, no comment. Whitespace inside
+  tags is the one loss: a pack reformats once, on its first save ([format.md](format.md#what-pugixml-does-not-preserve)).
+- **Every edit is an `undo::Step`** with the matching capture inside.
+- **Indices into `Pack::categories` and `Pack::pathables` never move**: delete tombstones, add appends. A
+  new category grows the per-category indexes through `State::categoryAdded` alone.
+- **The viewer draws the editor's pack**, from the live map the editor hands it through
+  `EditorHooks::edited_live`; the editor draws only its overlays over it.
+- **`src/addon/entry.cpp` stays minimal**: the `AddonDefinition`, the DataLink pointers, the editor's hooks,
+  loading the viewer. No feature logic, no globals beyond `AddonDef` and `hSelf`. **Never
+  `EAddonFlags_IsVolatile`**: Nexus disables a volatile addon once the game build moves more than 350 past
+  the one it recorded (`IsVolatileDisabled` in Nexus's `Host/Addons/Addon.cpp`).
+- **Every dependency comes in through FetchContent**, one `cmake/<dep>.cmake` each, pinned, whose comments
+  say why it is fetched as it is. Nothing is vendored into `src/`; the one font compiled in is generated
+  from `assets/fonts/`.
 
 ## Build targets
 
-Several, because the code worth testing outside the game is most of it:
-
 | Target | Kind | Contents |
 |---|---|---|
-| `markus_util` | static lib | `src/util/` — paths as UTF-8 text, the small JSON files kept between sessions. Links nlohmann_json, **includes nothing else of ours** |
-| `markus_http` | static lib | `src/http/` — requests on a worker through WinHTTP, and `Background`, the one-job thread. Links `markus_util` |
-| `markus_pack` | static lib | `src/pack/` — the format. Links `markus_util`, pugixml, miniz, glm. **Knows nothing about Nexus, imgui or the game.** |
-| `markus_viewer` | static lib | `src/viewer/` — the viewer. Links `markus_pack` and `markus_http` plus imgui, Nexus, Mumble, GoodRender, sol2. **Never the editor** |
-| `markus_editor` | static lib | `src/editor/` — the editor. Links `markus_viewer` plus ImGuizmo, NFD |
-| `Markus` | shared lib | `src/addon/` — `entry.cpp` and nothing else. Links `markus_editor` |
-| `markus_corpus` | static lib | `test/corpus/` — where the real packs are. Shared by the test targets so they cannot disagree about it |
-| `markus_probe` | console exe | `test/probe/` — the harness that prints. Links `markus_pack` |
-| `markus_http_test` | console exe | `test/http/` — requests that cancel, and `Background`. Links `markus_http` and nothing else of ours |
-| `markus_pack_test` | console exe | `test/pack/` — the format's assertions. Links `markus_pack` and not the viewer |
-| `markus_viewer_test` | console exe | `test/viewer/` — the viewer's, and the corpus sweep, which checks the format and the bake in one pass. Links `markus_viewer` and not the editor, which is the proof it can |
-| `markus_editor_test` | console exe | `test/editor/` — the editor's. Links `markus_editor` |
+| `markus_util` | static lib | `src/util/` — paths as UTF-8 text, small JSON files kept between sessions |
+| `markus_http` | static lib | `src/http/` — WinHTTP requests on a worker that cancel; `Background`, a one-job thread |
+| `markus_pack` | static lib | `src/pack/` — the format. pugixml, miniz, glm |
+| `markus_viewer` | static lib | `src/viewer/` — imgui, Nexus, Mumble, GoodRender, sol2 |
+| `markus_editor` | static lib | `src/editor/` — ImGuizmo, NFD |
+| `Markus` | DLL | `src/addon/entry.cpp` |
+| `markus_corpus` | static lib | `test/corpus/` — where the real packs are, shared so the tests cannot disagree about it |
+| `markus_probe` | exe | `test/probe/` — prints and lints a pack |
+| `markus_{http,pack,viewer,editor}_test` | exe | `test/<library>/` — Catch2, linking that library and nothing above it |
 
-**One folder per target, and its `CMakeLists.txt` defines it.** The root `CMakeLists.txt` brings
-in the dependencies and adds the folders, from the bottom of the layering up; a folder's own file
-names its target, what it links, and what it may include. `markus_target_sources()` in
-`cmake/markus.cmake` takes every `.h` and `.cpp` under the folder, so a file's folder says which
-target it is in and no target is described by subtracting another's sources.
+One folder per target, defined by its own `CMakeLists.txt`; `markus_target_sources()` in
+`cmake/markus.cmake` takes every source under the folder.
 
-**The libraries are layered, and the build holds it**: `util` < `http`, `pack` < `viewer` <
-`editor` < `addon`, each including only what is below it. Every library sees all of `src/` as its
-include root, so a header from above would still compile; `markus_layering()` registers a ctest
-case per folder, `<folder>_layering`, that fails on an `#include` of a folder it does not list.
-A test binary that links one library and nothing above it is the same rule checked at the link.
+**The libraries are layered**: `util` < `http`, `pack` < `viewer` < `editor` < `addon`. Every library has
+all of `src/` as its include root, so `markus_layering()` adds a ctest case per folder, `<folder>_layering`,
+that fails on an `#include` of a folder above it. A test binary linking one library is the same rule at
+link time. Anything in the editor that touches Nexus goes through an `AddonAPI*` that stays null in tests.
 
-`markus_editor` exists so `markus_editor_test` links the code the addon runs rather than naming source
-files a second time. Only the objects a test reaches get linked in, so nothing there needs
-a live Nexus or an imgui context; what does touch Nexus goes through an `AddonAPI*` that
-stays null, which `editor/resources.cpp` already has to handle for a pack made in the
-editor. The windows and the overlay are in the library and simply never pulled in.
+## Layout
 
-Why there are two test targets, and what they are pointed at, is [testing.md](testing.md).
-
-## Module layout
+The viewer's folder is [viewer.md](viewer.md#layout).
 
 ```
 src/
-  addon/entry.cpp      — Markus.dll
-                       Nexus entry, AddonDefinition, loads the viewer and connects the editor
-  util/                — markus_util: path_text.h (paths as UTF-8 text), json_file.* (lenient
-                       reads, all-or-nothing writes of small JSON files)
-  http/                — markus_http: http.* (GETs and downloads that cancel), background.h
-  pack/                — markus_pack, no Nexus/imgui dependency
-    source.*           DataSource: a pack is a zip OR a folder. Path normalization.
-    zip.*              DataSource over a .zip/.taco, via miniz
-    attributes.*       THE attribute table: name, kind, default, inheritance
+  addon/entry.cpp      Nexus entry
+  util/                path_text.h, json_file.* (lenient reads, all-or-nothing writes)
+  http/                http.*, background.h
+  pack/
+    source.*           DataSource: a zip or a folder; path normalization
+    zip.*              a .zip/.taco through miniz
+    attributes.*       the attribute table
     model.*            Pack / XmlFile / Category / Pathable, explicit vs effective values
-    xml_reader.*       pugixml -> model; the document is kept and owned by the Pack
-    writer.*           serializes the document back out, rebuilds the zip (format.md)
+    xml_reader.*       pugixml -> model
+    writer.*           the document back out, the zip rebuilt
     trl.*              .trl read/write, byte-exact
-  viewer/              — markus_viewer; see viewer.md
-  editor/              — markus_editor
-    marker_editor.*    lifecycle, the windows and the shared menu bar, save/open, WndProc,
-                       drawing the open pack
+  viewer/
+  editor/
+    marker_editor.*    lifecycle, menu bar, open/save, WndProc, drawing the open pack
+    editor_state.*     State: the open Pack, the two selections, visibility, settings
     pathable_edit.*    creating and deleting markers and categories
-    undo.*             the undo/redo stack: before/after images of what changed
-    trail_edit.*       the open trail's working copy, shared by its window and the gizmo
-    editor_state.*     State: the open Pack, the two selections and the rules over them,
-                       per-node visibility, settings
-    file_dialog.*      NFD on a worker thread (never block the render thread)
-    resources.*        icons + .trl pulled from the pack source on demand, budgeted;
-                       the images through viewer::TextureCache
-    settings.*         the few things that outlive a session, as settings.json
-    ui/
-      windows.*        the window registry: titles, visibility, View menu
-      tree_window.*    category tree, selection (ctrl / shift range), per-node eye toggles
-      property_panel.* attribute form + "add attribute" + inherited values
-      resource_window.* the pack's images, what references them, add / remove
-      trail_editor.*   the open trail: map id, point list, the Trail menu, shape tools
-    world/
-      overlay.*        over the viewer's scene: hit testing, the selection outline, point
-                       handles, a dot where an icon is missing
-      gizmo.*          ImGuizmo translate/rotate over the selection, writes to attributes
+    trail_edit.*       the open trail's working copy
+    undo.*             the undo stack
+    file_dialog.*      NFD on a worker
+    resources.*        icons and .trl read from the pack on demand, budgeted
+    settings.*         settings.json
+    ui/                windows.* (the window table), tree_window, property_panel, resource_window,
+                       trail_editor
+    world/             overlay.* (picking, outlines, point handles), gizmo.*
 test/
-  corpus/              where the real packs are
-  probe/               the harness that prints
-  http/ pack/ viewer/ editor/
-                       the assertions, a binary each, over that library and what is below it
+  corpus/ probe/ http/ pack/ viewer/ editor/
 ```
 
-## Things that are easy to get wrong
+## Easy to get wrong
 
-Three mechanisms that exist for non-obvious reasons.
+**The open pack is baked per `State::revision`.** Resolving inherited attributes per marker per frame is
+too slow on a 56k-marker pack. Every edit calls `State::touch()`; visibility toggles do not, since they are
+view state and `viewer/edited.*` compares the flags itself.
 
-**The open pack is baked per `State::revision`.** Resolving inherited
-attributes walks the category chain, and the largest pack tested has 55,887 markers — doing
-that per marker per frame is not viable inside the render callback. Any edit calls
-`State::touch()`, which bumps the revision, and `viewer/edited.*` bakes again. Visibility
-toggles deliberately do *not* bump it: they are view state, not edits, and `edited.*` compares
-the flags themselves.
+**`resources` decodes a few assets per frame**, so arriving on a map with hundreds of new icons does not
+hitch. A miss is cached only when the file is absent; caching "Nexus could not make a texture yet" would
+leave a marker a dot until reload.
 
-**`resources` decodes at most a few assets per frame.** Arriving on a map with hundreds of
-unseen markers would otherwise decode them all in one frame and hitch. A miss is only
-cached when the file is genuinely absent — caching a "Nexus could not make a texture yet"
-result would leave every marker a dot until the pack was reloaded.
+**Zip saving is `buildZip` then `commitZip`.** The save target is usually the archive still open for
+reading, so the caller releases it in between. A failed build never replaces a working pack; the previous
+file is kept as `.bak`.
 
-**Zip saving is two calls, `buildZip` then `commitZip`.** The usual save target *is* the
-pack still open for reading, and Windows will not rename over a live handle, so the caller
-has to release the source in between. Building first also means a failure never replaces a
-working pack with a half-written one; the previous file is kept as `.bak`.
+**Actions that reload or close the pack are applied at the end of the frame**: they free what every window
+has just drawn from.
 
-## The UI is windows
+**A window's body does not run while it is hidden or collapsed.** State that must stay correct then lives
+outside the draw: in a model module ticked from `render()` if anything else needs it (which trail is open:
+`trail_edit::followSelection`, since the overlay and gizmo use it), or in `ui::<window>::update(State&)` if
+it is the window's own (the tree's pending reveal, which is dropped if the tree is away).
 
-One window holding both the tree and the details would force the gizmo into whatever screen
-that window was not covering. The editor is five independent windows, each closable, each
-remembering its own place:
+**A panel over a selection is scoped by it.** imgui identifies a field by its label, the same on every node,
+so an edit active when the selection changes commits onto the new node. `ui::property_panel::draw` pushes
+the primary selection's kind and index; any panel drawing per-selection fields needs the same.
 
-| Window | Contents |
-|---|---|
-| Tree | pack header, category hierarchy, selection, visibility toggles |
-| Details | the attribute form for the selection |
-| Toolbar | gizmo mode, Add POI, Trail and Category |
-| Trail editor | the open trail's map id and points, with drag fields for the selected one |
-| Resources | the pack's images: folder tree, references, preview, add / remove |
+**`onWndProc` runs on the game's message thread.** It hands clicks to the render thread through atomics
+(`pending_select`, `pending_select_point`, the overlay's `hovered_pathable`). What it reads (`state.loaded`,
+`select_in_viewport`, `io.WantCaptureMouse`) is plain: single words that change between frames, where a
+race costs a click one frame late. Anything new read there needs the same look.
 
-`editor/ui/windows.*` is the registry: one table row per window with its title, its menu label
-and its default visibility, and everything else — the View menu, the settings file — is
-generated from that table. The Tree is the main window: closing it ends the session, and the
-others are drawn only while it is open. Adding a window
-is one row plus its draw function, and an `update` if it needs one — see
-[A window that is not drawing](#a-window-that-is-not-drawing).
+**`file_dialog::shutdown` joins with the mutex released**: the worker takes it to store its result.
 
-Two consequences of every other window being closable:
+## Windows
 
-- **The menu bar is drawn in each large window**, from one shared `drawMenuBar`, so File
-  and View are reachable from whichever one is open. The Toolbar has no menu bar; a bar
-  would be taller than its contents. The one exception to "the same bar everywhere" is the
-  Trail menu, which is drawn last and only in the trail editor, because it acts on that
-  window's own state.
-- **A modal has an owner.** An ImGui popup is scoped to the window that opened it, so the
-  discard-changes confirmation records which window's menu asked for it and is only begun
-  there. If that window is closed while the modal is up, the pending action is dropped
-  rather than left armed.
+Five, each closable, so the gizmo is never under a big panel: Tree, Details, Toolbar, Trail editor,
+Resources. `editor/ui/windows.*` is a table with a row per window; the View menu and settings come from it.
+The Tree is the main window: closing it ends the session.
 
-Actions that reload or close the pack are applied at the *end* of the frame. They free the
-vectors every window has just drawn from, and a menu click happens partway through that.
-
-### A panel over a selection is scoped by that selection
-
-The property panel identifies each field by its attribute name, which is the same name on
-every node — so to imgui one node's `xpos` box and the next node's are one widget, and an
-edit still active when the selection changes commits onto whatever is now selected. Typing
-a new `traildata` on one trail and clicking another would leave the second pointing at the
-first's file.
-
-`ui::property_panel::draw` pushes the primary selection's kind and index around everything
-it draws. Any other panel that draws same-named fields for whatever is selected needs the
-same.
-
-### A window that is not drawing
-
-A window's body does not run when it is hidden — and, easy to forget, not when it is merely
-*collapsed* either: `ImGui::Begin` returns false and `beginWindow` gives up before the body.
-Anything that has to stay correct across that has to run outside it.
-
-Editing `State` directly from a draw is fine and is the whole point of immediate mode. The
-question is only what happens on the frames where the draw does not happen. Two answers,
-and which one applies is decided by **lifetime**:
-
-| The state | Where it goes |
-|---|---|
-| Outlives the window — another subsystem would still need it if the window were deleted | a model module, ticked from `render()` |
-| The window's own, but has to stay correct while it is not drawing | `ui::<window>::update(State&)`, called from `render()` |
-
-Two live examples, one of each:
-
-- **Which trail is open** fails the lifetime test: the world overlay draws its handles and
-  the gizmo targets its points, and neither is the trail editor. So `followSelection` lives
-  in `trail_edit` and runs from `render()`.
-- **The pending reveal** passes it: `reveal_active` and the ancestor chain are the tree's
-  alone. So `ui::tree_window::update` takes the request off `State` and works out what to
-  open, whether or not the tree draws afterwards. Consuming and dropping it when the tree is
-  away is the point — a reveal is about the moment it was asked for, and one replayed later
-  scrolls to a node picked minutes ago.
-
-`update()` is added where it has something to do, not as a stub on every window: an empty
-one invites model state into a window, which is the problem it exists to prevent. If a third
-window grows one, the calls are worth driving from the `editor/ui/windows.*` table — which already
-carries a row per window — rather than by hand. A base class is the wrong shape for it: the
-draw signatures genuinely differ (a camera here, a returned request there, the Toolbar with
-no module at all), so a shared virtual would either widen every signature or keep the side
-channels that motivated it.
-
-A window closed with its X comes back from the main window's View menu. The addon's options
-page is the viewer's alone; the editor has nothing on it.
-
-## One trail, one working copy
-
-`trail_edit` holds the trail being edited as a mutable copy of its `.trl`, and it is a
-module of its own rather than part of the trail editor window because the window is not the
-only thing editing it: the gizmo drags the same points, and the overlay draws handles for
-them. All three go through the one model.
-
-- **Points are addressed by a flat index** across segments — a `.trl` is one or more runs of
-  points separated by `(0,0,0)` terminators, and the editor lists them as one numbered list
-  with a mark where a new run begins.
-- **Every change writes the whole trail back** into `Pack::added_assets`, the same pending
-  mechanism the resources window uses, and calls `resources::forget` so the next frame
-  redraws from the new bytes. There is no separate "trail is dirty" state and no save step
-  of its own: a pack save picks the trail up with everything else. Reserializing a few
-  thousand points per edited frame is nothing next to a frame of rendering.
-- **Points are their own selection**, `State::points`, not entries in `State::selection` —
-  see [Two selections](#two-selections).
-- **Only the open trail gets handles** in the world. Every trail's points at once would be
-  an unreadable field of dots, and a point that cannot be seen cannot be clicked.
-- **"Open" tracks the selection and the window, both ways.** Selecting a trail opens it;
-  selecting anything else closes it; closing the trail editor closes it too. Both halves run
-  from `marker_editor::render`, against `trail_edit::followSelection` — *not* from the trail
-  editor's window body. A window that is hidden draws nothing, and one that is merely
-  collapsed draws nothing either, so anything that keeps model state in step has to run
-  outside it. Left inside, a collapsed trail editor would keep an unselected trail open:
-  handles in the world, and the gizmo still on its points. Dropping the working copy costs
-  nothing — every edit is already committed to the pack — and reopening reads the same bytes
-  back.
-- **`reindex` prunes the point selection.** It runs on every change to a trail's shape and
-  is the only thing that knows the new one, which is what lets everything downstream treat a
-  selected point index as one that exists.
-- **A trail that cannot be opened closes whatever was.** `resources::trail` caches a failed
-  read as a miss, so a `traildata` naming a file the pack does not have never comes good.
-  Leaving the previous trail open over that would show one trail's points under another
-  trail's name — two differently named trails looking like they shared a point list. `open` therefore
-  tells "over budget, ask next frame" from "tried and failed" and closes on the second.
-  Nothing records *why*: a trail selected with nothing open is a trail whose data is missing,
-  which is what the window says.
-
-### Renaming traildata moves the .trl
-
-A trail has no name of its own — the tree labels it with its `.trl`'s basename, the trail
-editor shows the path — so renaming `traildata` is how a trail gets named, and the attribute
-is explicit-only ([format.md](format.md)) so no category can carry a name instead.
-
-Left alone, that rename points the trail at a file the pack does not have and strands its
-points under the old path. `pathable_edit::attributeRenamed` is the hook the property panel
-calls after every attribute edit; `traildata` on a trail is the one case it acts on. It never
-writes over a path the pack already has — that is a re-point, and sharing one `.trl` between
-trails is legal — and never deletes a file that shipped in the pack.
-
-It runs once the field is committed, not per keystroke, because it moves a file and
-`InputText` reports every character. That needs the value the field started from, which the
-panel keeps between `IsItemActivated` and `IsItemDeactivatedAfterEdit`.
-
-`Trail > Reload from file` drops the pending bytes and rereads the source **directly**
-rather than through `resources`, whose reads are budgeted a few per frame: a menu action
-that silently does nothing because the budget was spent is worse than one extra read.
-`Save to file` exports a copy outside the pack — for a zip pack there is no other coherent
-meaning, since a single `.trl` cannot be written back into the archive on its own.
+- **The menu bar is drawn in each large window** from one `drawMenuBar`. The Toolbar has none; the Trail
+  menu is only in the trail editor, since it acts on its state.
+- **A modal has an owner.** An imgui popup belongs to the window that opened it, so the discard-changes
+  confirmation records which window asked, and is dropped if that window closes.
 
 ## Settings compare rather than notify
 
-`settings::update` runs every frame and writes only when something it persists has moved.
-Nothing calls it to announce a change, which means a setting added later cannot be added to
-the file and then forgotten at the six places that might change it. The comparison is field
-by field against the last written values rather than against a rebuilt snapshot, so the
-common case — nothing happened — allocates nothing.
-
-What is persisted is small on purpose: the Settings menu toggles, the gizmo mode, which
-windows are open, and where the two file browsers should start. **Nothing about a pack**
-goes in there. Visibility toggles, the selection and the open trail all belong to a pack
-rather than to the editor, and a settings file that remembered them would be wrong the
-moment a different pack was opened. Window *positions* are ImGui's business and already
-live in its own `imgui.ini`.
+`settings::update` runs every frame and writes only when a persisted field moved, so no caller has to
+announce a change. It holds the Settings menu toggles, the gizmo mode, which windows are open and where the
+file browsers start. Nothing about a pack: those belong to the pack, not the editor. Window positions are
+imgui's `imgui.ini`.
 
 ## Undo records images, not inverses
 
-`undo` stores what a thing looked like before and after, and applying a step is assignment.
-Nothing computes an inverse operation, because that is where undo systems go wrong: an
-inverse has to be re-derived correctly for every edit, forever.
-
-There are only three kinds of record, and every edit in the editor is made of them:
+A step stores what changed before and after; applying it is assignment. Three kinds of record:
 
 | Record | Before / after | Covers |
 |---|---|---|
-| attributes | the node's whole `AttributeCollection` | the property panel, the gizmo, add attribute, bulk edit |
-| existence | the tombstone flag | adding a marker, deleting a marker or a category |
-| asset | the pending add/remove for one path | added images, removed images, every `.trl` edit |
+| attributes | the node's `AttributeCollection` | property panel, gizmo, add attribute, bulk edit |
+| existence | the tombstone flag | adding a marker, deleting a marker or category |
+| asset | the pending add/remove for one path | added and removed images, every `.trl` edit |
 
-Snapshots are affordable because the units are small: an attribute collection is a handful
-of strings, existence is a bool. Only assets are bulky — an image or a `.trl` is held twice
-— so the stack is capped at 100 steps rather than growing without bound.
+It works because indices never move. Restoring a deleted category puts the kept element back and finds the
+descendants' handles inside it again. Steps coalesce by key across consecutive frames, so a drag is one
+step; records that change nothing are dropped, and an empty step is popped. After undo the caller prunes
+the selection (`editor::prune`) and has the trail editor reread.
 
-This works **only** because deleting tombstones instead of erasing. No index ever moves, so
-a record taken now still points at the same thing ten edits later. Restoring a deleted
-category also relies on the element being kept whole: put the copy back, then find the
-descendants' declaration handles again inside it, since the originals died with the parent.
+## Indices never move
 
-Two details worth knowing:
+Categories and pathables are indexed positionally by the selection, `State::pathables_by_category`, the
+hidden flags, the bake and the trail editor.
 
-- **Steps coalesce by key across consecutive frames.** A gizmo drag writes attributes every
-  frame; the guard reopens the same step as long as the key matches and the last frame was
-  the previous one, so a drag is one entry and two drags are two. The property panel keys on
-  the field being dragged, so moving to another attribute starts a new step.
-- **Records that change nothing are dropped when the step closes**, and a step left empty is
-  popped. Clicking into a field and out again does not fill the stack with no-ops.
-
-Undo bumps the revision like any other edit, calls `editor::prune` to drop selection entries
-whose node no longer exists, and — from the caller, not from `undo` — tells the trail editor to reread, since its
-working copy is a cache of bytes that just changed underneath it.
-
-## Deleting leaves a tombstone
-
-Nothing is ever erased from `Pack::categories` or `Pack::pathables`. Both are indexed
-positionally by the selection, `State::pathables_by_category`, the hidden flags, the
-viewer's bake and the trail editor, so erasing one entry would move every entry after it
-and invalidate all of them at once. Instead each entry carries a `Tombstone`:
-
-- `deleted` marks it gone. Everything that walks either list skips it — the tree, the
-  bake, `countByType`, the writer's attribute sync, the resources window's
-  reference scan, the gizmo. A missed check shows up as a deleted thing still doing
-  something.
-- `detached` owns the element itself, lifted out of the file's document into a document of
-  its own, and the model's `SourceNode` is repointed at that copy. The element is gone from
-  what gets serialized, but it is kept **whole** — attributes, spelling, child comments —
-  so putting it back is a copy rather than a reconstruction.
-
-That second half is what makes undo affordable: with indices stable and the element
-preserved, undoing a delete is a flag flip plus an `insert_copy`, not a reparse.
-
-Deleting a **category** removes each of its declarations, and since child categories are
-nested inside them, the whole subtree's elements go in one operation — the descendants are
-tombstoned too and their now-dangling node handles cleared. Markers are separate: they live
-in `<POIs>`, not inside the category, so `pathable_edit::remove` deletes them explicitly
-first. The pack layer deliberately does not do that for you; leaving them would be valid
-XML, just markers with a dangling `type`.
-
-The cost of tombstones is memory that is not reclaimed until the pack is reloaded, which
-for an editor session is nothing.
-
-## A new marker is appended, not inserted
-
-`Pack::pathables`, `State::pathables_by_category`, the selection and the viewer's bake are
-all positional, so inserting into the middle of the pathable vector would shift every index
-after it and invalidate all four at once. `Pack::addPathable` therefore **appends** to the
-vector, always, and no existing index ever moves.
-
-Categories are appended the same way, and nest by *element*: a new category's
-`<MarkerCategory>` goes inside one of its parent's declarations, which is what makes it a
-child — so the file it lands in is the parent's, not one of its own choosing. Only a root
-category picks a file, and it goes in before the `<POIs>` block where a reader expects
-categories to be. A new trail comes with an empty `.trl` written as a pending asset, since
-a `traildata` pointing at nothing reads as a broken trail rather than an empty one.
-
-Where the marker appears is decided in the two places that actually care:
-
-- **In the file**, by `pugi::xml_node::insert_child_after` on the sibling it should follow,
-  so the document reads in the order the editor shows. With no sibling to follow it goes at
-  the end of a `<POIs>` block in the category's own file, created if that file has none.
-- **In the tree**, by `State::pathableAdded` inserting the new index into
-  `pathables_by_category` after its sibling. That list *is* the tree order; it only happens
-  to match the vector order on a freshly loaded pack.
-
-Deleting gets the same property a different way; see the tombstone section above.
+- **Deleting tombstones.** `deleted` marks it; everything walking either list skips it, and a missed check
+  shows as a deleted thing still doing something. `detached` owns the element, lifted whole into a document
+  of its own, so undo is a flag flip and an `insert_copy`. A category's subtree goes with it; its markers
+  live in `<POIs>`, so `pathable_edit::remove` deletes them first.
+- **Adding appends.** Where it shows is decided separately: in the file by `insert_child_after` on the
+  sibling it follows (else the end of a `<POIs>` in the category's file, created if needed), in the tree by
+  `State::pathableAdded`. A new category goes inside its parent's declaration; a new root lands in the
+  pack's first file. A new trail comes with an empty `.trl`, since a `traildata` naming nothing is a broken
+  trail.
 
 ## Assets are pending until a save
 
-The `DataSource` is read-only, and for a zip it is the very archive still open for reading,
-so an added image cannot go anywhere at the moment it is added. `Pack::added_assets` and
-`Pack::removed_assets` hold both kinds of change until a save resolves them: `buildZip`
-writes the adds in and leaves the removals out, `saveToDirectory` writes and deletes files
-on disk, and the caller clears the lists afterwards.
+The `DataSource` is read-only, so `Pack::added_assets` and `removed_assets` hold changes until a save.
 
-Two things fall out of that:
+- **`resources` looks at pending adds first.** Nexus returns the existing texture for an identifier it has
+  seen, so changing a path's bytes goes through `resources::forget`, which bumps the generation for a fresh
+  name.
+- **An added file takes its folder's existing spelling**, or a lowercase path would create `data/icons/`
+  beside `Data/icons/`.
+- **Only the selected image is previewed**: Nexus never releases a texture.
+- What references an image is every attribute of kind `Path`, rebuilt per revision.
 
-- **`resources` looks at the pending adds first.** Otherwise a freshly added icon would
-  read as missing everywhere until the pack was saved and reopened. And because Nexus hands
-  back the *existing* texture for an identifier it has already seen, changing the bytes
-  behind a path has to go through `resources::forget`, which drops the cache entry and bumps
-  the generation so the next load asks under a name Nexus has not seen.
-- **An added file takes its folder's existing spelling.** The window works in normalized
-  (lowercase) paths, so writing one straight back would put `data/icons/x.png` beside an
-  existing `Data/icons/` — two directories in the archive differing only in case.
+## The open trail
 
-What references an image comes from the attribute table: every attribute whose kind is
-`Path` is a reference, so `iconfile`, `texture`, `traildata` and anything added later are
-all counted without being named in the UI. The counts and the folder tree are rebuilt per
-`State::revision`, not per frame, for the same reason the open pack is baked per revision.
+`trail_edit` holds the open trail's `.trl` as a working copy shared by its window, the gizmo and the
+overlay's handles.
 
-The resources window previews **only the selected image**, deliberately. Nexus never
-releases a texture, so drawing a thumbnail per row would pin every image in a 1,375-image
-pack in memory for the session the first time the folder was opened.
+- Points are addressed by a flat index across segments.
+- Every change writes the whole trail into `Pack::added_assets` and calls `resources::forget`; there is no
+  separate dirty state.
+- Selecting a trail opens it; selecting anything else or closing the trail editor closes it.
+- `reindex` runs on every shape change and prunes the point selection.
+- A trail whose `.trl` cannot be read closes whatever was open, rather than showing its points under another
+  trail's name. `open` tells "over budget, ask next frame" from "tried and failed".
+- **Renaming `traildata` moves the `.trl`** (`pathable_edit::attributeRenamed`, once the field is
+  committed), since a trail's name is its file. It never overwrites a path the pack has, and never deletes a
+  file that shipped.
+- `Reload from file` reads the source directly, bypassing the budget. `Save to file` exports a copy outside
+  the pack.
 
 ## Two selections
 
-The editor holds two independent selections, and which one a click lands in is decided by
-what was clicked, not by a mode:
+`State::selection` holds categories and pathables; `State::points` the points of the open trail. A point is
+a sub-selection inside a selected trail, which one list cannot express.
 
-| | `State::selection` | `State::points` |
-|---|---|---|
-| Holds | categories and pathables, as `NodeRef` | point indices of one trail |
-| Filled by | the tree, the resources window, a world pick on a marker | the trail editor's list, a world pick on a handle |
-| Read by | details, the tree, delete, add, the gizmo | the trail editor, the handles, the gizmo |
+- `PointSelection` carries its trail index once and drops its points when the trail changes.
+- **The gizmo prefers points**, since their trail is always selected too.
+- `editor::applyClick` applies plain/ctrl/shift to either; in the viewport shift means ctrl.
+- `editor::prune` drops stale nodes after every structural edit; points are pruned by `trail_edit`.
 
-One list, with a point kind of `NodeRef`, looks cheaper — multi-select and the gizmo anchor
-for free — but a trail point is not a sibling of a marker in the tree, it is a sub-selection
-*inside* a trail that is itself selected, and one list cannot say that. Clicking a point
-would evict its trail from the details window; deleting a point would clear the list and so
-read as deselecting the trail; a viewport miss would need a special case to put the trail
-back; and every consumer would filter the mixture apart by kind and bounds-check the point
-index itself.
+## The gizmo
 
-What holds it together:
-
-- **`PointSelection` carries its trail index once**, rather than on every entry, and drops
-  its points when the trail changes. A stale point from a trail that is no longer open
-  cannot exist.
-- **The gizmo prefers points.** Whenever any are selected, the trail they belong to is
-  necessarily selected too — that is what opened the editor — so obeying both would drag the
-  whole trail every time one point was nudged. The cost is that a marker and a trail point
-  can no longer be transformed as one group, which nothing wanted.
-- **One click rule for both.** `editor::applyClick` applies plain/ctrl/shift to either
-  selection, with the range handed in by the caller — tree rows for one, an index span for
-  the other — so the two lists cannot drift apart on what a modifier means. The viewport
-  passes its own `ClickMods`: it has no rows to run between, so out there shift is a second
-  way to say ctrl.
-- **`editor::prune` is the only thing that checks for stale nodes**, and it runs after every
-  structural edit. Points are pruned by `trail_edit` instead, for the reason above.
-
-All of this is covered by `test/editor/selection_test.cpp` rather than by hand.
-
-## The gizmo anchor
-
-The gizmo draws on the **first** node selected, not the last. `Selection` keeps click
-order and only ever appends, so the anchor is stable as the selection grows — the handles
-do not hop to whatever was clicked most recently, which is what makes a group drag
-predictable. The property panel wants the opposite (`primary()`, the last click), so both
-accessors exist.
-
-Everything a drag does is expressed as one transform about the anchor:
+It sits on the **first** node selected (`Selection` keeps click order), so it does not hop as the
+selection grows; the property panel uses the last (`primary()`). A drag is one transform about the anchor:
 
 ```
 p' = anchor' + R (p - anchor)      orientation' = R · orientation
 ```
 
-A pure translation has `R = identity`, so it falls out as a shift. A pure rotation leaves
-`anchor'` at `anchor`, so the anchor turns in place while the others **orbit** it — which
-is why a group rotation writes position as well as `rotate` on every non-anchor node. The
-anchor's own offset is zero, so the same loop covers it without a special case.
+so a group rotation orbits the others, writing position and `rotate`. That stamps `rotate` on billboards,
+turning them into fixed quads. `R` is recovered each frame from attributes written to six significant
+digits, so a long drag drifts a little. Trails are skipped: their geometry is in the `.trl`. Placement goes
+through `viewer::markerTransform`, the bake's, so handles sit on the drawn icon.
 
-Two consequences worth knowing. `R` is recovered per frame from the anchor's stored
-attributes, which are formatted to six significant digits, so a long group drag drifts a
-little. And rotating a group stamps `rotate` onto markers that had none, turning them from
-billboards into fixed-orientation quads — unavoidable, since orbiting is a rotation.
+## The attribute table
 
-Only POIs take part. A trail's geometry lives in its `.trl`, so moving one means moving
-its points; the gizmo skips them rather than pretending.
-
-## The attribute table is the core abstraction
-
-Attributes get defined **once**, as data: name, canonical spelling, value kind
-(float / int / bool / string / color / enum / path), default, whether it inherits from
-the category. Parsing, serialization, the property form, and the "add attribute"
-picker are all driven off that one table. Adding a new attribute must be a one-line
-change. This is the single most important structural rule in the project.
-
-Unknown attributes are kept verbatim as string key/values so an unrecognised extension
-survives a round-trip and shows up in the property panel as a raw text field.
-
-The table also has to carry the explicit-vs-inherited distinction, because the property
-panel needs to show the effective value while making clear whether it is set here or
-came from an ancestor category — see [format.md](format.md).
-
-### Where an attribute *applies* and where it may be *set* are two questions
-
-`AttributeDef::applies_to` answers the first: which node kinds consume the attribute, traced
-to the Pathing file that reads it. `pack::settableOn` answers the second, and it is wider —
-`applies_to` plus categories whenever the attribute inherits, because a `markercategory` is
-precisely where an author sets `iconSize` for a whole subtree without consuming one itself.
-
-Asking `applies_to` where the answer is `settableOn` is an easy mistake: the "add attribute"
-picker would offer a category only its own five structural attributes, so there would be no
-way to give a category an icon size at all. Anything filtering the attribute table by node kind
-wants `settableOn`; `applies_to` is for deciding whether a value has an effect where it sits,
-which is what the property panel's "does nothing here" warning and `markus_probe`'s matching
-lint are for. The reasoning behind each classification is in [format.md](format.md).
+Name, spelling, value kind, default, whether it inherits. Unknown attributes are kept verbatim and shown as
+raw text fields. **`applies_to`** is which node kinds consume an attribute (the "does nothing here" warning,
+the probe's lint); **`settableOn`** is where it may be written: `applies_to` plus categories whenever it
+inherits ([format.md](format.md#a-category-carries-almost-every-attribute)). Filtering attributes by node
+kind wants `settableOn`.
 
 ## A pack is a zip or a folder
 
-Everything above `pack/source.h` reads through the abstract `DataSource`, with two
-implementations: `zip::Archive` and a directory reader. TmfLib draws the same line
-(`IDataReader` / `ZipArchiveReader` / `DirectoryReader`).
-
-The folder case exists so a pack's **source tree** can be edited in place — a git checkout
-like `gw2-markers` rather than the built zip. That matters because the zip is a build
-artifact: editing it and then rebuilding from source would throw the edits away.
-
-Both paths behave identically. The same `normalizePath` applies to directory entries, so a
-folder and the zip built from it resolve resources the same way — verified by running
-`markus_probe` over both and getting identical models.
-
-Two things stay different, and both are recorded on `Pack`:
-
-- `from_directory` decides how a save is written: files back in place, or a rebuilt archive.
-  **Save As always writes a zip and clears it**, along with `source_path` — the pack now
-  lives in an archive whatever it was read from, and leaving the flag set would send the
-  next plain Save down the folder path with a `.zip` as its target directory.
-- A folder is an **editing convenience, not a shippable pack**. Blish HUD does not reliably
-  load unzipped packs, so the UI says so on the button tooltip.
-
-The directory reader skips dot-directories. Without that, opening a pack repo would walk
-`.git`.
-
-## Saving serializes, it does not diff
-
-The writer is a plain serializer, not a splice of replacement start tags into the original
-bytes. A splice would keep more — an unedited file byte-identical, and intra-tag whitespace,
-which pugixml cannot represent — but it can only ever *rewrite tags that already exist*.
-Adding a marker, deleting one, or creating a pack from scratch all need node insertion,
-which a splice cannot express without also inventing the surrounding indentation, and they
-fall out of a serializer for free.
-
-The trade is deliberate: a pack reformats **once**, on its first save, and is stable from
-then on.
-
-So the parsed `pugi::xml_document` is kept alive for the pack's lifetime — it *is* the
-storage. The model indexes into it with `SourceNode` handles, saving pushes the model's
-attributes back onto those nodes and serializes, and adding or removing a marker becomes a
-node insert or erase. `Pack` is therefore move-only: copying it would leave two packs
-sharing one document.
-
-What still survives a save: comments, processing instructions, the declaration, attribute
-order, original attribute spelling, verbatim attribute values, the BOM, CRLF, and the file
-split. What does not: blank lines between elements, wrapped attribute lists, and `/>`
-without a preceding space.
+`DataSource` has a zip and a directory reader, as TmfLib's `IDataReader`. A folder is so a pack's source
+tree (a git checkout) can be edited in place; it is not shippable, since Blish HUD does not reliably load
+unzipped packs. Both normalize paths alike. `Pack::from_directory` decides how a save is written; Save As
+always writes a zip and clears it. The directory reader skips dot-directories.
 
 ## The tree is categories
 
-The XML files a pack is split across are an authoring convenience. Every loader merges
-them into one category tree and one pathable list, so the split has no meaning to the
-game — which is exactly how pack authors treat it.
+XML files are an authoring convenience that every loader merges. Of 31,817 categories across the corpus,
+one is declared in more than one file (a wrapper root), so the tree shows categories only. A pathable
+records its file; a category records all its declarations. Pathables whose `type` resolves nowhere appear
+under "Unresolved".
 
-The data says so. Across all 9 test packs:
+## Drawing
 
-| | |
-|---|---|
-| Categories | 31,817 |
-| Declared in more than one file | **1** |
-
-The single exception is `gw2-markers`' `haskha` root, which each of its 10 files reopens
-as a wrapper. No leaf category anywhere is split. So a file-oriented tree would add a
-level of nesting that carries no information and, for hand-authored packs, actively
-obscures the structure.
-
-The tree therefore shows categories, with each pathable under its own category. Files are
-still tracked and still matter — just as metadata rather than hierarchy:
-
-- Every pathable records the file it came from; the property panel shows it, and the
-  writer needs it.
-- A category records **all** of its declarations, since one may legitimately span files.
-- A new marker goes in the file its siblings are in (see
-  [A new marker is appended](#a-new-marker-is-appended-not-inserted)).
-
-Pathables whose `type` resolves to no category appear under an "Unresolved" node rather
-than being dropped, so a broken `type` is visible instead of silent.
-
-## Rendering
-
-The viewer draws the editor's pack in its own scene, with the installed packs and through the
-same sinks (viewer.md, *The editor inside*). What only an editor draws — the outline, the
-picking, the point handles, a dot where an icon is missing, the gizmo — is `editor/world/`, over
-the scene the viewer published. The camera is `viewer/camera.*`, and clipping, subdividing and
-emitting a textured quad, which the overlay sink and the outlines both use, is
-`viewer/render/overlay.*`. What follows is how that overlay path works.
-
-Nexus hands us `AddonAPI::SwapChain` and, via `Textures.GetOrCreateFromMemory`, an
-`ID3D11ShaderResourceView*` per image — directly usable as an `ImTextureID`. So no
-custom DX11 pipeline is needed:
-
-1. Each frame, read `Mumble::Data::CameraPosition` / `CameraFront` and the FOV out of
-   the identity JSON. The **viewport is ImGui's `io.DisplaySize`**, not
-   `NexusLinkData::Width/Height` — see below.
-2. Build view and projection with glm. Positions are metres; `fadeNear`/`fadeFar` are
-   inches, so divide distances by 0.0254 before comparing.
-3. Cull by `MapID` against `Context.MapID`, then by `fadeNear`/`fadeFar`.
-4. Project each marker centre to screen, size the quad from `iconSize * 2`, clamp its
-   on-screen height to what `StandardMarker.World.cs` ends up with — `minSize * 2` and
-   `maxSize * 2` **real** pixels, because the quantity Blish clamps is twice the pixel
-   height; see [format.md](format.md) — and push a textured quad into the draw list,
-   sorted back-to-front. Billboard unless `rotate*` is set.
-5. Trails: Pathing's strip along each `.trl` run (`viewer/ribbon.*`), broken into separate
-   ribbons at each `(0,0,0)` segment terminator.
-
-**The viewport is whatever ImGui says it is.** `NexusLinkData` carries a `Width`/`Height`
-and it is the obvious thing to reach for, but those come from the DXGI swap chain and Nexus
-writes them from its `ResizeBuffers` hook alone — a swap chain recreated at another
-resolution (`Present_Internal` notices the new pointer and updates only the window handle)
-leaves them behind. The draw list is rasterized against `io.DisplaySize`, so projecting with
-one shape and drawing into another stretches the whole world along one axis: markers come
-out squashed and the gizmo's rings come out as ellipses. TaimiHUD takes the same view and
-uses `io.DisplaySize` too. Nothing here reads `DL_NEXUS_LINK`'s size.
-
-**Nothing is culled on a marker's centre.** A marker large enough to be worth scaling up is
-one you can stand inside, and its centre goes behind the camera long before the marker
-leaves the screen. Deciding on the centre — or dropping a quad because one corner is behind
-— makes a large marker vanish as you walk into it, which for an editor is the worst possible
-moment to lose it. So every quad is **clipped against the near plane** instead, in its own
-`(u,v)` parameter space, and what survives (a polygon of three to five corners) is what gets
-drawn, outlined and clicked. The only centre test left is a cheap reject for markers a full
-quad-width behind the camera, which no orientation can bring back into view. Blish never
-faces the question: the GPU clips for it.
-
-**Textured quads are subdivided, because a draw list cannot divide by w.** `AddImageQuad`
-is two triangles with affine UVs, which is only right when all four corners projected at the
-same depth. They do not: a billboard faces the ray to its own centre, so the further
-off-axis it sits the more its corners differ in depth, and a `rotate`d marker or a trail
-segment running away from the camera is raked by construction. Affinely, the texture bends
-along the quad's diagonal instead of foreshortening — on a large marker that reads as a
-saddle, and on a trail as the pattern sliding rather than compressing into the distance. So
-every textured quad is split in **world** space and each vertex projected on its own; the
-corners are coplanar, so a bilinear blend of them stays on the real surface.
-`viewer::perspectiveGrid` places the cuts, closer together where the quad is nearer, and
-returns one cell — one `AddImageQuad` — whenever there is nothing to correct, which is the
-common case. It cuts only the part of the quad in view (`viewer::visibleRegion`). Blish gets all of this from the GPU for free.
-
-The grid covers the whole quad rather than its visible part, so that its cells tile. Cells
-wholly behind the near plane are dropped and the few it cuts are clipped again at cell
-scale, coming out as fans of up to five corners. That is why the grid is emitted through
-`PrimReserve`/`PrimQuadUV`/`PrimWriteVtx` rather than a loop of `AddImageQuad`: one draw
-command for the lot, with the worst-case reservation handed back at the end.
-
-The size clamp is the one thing a clipped quad does *not* get. `minSize`/`maxSize` are
-expressed in projected pixel height, and a quad straddling the near plane has none to
-measure, so it is drawn at its true size — Blish's own screen bounds are meaningless there
-too, and inventing a height would resize a marker for the crime of being walked into.
-
-Nothing is drawn **over** the world while the **full map is open** (`Context.IsMapOpen` from
-MumbleLink, carried on `Camera`). The world stays on screen as the map fades in and out over
-it, and GoodRender draws the scene under the map, which is the game's UI; but the overlay and
-the editor's overlay draw over that UI, so over the map. The viewer does not call the overlay
-then, and the editor clears its hover state, so a click on the map cannot select whatever the
-mouse was last over in the world either. What `IsMapOpen` does as the map toggles is in
-[viewer.md](viewer.md#drawing).
-
-A draw list has no depth buffer, so through the overlay sink markers are not occluded by
-world geometry. Through GoodRender the whole world goes to `world_quad`, which the GPU draws
-foreshortened with no subdividing, and those behind the terrain are hidden behind what the game
-drew in front of them (see [viewer.md](viewer.md#drawing)). The editor's outlines and handles stay on the draw list, over
-everything, which is what they are for.
-
-ImGuizmo takes the view and projection matrices of step 2, plus a model matrix per selected
-object.
-
-**The gizmo resolves a marker's placement through the bake, not its own copy.**
-`viewer::markerTransform` is what both use: position with `heightOffset` applied, and
-rotation, resolved through the category chain. The handles are supposed to sit on the drawn
-icon, so a second implementation is a second chance to disagree with the picture. `rotate="90"`
-is the easy case to get wrong: Blish reads it leniently, filling the rest with zero, and a
-copy that required all three components would draw unrotated handles on a rotated marker and
-then write the wrong angle back on a drag.
-
-## Threading
-
-Everything runs on the Nexus render callback (render thread). Three exceptions:
-
-- The native file dialog runs on a worker thread; `render()` polls `takeResult()`.
-- **`onWndProc` runs on the game's message thread.** A world click cannot reach ImGui, so the marker under the cursor is read there and handed to the render thread
-  through atomics — `pending_select`, `pending_select_point`, and the overlay's
-  `hovered_pathable`. The handoff *out* is atomic; the reads *in* (`state.loaded`,
-  `state.settings.select_in_viewport`, `io.WantCaptureMouse`) are plain and are a data race
-  in the letter of the model. They are single words that change between frames rather than
-  during one, and the worst outcome is a click landing one frame late or being ignored, so
-  they are left alone deliberately rather than by oversight. Anything read there in future
-  needs the same look.
-- Opening a pack (unzip + parse) runs on the render thread; see
-  [editor_plan.md](editor_plan.md).
-
-`file_dialog::shutdown` joins the worker with the mutex **released** — the worker takes that
-same mutex to store its result on the way out, so joining under it deadlocks, and unload
-with a dialog still open is exactly when that runs.
+The viewer draws the open pack ([viewer.md](viewer.md#the-editor-inside)). `editor/world/` draws only the
+outline, picking, point handles, a dot where an icon is missing, and the gizmo, on the draw list over
+everything, using `viewer/render/overlay.*` and `viewer/camera.*`. With the full map open the editor clears
+its hover state, so a click on the map selects nothing in the world.

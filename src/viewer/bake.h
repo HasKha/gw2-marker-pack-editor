@@ -16,21 +16,12 @@
 #include "viewer/camera.h"
 #include "viewer/guid.h"
 
-// A pack resolved for drawing: every inherited attribute looked up once, so a frame never
-// walks the category chain.
-//
-// Every pack is drawn from this. The viewer bakes each installed pack once, on its worker, and the
-// pack open in the editor again whenever State::revision moves. One reading of inheritance for
-// both is what keeps what an author sees and what a player sees from disagreeing.
+// A pack resolved for drawing: every inherited attribute looked up once, so a frame never walks the
+// category chain. Installed packs and the editor's are baked alike, so author and player see the same.
 namespace viewer {
 
-// Where a POI sits and how it is oriented, resolved through the category chain.
-//
-// The editor's gizmo places its handles with this too, because the two have to agree to the
-// last digit: the handles are supposed to sit on the drawn icon, and a second copy of this
-// logic is a second chance to disagree with the picture. (There were two, and they did — one
-// accepted a partial rotate="90" the way Blish does, the other required all three components
-// and silently read it as no rotation at all.)
+// Where a POI sits and how it is oriented, resolved through the category chain. The gizmo uses it
+// too, so its handles sit exactly on the drawn icon.
 struct MarkerTransform {
     glm::vec3 position{0.0f}; // as drawn, i.e. with heightOffset already applied
     glm::vec3 rotation{0.0f}; // radians, in the attributes' own axis order
@@ -49,7 +40,7 @@ bool markerTransform(const pack::Pack& pack, const pack::Pathable& pathable, Mar
 // leaves it to the player's setting (WorldOptions::occlusion).
 enum class RenderLayer : uint8_t {
     Default,
-    Windows, // "windows": over the world, under the game's UI. Named when that UI was only its windows
+    Windows, // "windows": over the world, under the game's UI
     Terrain, // "terrain": behind whatever of the world is in front of it
 };
 
@@ -202,19 +193,12 @@ ImU32 applyOpacity(ImU32 colour, float opacity);
 // the world rather than turned towards the camera.
 void rotatedMarkerQuad(const glm::vec3& position, const glm::vec3& rotation, float icon_size, glm::vec3 out[4]);
 
-// Texture coordinates for a marker's corners in kQuadCorners order. Blish derives each from
-// the sign of the vertex it belongs to,
-//     new Vector2(vert.X < 0 ? 1 : 0, vert.Y < 0 ? 1 : 0)
-// so in its own space the -X,-Y corner carries uv (1,1) and the +X,+Y corner (0,0) — both
-// axes inverted, which is exactly a 180-degree in-plane rotation of the image. That is what a
-// rotated marker gets.
+// Texture coordinates for a marker's corners in kQuadCorners order. Blish derives each from the
+// vertex's sign, inverting both axes (docs/format.md): what a rotated marker gets.
 extern const ImVec2 kRotatedMarkerUv[4];
 
-// A billboard gets the plain mapping instead, and the difference is not a choice. Its corners
-// come from Matrix.CreateBillboard, whose `right` axis points to screen *left* in Blish's
-// right-handed space and to screen right in Mumble's left-handed one (see
-// Camera::billboardCorners). Building the same basis in our space therefore flips u back,
-// leaving only the vertical inversion — which the corner order absorbs.
+// A billboard gets the plain mapping: Matrix.CreateBillboard's `right` flips between Blish's space
+// and ours, undoing the u inversion, and the corner order absorbs the v one.
 extern const ImVec2 kBillboardUv[4];
 
 // Blish HUD's StandardTrail.World.cs: TRAIL_WIDTH = 20 * 0.0254f, used as the half-width

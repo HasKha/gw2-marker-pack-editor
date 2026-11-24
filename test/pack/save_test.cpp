@@ -202,9 +202,8 @@ TEST_CASE("pending asset changes are applied by a save", "[save]") {
 }
 
 TEST_CASE("an entry name longer than a fixed buffer survives a save", "[save][regression]") {
-    // The zip reader used to read entry names into char[512] and take miniz's truncated
-    // length, so an over-long path silently became a different entry — and a save then
-    // wrote it back under the truncated name, losing the original file.
+    // A name read into a fixed buffer would be truncated by miniz, and a save would write the
+    // file back under the truncated name.
     const TempDir temp("long_name");
     const std::filesystem::path target = temp / "long-name.zip";
 

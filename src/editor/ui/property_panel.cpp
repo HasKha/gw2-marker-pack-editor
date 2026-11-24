@@ -132,12 +132,8 @@ bool editValue(const char* id, pack::ValueKind kind, const std::string& current,
         break;
     }
     default: {
-        // Sized to the value rather than fixed. Packs in the wild ship tip-descriptions
-        // well over a kilobyte, and a fixed buffer would silently truncate one the moment
-        // the field was touched — the same class of loss as dropping an attribute.
-        //
-        // Static so the common case does not reallocate per row per frame; the headroom is
-        // what there is to type into before the next frame resizes it again.
+        // Sized to the value: packs ship tip-descriptions over a kilobyte, which a fixed buffer
+        // would truncate. The headroom is what can be typed before the next frame resizes it.
         constexpr size_t kHeadroom = 256;
         static std::vector<char> buffer;
         buffer.assign(current.begin(), current.end());
@@ -311,11 +307,9 @@ void drawExplicit(editor::State& state, editor::NodeRef node) {
 
                 undo::Step step(state, "Edit " + attribute.name, merge_key);
 
-                // Typing with a pause in it does not merge with this frame, so the move
-                // would land in a step with no value to undo alongside it. undo::attributes
-                // keeps the first image it is given: restoring the old value for an instant
-                // is ignored when the steps did merge, and is the right before-image when
-                // they did not.
+                // A pause while typing ends the step, so the move could land in one without the
+                // value. Restoring the old value for an instant gives it the right before-image;
+                // undo::attributes ignores it when the steps did merge.
                 attributes->set(attribute.name, edit_started_value);
                 undo::attributes(state, node);
                 attributes->set(attribute.name, settled_value);
@@ -342,17 +336,8 @@ void drawExplicit(editor::State& state, editor::NodeRef node) {
     }
 }
 
-// Values reaching this node from an ancestor category. Shown greyed with the source, and
-// a button to copy the value down so it can be overridden here.
-//
-// Categories get this as well as pathables. TmfLib's chain is the same hop repeated —
-// `IAggregatesAttributes.AttributeParent` goes pathable -> category and category -> parent
-// category — so a nested category inherits from its parents exactly as a marker does, and
-// overriding a value one level down is how an author narrows it to a subtree.
-//
-// Draws its own heading, because which heading it is depends on this walk: "Inherited" over
-// the table, or "Nothing inherited." on its own. Never both — the placeholder already says
-// what section it is standing in for.
+// Values reaching this node from an ancestor category, categories included, with their source and
+// a button to copy the value down to override it. Draws its own heading, which depends on the walk.
 void drawInherited(editor::State& state, editor::NodeRef node) {
     const pack::AttributeCollection* own = attributesOf(state, node);
     if (!own) return;

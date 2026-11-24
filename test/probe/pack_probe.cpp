@@ -120,9 +120,8 @@ std::string excerpt(const std::string& text, long long at, size_t span = 60) {
     return out;
 }
 
-// If every element's offset_debug() lands on its own '<', we can edit a pack by splicing
-// replacement text into the original bytes instead of reserializing the tree — which is
-// the only way to keep intra-tag whitespace that pugixml does not model.
+// Whether every element's offset_debug() lands on its own '<': what splicing edits into the
+// original bytes would need.
 struct OffsetStats {
     int elements = 0;
     int anchored = 0;
@@ -431,8 +430,7 @@ int probeModel(const pack::DataSource& archive) {
         loaded.countByType(pack::PathableType::Trail),
         loaded.countByType(pack::PathableType::Route));
 
-    // How much do categories actually span files? This decides whether the editor's tree
-    // can be category-only or has to be file-oriented.
+    // How many categories span files: the editor's tree assumes almost none do.
     size_t split_categories = 0;
     size_t max_files_for_one_category = 0;
     std::string most_split;

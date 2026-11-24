@@ -16,8 +16,6 @@ FetchContent_MakeAvailable(imguizmo)
 # ImGradient, ImSequencer) need imgui 1.90+ for ImGuiChildFlags_FrameStyle and
 # ImDrawFlags_RoundCornersAll. Nexus ships imgui 1.80. We only want the gizmo, so we
 # declare a target over the one file we need and skip the rest.
-# (Its CMakeLists also only links imgui when building its own example, so we would have
-# had to attach imgui ourselves regardless.)
 add_library(imguizmo)
 set(SOURCES
     "${imguizmo_SOURCE_DIR}/src/ImGuizmo.h"

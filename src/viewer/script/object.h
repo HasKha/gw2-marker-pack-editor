@@ -15,7 +15,7 @@
 //   spellings of several members. A method here comes back from indexing as a closure over
 //   its object, and drops a leading argument that *is* that object.
 // - **The census.** A member with no row is recorded, with the script's file and line, and
-//   reads as nil; a write to one is recorded and dropped. See docs/viewer.md#the-census.
+//   reads as nil; a write to one is recorded and dropped. See docs/viewer.md#lua.
 // - **Errors are Lua errors.** A row throws; sol2 turns that into a Lua error at the call, which
 //   the protected call around every script entry reports to the console.
 //

@@ -12,11 +12,7 @@
 #include "pack/trl.h"
 #include "viewer/textures.h"
 
-// Images and trail data pulled out of the open pack on demand.
-//
-// Both are loaded lazily rather than up front: the largest pack tested ships 1,375 images
-// and 4,328 .trl files, and decoding all of that on open would stall the game for the
-// sake of assets the user may never look at.
+// Images and trail data read out of the open pack on demand, since a large pack ships thousands.
 namespace resources {
 
 void init(AddonAPI* api);
@@ -31,14 +27,10 @@ void beginFrame();
 void setSource(std::unique_ptr<pack::DataSource> source);
 const pack::DataSource* source();
 
-// An image added in the editor is not in the DataSource until the pack is saved, so the
-// cache has to look at the pack's pending adds first — otherwise a new icon would show as
-// missing until a save and reopen. The pointer must outlive the addon; it is the one
-// long-lived State.
+// Lets the cache see the pack's pending adds before the DataSource. Must outlive the addon.
 void setPendingAssets(const pack::Pack* pack);
 
-// Drops one cached texture. Needed when the bytes behind a path change — a pending add
-// replaced or withdrawn — because a cache hit would otherwise keep the old image forever.
+// Drops one cached texture, for when the bytes behind a path change.
 void forget(const std::string& path);
 
 // Paths are resolved through pack::normalizePath, so any spelling a pack uses works.

@@ -301,9 +301,7 @@ TEST_CASE("a quad the camera stands inside keeps the part still in front", "[cam
     const viewer::Camera camera = axisCamera();
 
     // The floor you are standing on: a big flat quad whose centre is behind the camera and
-    // which reaches well past it. Testing the marker's centre — which is what used to
-    // decide this — drops the whole thing, and a large marker then vanishes the moment you
-    // walk past its middle even though most of it is still on screen.
+    // which reaches well past it. Deciding on the centre would drop the whole thing.
     const glm::vec3 world[4] = {{-20.0f, -1.0f, -10.0f}, {20.0f, -1.0f, -10.0f}, {20.0f, -1.0f, 30.0f}, {-20.0f, -1.0f, 30.0f}};
 
     float depth[4];

@@ -55,8 +55,8 @@ editor::State threeMarkers() {
 } // namespace
 
 TEST_CASE("an empty selection reports nothing, not item zero") {
-    // The trap this replaced: a default-constructed size_t is point 0, which is a real
-    // point. Both element types have to report an index that cannot be mistaken for one.
+    // A default-constructed size_t is point 0, a real point, so both element types report
+    // kNoIndex instead.
     editor::Selection nodes;
     CHECK(nodes.empty());
     CHECK(nodes.primary().index == pack::kNoIndex);
@@ -218,8 +218,7 @@ TEST_CASE("pruning points drops the ones past the end of the trail") {
 }
 
 TEST_CASE("points and nodes are separate selections") {
-    // The bug that split them: selecting a point used to evict its trail, so the trail
-    // vanished from the details window and deleting a point read as deselecting the trail.
+    // Selecting a point must not evict its trail from the details window.
     editor::State state = threeMarkers();
     const NodeRef trail = path(0);
 
