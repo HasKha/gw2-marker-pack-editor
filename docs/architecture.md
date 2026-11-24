@@ -84,6 +84,7 @@ New for this project:
 | `nativefiledialog-extended` | native open/save dialogs |
 | `ImGuizmo` | 3D translate/rotate/scale gizmo |
 | `glm` | vec3/mat4 for the projection and the matrices ImGuizmo consumes |
+| `stb` | `stb_image`, to decode a trail's texture for its colour on the map, which Nexus decodes without handing the pixels back |
 | `Catch2` | test framework. **Test-only** — nothing in `src/` links it |
 
 ## Build targets

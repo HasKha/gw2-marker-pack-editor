@@ -3,6 +3,8 @@
 #include <unordered_map>
 #include <vector>
 
+#include "viewer/trail_colour.h"
+
 namespace resources {
 
 namespace {
@@ -21,6 +23,9 @@ viewer::TextureCache textures{"Markus_"};
 
 // Misses are cached too, so a missing trail is not retried every frame.
 std::unordered_map<std::string, std::shared_ptr<const pack::trl::Trail>> trails;
+
+// What each image gives a trail on the map, missing ones included.
+std::unordered_map<std::string, ImU32> trail_colours;
 
 // The bytes behind a normalized path. Added in the editor and not saved yet, those bytes are
 // the truth for this path: the trail editor writes its working copy back as a pending asset,
@@ -50,12 +55,14 @@ void shutdown() {
     textures.clear();
     textures.setApi(nullptr);
     trails.clear();
+    trail_colours.clear();
 }
 
 void setSource(std::unique_ptr<pack::DataSource> source) {
     data_source = std::move(source);
     textures.clear();
     trails.clear();
+    trail_colours.clear();
 }
 
 const pack::DataSource* source() {
@@ -69,6 +76,7 @@ void setPendingAssets(const pack::Pack* pack) {
 void forget(const std::string& path) {
     const std::string key = pack::normalizePath(path);
     trails.erase(key);
+    trail_colours.erase(key);
     textures.forget(key);
 }
 
@@ -106,6 +114,21 @@ std::shared_ptr<const pack::trl::Trail> trail(const std::string& path, bool* def
 
     trails.emplace(key, parsed);
     return parsed;
+}
+
+std::optional<ImU32> trailColour(const std::string& path, bool* deferred) {
+    if (deferred) *deferred = false;
+    const std::string key = pack::normalizePath(path);
+    if (const auto it = trail_colours.find(key); it != trail_colours.end()) return it->second;
+
+    if (!budget.take()) {
+        if (deferred) *deferred = true;
+        return std::nullopt;
+    }
+    std::vector<uint8_t> bytes;
+    const ImU32 colour = readAsset(key, &bytes) ? viewer::trail_colour::sample(bytes) : viewer::trail_colour::NO_COLOUR;
+    trail_colours.emplace(key, colour);
+    return colour;
 }
 
 } // namespace resources

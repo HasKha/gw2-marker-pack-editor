@@ -12,7 +12,7 @@ bool shown(const std::vector<char>& shown, size_t pathable) {
 
 } // namespace
 
-bool EditedLive::update(const Report& report, int map_id, const TrailLookup& trail) {
+bool EditedLive::update(const Report& report, int map_id, const TrailLookup& trail, const ColourLookup& colour) {
     if (!report.pack) {
         const bool was_open = open_;
         clear();
@@ -26,7 +26,7 @@ bool EditedLive::update(const Report& report, int map_id, const TrailLookup& tra
         revision_ = report.revision;
         changed = true;
     }
-    if (changed || unresolved_) changed |= resolveTrails(trail);
+    if (changed || unresolved_) changed |= resolveTrails(trail, colour);
 
     static const std::vector<char> kShowAll;
     const std::vector<char>& now_shown = report.shown ? *report.shown : kShowAll;
@@ -49,10 +49,21 @@ void EditedLive::clear() {
     live_ = runtime::LiveMap{};
 }
 
-bool EditedLive::resolveTrails(const TrailLookup& trail) {
+bool EditedLive::resolveTrails(const TrailLookup& trail, const ColourLookup& colour) {
     unresolved_ = false;
     bool arrived = false;
     for (BakedTrail& baked : baked_.trails) {
+        if (baked.sample_pending && colour) {
+            bool deferred = false;
+            if (const std::optional<ImU32> sampled = colour(baked.texture, &deferred)) {
+                baked.sample_colour = *sampled;
+                baked.sample_pending = false;
+                arrived = true;
+            } else if (deferred) {
+                unresolved_ = true;
+            }
+        }
+
         if (baked.geometry) continue;
         bool deferred = false;
         std::shared_ptr<const pack::trl::Trail> geometry = trail ? trail(baked.data, &deferred) : nullptr;

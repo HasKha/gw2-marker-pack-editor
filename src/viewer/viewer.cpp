@@ -886,13 +886,13 @@ void preRender() {
 
 void drawOptionsWindow();
 
-void drawFrame() {
+// The overlay draws what GoodRender did not reach: everything with no service, or a loading
+// screen or the full map. Behind our own windows and the editor's, but over the game.
+void drawWorld() {
     const ImVec2 display = ImGui::GetIO().DisplaySize;
     const Camera camera = fromMumble(mumble_link, glm::vec2(display.x, display.y));
     const std::shared_ptr<const Scene> scene = published();
 
-    // The overlay draws what GoodRender did not reach: everything with no service, or a loading
-    // screen. Behind our own windows and the editor's, but over the game.
     const good_render_sink::Drawn drawn = good_render_sink::takeDrawn();
     if (scene && camera.valid && !(drawn.terrain && drawn.over)) {
         overlay::drawScene(ImGui::GetBackgroundDrawList(), camera, *scene, !drawn.terrain, !drawn.over);
@@ -900,6 +900,13 @@ void drawFrame() {
     if (!drawn.map) {
         map_scene::drawPublished(ImGui::GetBackgroundDrawList(), mumble_link, glm::vec2(display.x, display.y));
     }
+}
+
+// Our windows and ImGui's: what is drawn with our font pushed.
+void drawFrame() {
+    const ImVec2 display = ImGui::GetIO().DisplaySize;
+    const Camera camera = fromMumble(mumble_link, glm::vec2(display.x, display.y));
+
     drawMapMenu();
 
     drawMenuPopup();
@@ -926,14 +933,17 @@ void drawFrame() {
         category_states.set(runtime::ALL_MARKERS, !category_states.enabled(runtime::ALL_MARKERS, true), true);
         saveStates();
     }
-    if (editor.render) editor.render();
 }
 
 void render() {
     takeFontDevice();
+    // The world and the map before our font is pushed: see fonts::push.
+    drawWorld();
     ui::fonts::push();
     drawFrame();
     ui::fonts::pop();
+    // Over the world as well as in its windows, so it pushes the font around its windows itself.
+    if (editor.render) editor.render();
 }
 
 void onMenuKeybind(const char*, bool is_release) {

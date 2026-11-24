@@ -234,9 +234,10 @@ Not in it: the achievement filter, and raids known complete (milestone 8).
 ### 4. Maps and screen — done offline
 
 Built: the minimap and the full map, as Pathing's FlatMap draws them — markers at their
-`mapDisplaySize`, zoomed or not, above/below arrows, trails as lines faded by height, the
-compass turning with the camera, the fade after the map opens. Every map's rectangles come
-from the GW2 API once a session, kept in `maps.json` for the next. The map draws at GoodRender's
+`mapDisplaySize`, zoomed or not, above/below arrows, trails as lines faded by height, in their
+tint or their texture's dominant colour, the compass turning with the camera, the fade after
+the map opens. Every map's rectangles come from the GW2 API once a session, kept in
+`maps.json` for the next. The map draws at GoodRender's
 `BEFORE_WINDOWS`, over the HUD and under the windows, or over everything without it. Over a
 marker on either map: its tooltip, the category path with Shift, and a right-click menu that
 hides its category. Pathing's map settings, its pack settings for the world (view distance,
@@ -259,8 +260,6 @@ Not in it:
 - **Pathing's own art**: its info window and gear icon are the game's textures, drawn with
   an alpha-mask shader; ours are plain ImGui windows. Its above/below icons are drawn as
   arrows.
-- **A trail without a tint is white on the map**, where Pathing samples its texture for the
-  dominant colour. That needs the image decoded on our side, which Nexus does not hand back.
 - **Hiding the full map as the camera moves**, before MumbleLink says it closed
   (FlatMap's `MapTriggerHideFromCamera`): one frame's difference at most.
 - Pathing's per-pixel fades — markers between character and camera, trails around the

@@ -7,6 +7,7 @@
 #include <fstream>
 #include <map>
 #include <memory>
+#include <optional>
 #include <string>
 
 #include "corpus.h"
@@ -268,4 +269,29 @@ TEST_CASE("an edited trail's quads say they are trail", "[edited][scene]") {
         CHECK(item.is_trail);
         CHECK(item.pathable == 3);
     }
+}
+
+TEST_CASE("an edited trail without a tint takes its texture's colour once the read is let through", "[edited][trail_colour]") {
+    const corpus::TempDir temp("edited_colour");
+    const pack::Pack model = editedPack(temp);
+    FakeTrails trails;
+    int deferrals = 1;
+    std::string asked;
+    const viewer::edited::ColourLookup colour = [&](const std::string& path, bool* deferred) -> std::optional<ImU32> {
+        asked = path;
+        *deferred = deferrals > 0;
+        if (deferrals-- > 0) return std::nullopt;
+        return IM_COL32(1, 2, 3, 255);
+    };
+
+    viewer::edited::EditedLive edited;
+    const viewer::edited::Report report{temp.path(), &model, 1, nullptr};
+    edited.update(report, kTrailMap, trails.lookup(), colour);
+    REQUIRE(edited.live().trails.size() == 1);
+    CHECK(edited.live().trails[0].trail.sample_colour == IM_COL32_WHITE);
+
+    // The next frame reads it, and builds the live map again for it.
+    CHECK(edited.update(report, kTrailMap, trails.lookup(), colour));
+    CHECK(asked == "t.png");
+    CHECK(edited.live().trails[0].trail.sample_colour == IM_COL32(1, 2, 3, 255));
 }

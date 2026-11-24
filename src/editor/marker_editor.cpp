@@ -331,7 +331,11 @@ viewer::runtime::LiveMap* editedLive(int map_id, viewer::TextureLookup* texture)
         report.revision = state.revision;
         report.shown = &state.pathable_visible;
     }
-    edited_live.update(report, map_id, [](const std::string& path, bool* deferred) { return resources::trail(path, deferred); });
+    edited_live.update(
+        report,
+        map_id,
+        [](const std::string& path, bool* deferred) { return resources::trail(path, deferred); },
+        [](const std::string& path, bool* deferred) { return resources::trailColour(path, deferred); });
     if (!report.pack) return nullptr;
     *texture = [](size_t, const std::string& path) { return resources::texture(path); };
     return &edited_live.live();
@@ -1116,6 +1120,9 @@ void render() {
     // outside drawTreeWindow, so a hidden or collapsed tree still consumes the request.
     ui::tree_window::update(state);
 
+    // Around the windows alone: the overlay and the gizmo above draw into the background list,
+    // which a pushed font breaks (viewer::ui::fonts::push).
+    viewer::ui::fonts::push();
     drawTreeWindow();
     // The others belong to the main window, and are drawn only with it.
     if (ui::windows::visible(ui::windows::Id::Tree)) {
@@ -1124,6 +1131,7 @@ void render() {
         drawTrailEditorWindow();
         drawResourcesWindow();
     }
+    viewer::ui::fonts::pop();
 
     applyPendingAction();
 

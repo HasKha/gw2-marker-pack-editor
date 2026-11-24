@@ -200,6 +200,7 @@ BakedPathables bake(const pack::Pack& pack) {
             trail.tint = tintOf(pack, pathable);
             if (pack.effectiveValue(pathable, "color") || pack.effectiveValue(pathable, "tint")) trail.sample_colour = trail.tint;
             trail.texture = stringOf(pack, pathable, "texture");
+            trail.sample_pending = trail.sample_colour == IM_COL32_WHITE && !trail.texture.empty();
             trail.data = stringOf(pack, pathable, "traildata");
             trail.guid = guidOf(pack, pathable);
             trail.in_game_visibility = pack.effectiveBool(pathable, "ingamevisibility");

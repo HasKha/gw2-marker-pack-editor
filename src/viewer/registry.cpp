@@ -9,6 +9,7 @@
 #include "pack/trl.h"
 #include "pack/xml_reader.h"
 #include "util/path_text.h"
+#include "viewer/trail_colour.h"
 
 namespace viewer::registry {
 
@@ -117,6 +118,23 @@ LoadedPack loadPack(const std::filesystem::path& path) {
         }
         trail.geometry = it->second;
         if (trail.geometry) trail.map_id = static_cast<int>(trail.geometry->map_id);
+    }
+
+    // The colour of every trail without a tint, from its texture, here too: Pathing samples as
+    // it loads, and decoding is a worker's job. One texture is sampled once however many
+    // trails name it; one that will not read is NO_COLOUR, as Pathing's failed load is.
+    std::unordered_map<std::string, ImU32> sampled;
+    for (BakedTrail& trail : loaded.pathables.trails) {
+        if (!trail.sample_pending) continue;
+        const std::string key = pack::normalizePath(trail.texture);
+        auto [it, inserted] = sampled.try_emplace(key, trail_colour::NO_COLOUR);
+        if (inserted) {
+            std::vector<uint8_t> bytes;
+            std::string error;
+            if (loaded.source->read(key, &bytes, &error)) it->second = trail_colour::sample(bytes);
+        }
+        trail.sample_colour = it->second;
+        trail.sample_pending = false;
     }
     return loaded;
 }

@@ -128,10 +128,14 @@ struct BakedTrail {
     std::string texture;
     std::string data;
 
-    // The colour the trail is drawn with on the map: its tint when it has one, and white
-    // until then. Pathing samples the texture for a trail with no tint; that comes with the
-    // map (StandardTrail[texture].cs).
+    // The colour the trail is drawn with on the map, Pathing's TrailSampleColor: its tint when
+    // it has one, and otherwise the dominant colour of its texture (trail_colour::sample), with
+    // white for a trail with no texture named. The bake knows only the tint; `sample_pending`
+    // says the texture is still to be read, which whoever reads the pack's files does
+    // (registry::loadPack, edited::EditedLive). A tint of white samples too, as Pathing compares
+    // the colour, not whether one was written (StandardTrail[color,tint].cs, [texture].cs).
     ImU32 sample_colour = IM_COL32_WHITE;
+    bool sample_pending = false;
 
     Guid guid;
     bool in_game_visibility = true;

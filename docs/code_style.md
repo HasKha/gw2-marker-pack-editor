@@ -68,7 +68,8 @@ block under a comment saying what it does.
   used, a pack that is not loaded — never to make a heading or a hint quieter. `TextWrapped` only for
   long or variable text, such as an error.
 - **An icon in a window is Font Awesome**, as text: `viewer::ui::fonts::label(ICON_FA_TRASH, "Delete")`,
-  inside a `fonts::push()`. An icon added to `src/` draws only once `tools/convert_fonts.py` is run
+  inside a `fonts::push()` — which goes around windows only, never around drawing into the background
+  list (its comment says why). An icon added to `src/` draws only once `tools/convert_fonts.py` is run
   again, which subsets the font to the names it finds; its docstring says how. Where the font may not
   be built and the icon is the whole control, draw it with `ImDrawList` too, as `eyeButton` in
   `editor/ui/tree_window.cpp` does.

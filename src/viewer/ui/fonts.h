@@ -22,6 +22,12 @@ void unload();
 // until pop(). Pushed before ImGui::Begin(), it holds for the title bar too. The first push builds
 // it from the current font: Nexus's, as the player picked it then; after that only its size is
 // followed, until the addon is reloaded.
+//
+// **Around windows only, never around drawing into the background or foreground list.** Pushing
+// a font points ImGui's shared draw data — the white pixel every line and filled shape takes its
+// colour from — into our atlas, but switches the texture of the current window's list alone. A
+// list that is no window's keeps sampling Nexus's atlas, at our atlas's coordinates: the map's
+// trails drawn that way were invisible, and its icons, being images, were not.
 void push();
 void pop();
 

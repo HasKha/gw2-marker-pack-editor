@@ -4,6 +4,7 @@
 #include <imgui.h>
 
 #include <memory>
+#include <optional>
 #include <string>
 
 #include "pack/model.h"
@@ -51,5 +52,10 @@ ImTextureID texture(const std::string& path);
 // before the read was attempted, so next frame will do better; false means it was tried and
 // the miss is cached, so no later frame will.
 std::shared_ptr<const pack::trl::Trail> trail(const std::string& path, bool* deferred = nullptr);
+
+// The colour the image at `path` gives a trail on the map: viewer::trail_colour::sample, or its
+// NO_COLOUR for a file that is not there. Cached, and spending the same budget; nothing, with
+// `*deferred` set, when it is spent.
+std::optional<ImU32> trailColour(const std::string& path, bool* deferred = nullptr);
 
 } // namespace resources

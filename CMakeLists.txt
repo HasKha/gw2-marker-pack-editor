@@ -32,6 +32,7 @@ include(catch2)
 include(good_render)
 include(lua)
 include(iconfontcppheaders)
+include(stb)
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${PROJECT_SOURCE_DIR}/bin/")
 

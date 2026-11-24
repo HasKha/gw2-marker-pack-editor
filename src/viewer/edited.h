@@ -4,6 +4,7 @@
 #include <filesystem>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -37,6 +38,10 @@ struct Report {
 // file, or, with `*deferred` set, when this frame's reads are spent: try again next frame.
 using TrailLookup = std::function<std::shared_ptr<const pack::trl::Trail>(const std::string& path, bool* deferred)>;
 
+// The colour a texture gives a trail on the map (trail_colour::sample), unsaved images included.
+// Nothing, with `*deferred` set, when this frame's reads are spent: try again next frame.
+using ColourLookup = std::function<std::optional<ImU32>(const std::string& path, bool* deferred)>;
+
 // The model as a live map of its own, apart from the installed packs': an edit, which a gizmo
 // drag makes every frame, rebuilds only this. Its scripts never load.
 //
@@ -48,8 +53,9 @@ public:
     // Brings the live map in line with `report` on `map_id`: bakes again when the revision moved,
     // and copies out what is on the map again when the bake, the map, what is shown or a
     // trail's map changed. A trail's map is in its file, so a trail is on no map until
-    // `trail` has read it. True when the live map was built again, its entities all new.
-    bool update(const Report& report, int map_id, const TrailLookup& trail);
+    // `trail` has read it; a trail without a tint is white on the map until `colour` has read its
+    // texture. True when the live map was built again, its entities all new.
+    bool update(const Report& report, int map_id, const TrailLookup& trail, const ColourLookup& colour = {});
 
     // Drops everything: no pack is open.
     void clear();
@@ -62,15 +68,16 @@ public:
     const BakedPathables& baked() const { return baked_; }
 
 private:
-    // Reads the points and map of every trail without them. True when any arrived.
-    bool resolveTrails(const TrailLookup& trail);
+    // Reads the points and map of every trail without them, and the colour of every trail still
+    // to be sampled. True when any arrived.
+    bool resolveTrails(const TrailLookup& trail, const ColourLookup& colour);
     void rebuild(int map_id);
 
     bool open_ = false;
     uint64_t revision_ = 0;
     BakedPathables baked_;
     std::vector<char> shown_;
-    bool unresolved_ = false; // a trail whose file waits for a later frame
+    bool unresolved_ = false; // a trail whose file or texture waits for a later frame
     uint64_t builds_ = 0; // never reset, so a live map's revision is never reused
     runtime::LiveMap live_;
 };

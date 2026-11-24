@@ -17,6 +17,7 @@ target_link_libraries(markus_viewer PUBLIC
     nlohmann_json::nlohmann_json
     good_render
     iconfontcppheaders
+    stb
     sol2
     shell32  # SHGetKnownFolderPath
     ole32    # CoTaskMemFree
