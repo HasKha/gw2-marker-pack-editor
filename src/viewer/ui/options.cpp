@@ -197,7 +197,6 @@ bool aboveBelowCheckbox(bool* value, ImTextureID above, ImTextureID below) {
 } // namespace
 
 bool drawMaps(settings::Settings* settings, ImTextureID above, ImTextureID below) {
-    // TODO: can we not share all those settings? and have minimap and map settings be independent.
     bool changed = ImGui::Checkbox("Show markers on maps", &settings->map_pathables);
     style::beginDisabled(!settings->map_pathables);
     changed |= drawOneMap(

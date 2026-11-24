@@ -101,7 +101,7 @@ sink for the same reason. Publishing is an atomic pointer swap.
   where a marker is drawn, `heightOffset` included.
 - **`cull`** keeps one face, decided in `itemCorners`; which is `Cull`'s comment in `bake.h`.
 - **`occlude` is not drawn.** Blish erases what is behind it from its transparent overlay; a draw list cannot
-  erase, so over the terrain markers behind those walls show through ([plan.md](plan.md#later)).
+  erase, so over the terrain markers behind those walls show through.
 - **Without the service**, the scene goes through `render/overlay.*` at Nexus's render, over everything. Each
   moment flags what it drew and the render draws the rest (`good_render_sink::takeDrawn`).
 - **Nothing is drawn on a loading screen**, where MumbleLink keeps the previous frame: both scenes are empty

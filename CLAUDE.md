@@ -18,8 +18,6 @@ menu: open a pack, edit it in the world where it is drawn, save it back.
   decided in advance; whatever can be checked offline is. The pack layer is checked by `markus_pack_test`
   and the corpus sweep in `markus_viewer_test` over the real packs, and a fix comes with a case that
   fails before it: see [testing.md](docs/testing.md).
-- **Keep [plan.md](docs/plan.md) true.** A change that finishes, starts or reorders something on it
-  updates it in the same change.
 - **Scratch goes in `tmp/`**, gitignored, and nothing committed references it. A script worth keeping
   is cleaned up and moved to `scripts/`, with a docstring saying what it is for.
 - **Python runs in the uv environment**: `uv run scripts/<script>.py`, and `uv add --bounds exact <package>`
@@ -36,7 +34,6 @@ menu: open a pack, edit it in the world where it is drawn, save it back.
 | [architecture.md](docs/architecture.md) | changing the editor: where code lives, how parts connect; before adding an abstraction |
 | [viewer.md](docs/viewer.md) | working on the viewer, or on splitting `src/` into the viewer and the editor |
 | [format.md](docs/format.md) | writing any parsing, serialization or rendering code; what an attribute does |
-| [plan.md](docs/plan.md) | choosing what to work on next; finishing something on it |
 | [editor_plan.md](docs/editor_plan.md) | picking up editor work; finishing something on it |
 | [testing.md](docs/testing.md) | running the tests, adding one, pointing them at other packs; `markus_probe` |
 | [references.md](docs/references.md) | dependencies; where a format fact was read, and which source wins when they disagree |

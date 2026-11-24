@@ -1,7 +1,6 @@
 # Editor — what is left
 
-None of it is scheduled; the editor works end to end. The addon's roadmap is [plan.md](plan.md); how the
-editor is built is [architecture.md](architecture.md), whose rules anything new keeps.
+None of it is scheduled; the editor works end to end.
 
 ## To build
 
