@@ -22,6 +22,18 @@ bool isIdentifierChar(char c) {
     return isIdentifierStart(c) || (c >= '0' && c <= '9');
 }
 
+// A name as the reader takes it: NeoLua writes a key bare when .NET's Char.IsLetter and
+// IsLetterOrDigit take all of it, so a character name with an accent, "Zhé", is a bare key in
+// Teh's Trails' stored tables. Every byte of UTF-8 past ASCII is taken as part of a name, which
+// reads all of that and more; the writer keeps to ASCII, which NeoLua reads as well.
+bool isNameStart(char c) {
+    return isIdentifierStart(c) || static_cast<unsigned char>(c) >= 0x80;
+}
+
+bool isNameChar(char c) {
+    return isIdentifierChar(c) || static_cast<unsigned char>(c) >= 0x80;
+}
+
 bool isKeyword(std::string_view word) {
     static constexpr std::string_view kKeywords[] = {"and",      "break",  "do",   "else", "elseif", "end",  "false", "for",
                                                      "function", "goto",   "if",   "in",   "local",  "nil",  "not",   "or",
@@ -219,7 +231,7 @@ private:
 
     std::string_view identifier() {
         const size_t start = at_;
-        while (at_ < text_.size() && isIdentifierChar(text_[at_])) ++at_;
+        while (at_ < text_.size() && isNameChar(text_[at_])) ++at_;
         return text_.substr(start, at_ - start);
     }
 
@@ -234,7 +246,7 @@ private:
             table.raw_set(key, value(depth));
             return;
         }
-        if (isIdentifierStart(peek())) {
+        if (isNameStart(peek())) {
             const size_t start = at_;
             const std::string_view name = identifier();
             skipSpace();
@@ -254,7 +266,7 @@ private:
         if (c == '{') return table(depth + 1);
         if (c == '"' || c == '\'') return sol::make_object(lua_, quoted());
         if (c == '-' || c == '.' || (c >= '0' && c <= '9')) return number();
-        if (isIdentifierStart(c)) {
+        if (isNameStart(c)) {
             const std::string_view word = identifier();
             if (word == "nil") return sol::make_object(lua_, sol::lua_nil);
             if (word == "true") return sol::make_object(lua_, true);

@@ -14,6 +14,16 @@ void Console::clear() {
     ++revision_;
 }
 
+std::string Console::text() const {
+    std::string out;
+    for (const Message& message : messages_) {
+        if (message.level == Level::Error) out += "ERROR ";
+        if (message.level == Level::Warn) out += "WARN ";
+        out += '[' + message.source + "] " + message.text + '\n';
+    }
+    return out;
+}
+
 bool Census::record(std::string member, std::string source, int line) {
     std::string key = member + '@' + source + ':' + std::to_string(line);
     if (!seen_.insert(std::move(key)).second) return false;

@@ -905,7 +905,7 @@ void drawFrame() {
     drawMenuPopup();
     // Before the windows it can open, so they show in the frame it was clicked in.
     drawOptionsWindow();
-    ui::script_console::draw(*scripts, installed, &console_window);
+    ui::script_console::draw(*scripts, installed, folder.empty() ? folder : folder / ui::script_console::SAVE_FILE_NAME, &console_window);
     drawCatalog();
     drawImport();
     finishKeyCheck();

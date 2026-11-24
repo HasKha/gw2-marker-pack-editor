@@ -33,6 +33,11 @@ public:
     const std::deque<Message>& messages() const { return messages_; }
     size_t errors() const { return errors_; } // every error pushed, including those since dropped
 
+    // Every message as plain text, a line each with its traceback below it, for the player to
+    // copy or save into a report: "[source] text", with "ERROR " or "WARN " in front of those,
+    // since the colours that mark them on screen do not survive the copy.
+    std::string text() const;
+
     // Moves on every push and clear, so a window knows to scroll.
     uint64_t revision() const { return revision_; }
 

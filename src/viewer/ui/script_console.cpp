@@ -1,10 +1,13 @@
 #include "viewer/ui/script_console.h"
 
+#include <IconsFontAwesome7.h>
 #include <imgui.h>
 
 #include <string>
 
+#include "util/json_file.h"
 #include "util/path_text.h"
+#include "viewer/ui/fonts.h"
 
 namespace viewer::ui::script_console {
 
@@ -19,8 +22,24 @@ ImVec4 colourOf(script::Level level) {
     }
 }
 
-void drawMessages(const script::Engine& engine) {
+void drawMessages(const script::Engine& engine, const std::filesystem::path& save_file) {
     static uint64_t seen_revision = 0;
+    static std::string save_status; // what the last Save did, until the next
+
+    // The whole log, tracebacks included, for a player to send with a report.
+    if (ImGui::Button(fonts::label(ICON_FA_COPY, "Copy").c_str())) ImGui::SetClipboardText(engine.console().text().c_str());
+    if (!save_file.empty()) {
+        ImGui::SameLine();
+        if (ImGui::Button(fonts::label(ICON_FA_FLOPPY_DISK, "Save").c_str())) {
+            save_status = util::json_file::writeText(save_file, engine.console().text()) ? "Saved to " + util::pathText(save_file)
+                                                                                          : "Could not write " + util::pathText(save_file);
+        }
+        if (!save_status.empty()) {
+            ImGui::SameLine();
+            ImGui::TextUnformatted(save_status.c_str());
+        }
+    }
+
     ImGui::BeginChild("##messages", ImVec2(0, 0), false, ImGuiWindowFlags_HorizontalScrollbar);
     for (const script::Message& message : engine.console().messages()) {
         ImGui::PushStyleColor(ImGuiCol_Text, colourOf(message.level));
@@ -72,14 +91,14 @@ void drawCensus(const script::Engine& engine) {
 
 } // namespace
 
-void draw(const script::Engine& engine, const runtime::Installed& installed, bool* open) {
+void draw(const script::Engine& engine, const runtime::Installed& installed, const std::filesystem::path& save_file, bool* open) {
     if (!*open) return;
     ImGui::SetNextWindowSize(ImVec2(640.0f, 400.0f), ImGuiCond_FirstUseEver);
     if (ImGui::Begin("Script console", open)) {
         const size_t census = engine.census().entries().size();
         if (ImGui::BeginTabBar("##tabs")) {
             if (ImGui::BeginTabItem("Messages")) {
-                drawMessages(engine);
+                drawMessages(engine, save_file);
                 ImGui::EndTabItem();
             }
             if (ImGui::BeginTabItem("Watches")) {

@@ -325,6 +325,11 @@ ok = back[1] == 1 and back[2] == "two" and back[3].nested[1] == 3 and back.flag 
     CHECK(s.eval(R"(table.FromLson("{ a = 'q', [2] = -0x10; -1.5e1, }")[2])") == "-16");
     CHECK(s.eval(R"(table.FromLson("{ a = 'q', [2] = -0x10; -1.5e1, }")[1])") == "-15.0");
     CHECK_FALSE(s.run(R"(table.FromLson("{ a = os.exit() }"))"));
+
+    // NeoLua writes a key bare when .NET calls every character of it a letter: Teh's Trails
+    // keys its saved trails by character name, and a player's kv.json holds `Zhé = "..."`.
+    CHECK(s.eval(R"(table.FromLson('{["54"]={Zh\u{E9}="guid"}}')["54"]["Zh\u{E9}"])") == "guid");
+    CHECK(s.eval(R"(table.FromLson(table.ToLson({["Zh\u{E9}"] = 1}))["Zh\u{E9}"])") == "1");
 }
 
 TEST_CASE("Menu entries are found again by name, and a click flips and calls them", "[viewer][script]") {
