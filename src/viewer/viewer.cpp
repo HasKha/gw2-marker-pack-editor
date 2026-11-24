@@ -771,7 +771,7 @@ WorldOptions worldOptions() {
     options.combat_fade = persisted.combat_fade;
     options.in_combat = mumble_state.is_in_combat;
     options.show_hidden = show_hidden;
-    options.behind_terrain = persisted.behind_terrain;
+    options.occlusion = static_cast<Occlusion>(persisted.occlusion);
     return options;
 }
 
@@ -896,8 +896,8 @@ void drawWorld() {
     const good_render_sink::Drawn drawn = good_render_sink::takeDrawn();
     // Not with the map up: this is over the game's UI, so over the map. The scene is still built
     // then, for GoodRender, which draws it under the map.
-    if (scene && camera.valid && !camera.map_open && !(drawn.terrain && drawn.over)) {
-        overlay::drawScene(ImGui::GetBackgroundDrawList(), camera, *scene, !drawn.terrain, !drawn.over);
+    if (scene && camera.valid && !camera.map_open && !(drawn.occluded && drawn.over)) {
+        overlay::drawScene(ImGui::GetBackgroundDrawList(), camera, *scene, !drawn.occluded, !drawn.over);
     }
     if (!drawn.map) {
         map_scene::drawPublished(ImGui::GetBackgroundDrawList(), mumble_link, glm::vec2(display.x, display.y));

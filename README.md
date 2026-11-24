@@ -33,8 +33,8 @@ Your packs and settings move over by themselves the first time Markus loads.
 - **Hide finished achievements.** Add a GW2 API key in the options and markers for achievements you
   have finished hide themselves.
 - **Draw behind the scenery.** With [GoodRender](https://github.com/HasKha/gw2-good-render) installed,
-  markers draw under the game's interface, and **Hide markers behind terrain** puts them behind
-  walls and hills. Without it they draw over everything.
+  markers draw under the game's interface, and **Marker occlusion** puts them behind characters, or behind
+  walls and hills too. Without it they draw over everything.
 
 Everything else, from opacity and view distance to what shows on each map, is in the addon's
 options in Nexus.

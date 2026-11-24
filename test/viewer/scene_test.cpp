@@ -69,11 +69,14 @@ struct Built {
     }
 };
 
-// What a sink handed to world_quad, kept by a moment's function pointer.
+// What a sink handed to world_quad, kept by a moment's function pointer: the corners, and what
+// each was to be hidden behind.
 std::vector<std::array<glm::vec3, 4>> submitted;
+std::vector<good_render::HiddenBehind> submitted_hidden;
 
-void recordQuad(const float corners[4][3], const float[4][2], void*, uint32_t) {
+void recordQuad(const float corners[4][3], const float[4][2], void*, uint32_t, good_render::HiddenBehind hidden_behind) {
     submitted.push_back({glm::make_vec3(corners[0]), glm::make_vec3(corners[1]), glm::make_vec3(corners[2]), glm::make_vec3(corners[3])});
+    submitted_hidden.push_back(hidden_behind);
 }
 
 good_render::Camera momentCamera(const viewer::Camera& camera) {
@@ -310,7 +313,8 @@ TEST_CASE("Pathing's world settings scale, fade, cap and hide what the scene dra
     }
 }
 
-TEST_CASE("behind the terrain is the pack's choice, or the player's where it makes none", "[scene]") {
+TEST_CASE("what hides a marker is the pack's choice, or the player's where it makes none", "[scene]") {
+    using viewer::Occlusion;
     Built built;
     viewer::BakedPathables pathables;
     pathables.markers = {marker({0, 0, 5}, 0), marker({0, 0, 6}, 0), marker({0, 0, 7}, 0)};
@@ -319,25 +323,23 @@ TEST_CASE("behind the terrain is the pack's choice, or the player's where it mak
     viewer::runtime::install(&built.installed, loadedPack("pack", pathables));
     const viewer::Camera camera = test_camera::axisCamera();
 
-    const auto behind = [&](float z) {
+    const auto occlusion = [&](float z) {
         for (const viewer::SceneItem& item : built.scene.items) {
-            if (item.centre.z == Approx(z)) return item.behind_terrain;
+            if (item.centre.z == Approx(z)) return item.occlusion;
         }
         FAIL("no item at " << z);
-        return false;
+        return Occlusion::None;
     };
 
-    built.build(camera);
-    REQUIRE(built.scene.items.size() == 3);
-    CHECK_FALSE(behind(5.0f));
-    CHECK(behind(6.0f));
-    CHECK_FALSE(behind(7.0f));
-
-    built.options.behind_terrain = true;
-    built.build(camera);
-    CHECK(behind(5.0f));
-    CHECK(behind(6.0f));
-    CHECK_FALSE(behind(7.0f));
+    // The player's choice reaches only the marker whose pack leaves it to them.
+    for (const Occlusion player : {Occlusion::None, Occlusion::Characters, Occlusion::Scene}) {
+        built.options.occlusion = player;
+        built.build(camera);
+        REQUIRE(built.scene.items.size() == 3);
+        CHECK(occlusion(5.0f) == player);
+        CHECK(occlusion(6.0f) == Occlusion::Scene);
+        CHECK(occlusion(7.0f) == Occlusion::None);
+    }
 }
 
 TEST_CASE("the scene is back to front, billboards and quads together", "[scene]") {
@@ -650,7 +652,7 @@ TEST_CASE("the GoodRender sink submits what the overlay would draw", "[good_rend
     viewer::Scene scene;
     viewer::SceneItem billboard;
     billboard.texture = fakeTexture();
-    billboard.behind_terrain = true;
+    billboard.occlusion = viewer::Occlusion::Scene;
     billboard.kind = viewer::SceneItem::Kind::Billboard;
     billboard.centre = {0, 0, 40};
     billboard.size = 2.0f;
@@ -667,7 +669,7 @@ TEST_CASE("the GoodRender sink submits what the overlay would draw", "[good_rend
 
     viewer::SceneItem quad;
     quad.texture = fakeTexture();
-    quad.behind_terrain = true;
+    quad.occlusion = viewer::Occlusion::Scene;
     quad.corners[0] = {0, 0, 1};
     quad.corners[1] = {1, 0, 1};
     quad.corners[2] = {1, 1, 1};
@@ -679,10 +681,13 @@ TEST_CASE("the GoodRender sink submits what the overlay would draw", "[good_rend
     imageless.texture = nullptr;
     scene.items.push_back(imageless);
 
-    // Over the terrain: drawn into the draw list, and not here.
+    // Hidden behind nothing, and behind characters only: through world_quad too.
     viewer::SceneItem over = quad;
-    over.behind_terrain = false;
+    over.occlusion = viewer::Occlusion::None;
     scene.items.push_back(over);
+    viewer::SceneItem characters = quad;
+    characters.occlusion = viewer::Occlusion::Characters;
+    scene.items.push_back(characters);
 
     const good_render::Camera moment_camera = momentCamera(camera);
     good_render::Moment moment{};
@@ -694,8 +699,16 @@ TEST_CASE("the GoodRender sink submits what the overlay would draw", "[good_rend
     moment.world_quad = recordQuad;
 
     submitted.clear();
+    submitted_hidden.clear();
     viewer::good_render_sink::submit(moment, scene);
-    REQUIRE(submitted.size() == 3);
+    REQUIRE(submitted.size() == 5);
+    CHECK(
+        submitted_hidden == std::vector<good_render::HiddenBehind>{
+                                good_render::HIDDEN_BEHIND_SCENE,
+                                good_render::HIDDEN_BEHIND_SCENE,
+                                good_render::HIDDEN_BEHIND_SCENE,
+                                good_render::HIDDEN_BEHIND_NOTHING,
+                                good_render::HIDDEN_BEHIND_CHARACTERS});
 
     glm::vec3 expected[4];
     REQUIRE(camera.billboardQuad(billboard.centre, billboard.size, expected));
@@ -710,12 +723,12 @@ TEST_CASE("the GoodRender sink submits what the overlay would draw", "[good_rend
     CHECK(submitted[2][1] == quad.corners[1]);
 }
 
-TEST_CASE("over the terrain goes into the draw list, and only that", "[good_render]") {
+TEST_CASE("with no world_quad, over the terrain goes into the draw list, and only that", "[good_render]") {
     const viewer::Camera camera = test_camera::axisCamera();
     viewer::Scene scene;
     viewer::SceneItem quad;
     quad.texture = fakeTexture();
-    quad.behind_terrain = true;
+    quad.occlusion = viewer::Occlusion::Scene;
     quad.corners[0] = {0, 0, 1};
     quad.corners[1] = {1, 0, 1};
     quad.corners[2] = {1, 1, 1};
@@ -735,7 +748,7 @@ TEST_CASE("over the terrain goes into the draw list, and only that", "[good_rend
     viewer::good_render_sink::drawOver(moment, scene);
     CHECK(fixture.list().VtxBuffer.Size == 0);
 
-    scene.items[0].behind_terrain = false;
+    scene.items[0].occlusion = viewer::Occlusion::None;
     viewer::good_render_sink::drawOver(moment, scene);
     CHECK(fixture.list().VtxBuffer.Size == 4);
 }
@@ -745,14 +758,14 @@ TEST_CASE("the whole world is drawn at WORLD_FINISHED, under the game's HUD", "[
     auto scene = std::make_shared<viewer::Scene>();
     viewer::SceneItem behind;
     behind.texture = fakeTexture();
-    behind.behind_terrain = true;
+    behind.occlusion = viewer::Occlusion::Scene;
     behind.corners[0] = {0, 0, 1};
     behind.corners[1] = {1, 0, 1};
     behind.corners[2] = {1, 1, 1};
     behind.corners[3] = {0, 1, 1};
     scene->items.push_back(behind);
     viewer::SceneItem over = behind;
-    over.behind_terrain = false;
+    over.occlusion = viewer::Occlusion::None;
     scene->items.push_back(over);
     viewer::publish(scene);
     viewer::good_render_sink::takeDrawn();
@@ -770,14 +783,14 @@ TEST_CASE("the whole world is drawn at WORLD_FINISHED, under the game's HUD", "[
         return moment;
     };
 
-    // A frame's two moments, in order: the world's quads and its draw list both at the first.
+    // A frame's two moments, in order: the whole world through world_quad at the first.
     {
         viewer::test::DrawListFixture world;
         submitted.clear();
         const good_render::Moment world_moment = momentOf(good_render::MOMENT_WORLD_FINISHED, world);
         viewer::good_render_sink::onMoment(&world_moment);
-        CHECK(submitted.size() == 1);
-        CHECK(world.list().VtxBuffer.Size == 4);
+        CHECK(submitted.size() == 2);
+        CHECK(world.list().VtxBuffer.Size == 0);
     }
 
     // Nothing of the world over the HUD; no map published, so nothing at all.
@@ -789,7 +802,7 @@ TEST_CASE("the whole world is drawn at WORLD_FINISHED, under the game's HUD", "[
     }
 
     const viewer::good_render_sink::Drawn drawn = viewer::good_render_sink::takeDrawn();
-    CHECK(drawn.terrain);
+    CHECK(drawn.occluded);
     CHECK(drawn.over);
 
     viewer::publish(nullptr);
@@ -801,14 +814,14 @@ TEST_CASE("the world is drawn at WORLD_FINISHED with the map open, under it", "[
     auto scene = std::make_shared<viewer::Scene>();
     viewer::SceneItem behind;
     behind.texture = fakeTexture();
-    behind.behind_terrain = true;
+    behind.occlusion = viewer::Occlusion::Scene;
     behind.corners[0] = {0, 0, 1};
     behind.corners[1] = {1, 0, 1};
     behind.corners[2] = {1, 1, 1};
     behind.corners[3] = {0, 1, 1};
     scene->items.push_back(behind);
     viewer::SceneItem over = behind;
-    over.behind_terrain = false;
+    over.occlusion = viewer::Occlusion::None;
     scene->items.push_back(over);
     viewer::publish(scene);
 
@@ -830,10 +843,10 @@ TEST_CASE("the world is drawn at WORLD_FINISHED with the map open, under it", "[
 
     submitted.clear();
     viewer::good_render_sink::onMoment(&moment);
-    CHECK(submitted.size() == 1);
-    CHECK(fixture.list().VtxBuffer.Size == 4);
+    CHECK(submitted.size() == 2);
+    CHECK(fixture.list().VtxBuffer.Size == 0);
     const viewer::good_render_sink::Drawn drawn = viewer::good_render_sink::takeDrawn();
-    CHECK(drawn.terrain);
+    CHECK(drawn.occluded);
     CHECK(drawn.over);
 
     viewer::good_render_sink::unload();

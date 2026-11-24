@@ -23,7 +23,6 @@ constexpr Field<bool> kBools[] = {
     {"allow_auto_hide", &Settings::allow_auto_hide},
     {"allow_animation", &Settings::allow_animation},
     {"smart_categories", &Settings::smart_categories},
-    {"behind_terrain", &Settings::behind_terrain},
     {"show_interact_prompt", &Settings::show_interact_prompt},
     {"achievement_tooltips", &Settings::achievement_tooltips},
     {"menu_in_nexus", &Settings::menu_in_nexus},
@@ -40,6 +39,7 @@ constexpr Field<bool> kBools[] = {
 // does not exist.
 constexpr Field<int> kInts[] = {
     {"clipboard_consent", &Settings::clipboard_consent, 0, 2},
+    {"occlusion", &Settings::occlusion, 0, 2},
     {"info_display", &Settings::info_display, 0, 2},
     {"map_marker_visibility", &Settings::map_marker_visibility, 0, 2},
     {"map_trail_visibility", &Settings::map_trail_visibility, 0, 2},
@@ -68,6 +68,8 @@ Settings load(const std::filesystem::path& folder) {
         for (const Field<bool>& field : kBools) {
             settings.*field.member = util::json_file::readBool(*parsed, field.key, settings.*field.member);
         }
+        // "Hide markers behind terrain", the checkbox "occlusion" took the place of: on was Scene.
+        settings.occlusion = util::json_file::readBool(*parsed, "behind_terrain", false) ? 2 : 0;
         for (const Field<int>& field : kInts) {
             settings.*field.member = std::clamp(util::json_file::readInt(*parsed, field.key, settings.*field.member), field.min, field.max);
         }

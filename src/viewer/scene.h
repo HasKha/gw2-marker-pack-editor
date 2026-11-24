@@ -21,6 +21,14 @@
 // player, whom no moment knows about.
 namespace viewer {
 
+// What of the world in front of a marker or trail hides it, when GoodRender draws it: the
+// player's "Marker occlusion", in this order, and GoodRender's HiddenBehind.
+enum class Occlusion : uint8_t {
+    None, // "None", the default: over the whole world, as Blish HUD draws every marker
+    Characters, // "Behind Characters": through walls and hills, never through someone in front of it
+    Scene, // "Behind Characters and Terrain": as the world itself is
+};
+
 struct SceneItem {
     enum class Kind : uint8_t {
         // A marker turned to the camera: `centre`, `size` across before min/max size.
@@ -54,9 +62,9 @@ struct SceneItem {
     // a piece of trail the largest float, so that every trail is under every marker.
     float depth = 0.0f;
 
-    // With GoodRender, both at WORLD_FINISHED and under the game's UI: hidden behind what of the
-    // world is in front of it, or otherwise over the whole world.
-    bool behind_terrain = false;
+    // With GoodRender, at WORLD_FINISHED and under the game's UI: what of the world in front of
+    // it hides it. Without GoodRender nothing does, whatever this says.
+    Occlusion occlusion = Occlusion::None;
 
     // For the pack open in the editor, the pathable this draws, into its Pack::pathables, and
     // whether it is a piece of trail: what the editor outlines and picks. kNoIndex for every
@@ -82,8 +90,8 @@ struct WorldOptions {
     bool combat_fade = true; // "Fade Markers and Trails During Combat": half opacity
     bool in_combat = false; // MumbleLink's, this frame
     bool show_hidden = false; // what behaviors filter is drawn too, a marker at half opacity
-    // Ours: where GoodRender draws what its pack leaves to the player (RenderLayer::Default).
-    bool behind_terrain = false;
+    // Ours: what hides what its pack leaves to the player (RenderLayer::Default), with GoodRender.
+    Occlusion occlusion = Occlusion::None;
 };
 
 // The texture for an image of one pack, or null while it is not available — which, for a

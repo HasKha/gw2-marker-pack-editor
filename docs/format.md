@@ -370,7 +370,7 @@ inherited from categories like any other.
 |---|---|
 | `windows` | over the world, under the game's HUD and windows: Blish HUD draws every marker over the world too, but over the game's UI as well |
 | `terrain` | behind what of the world is in front of it: walls, hills, characters |
-| absent, or anything else | as the player's **Hide markers behind terrain** says, over the world unless it is on |
+| absent, or anything else | as the player's **Marker occlusion** says: None, over the world, by default; or behind characters; or behind characters and terrain |
 
 Case does not matter. Without GoodRender every marker draws over everything and the attribute
 changes nothing. Not to be confused with Pathing's `occlude`, which is about markers hiding

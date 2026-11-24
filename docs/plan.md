@@ -9,6 +9,23 @@ built is in the code and the other docs, and the editor's own list is
 
 Roughly in order. Each ends in a single pull in game, its questions decided before it.
 
+### 0. The world through GoodRender's `world_quad` alone
+
+GoodRender's contract version 2 gives `world_quad` and `world_billboard` a `hidden_behind`, and
+the sink sends the whole world through `world_quad`, so a trail over the terrain is drawn by the
+GPU rather than a flat draw list.
+
+- **In [GoodRender](https://github.com/HasKha/gw2-good-render)**: the header, and the service in
+  gw2-community-challenge-mode, which hands version 1 subscribers version 1's calls. Unpushed.
+- **Here**: built against the local header, `GOOD_RENDER_LOCAL` on in
+  `cmake/good_render.cmake`. Once the header is pushed, pin it there and turn the switch off.
+  **Marker occlusion** in the options picks among the three.
+
+Pull: does a trail running from the character past the camera stretch smoothly, as Pathing's
+does? With each of Marker occlusion's three settings, does a marker behind a wall and one
+behind a character hide as the setting says? Does Community Challenge Mode, built against
+version 1, still draw its shapes?
+
 ### 1. The full map through GoodRender
 
 The full map is not a window at `BEFORE_WINDOWS`: markers drawn there land over it. A
@@ -52,14 +69,10 @@ move to Installed when it arrives?
 
 ## Known rough edges
 
-- **Perspective-correct texturing is capped at 16 subdivisions a side.** That covers every
-  marker anyone would author; a quad both enormous and right in the camera's face still
-  carries a little of the affine bend near the corner closest to you. Raising the cap is a
-  constant in `viewer/camera.h`, paid for in vertices.
-- **Quads are clipped against the near plane only, not the sides of the frustum.** A marker
-  you are standing inside can project a corner tens of thousands of pixels off screen, and
-  those cells are subdivided and emitted like any other before ImGui's scissor throws them
-  away. Correct, just wasteful; side planes would be four more of the same clip.
+- **Through the draw list, perspective-correct texturing is capped at 64 cuts an axis**
+  (`kMaxQuadSubdivisions`). That is only without GoodRender's `world_quad`, and covers a trail
+  step running from far ahead to beside the camera; a quad both enormous and right in the
+  camera's face can still carry a little of the affine bend.
 - **Baking is the largest part of loading.** Per marker it walks the category chain once per
   attribute; caching that per category is the next step if loading is still felt.
 

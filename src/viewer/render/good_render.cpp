@@ -17,7 +17,7 @@ good_render::Slot* slot = nullptr;
 const Mumble::Data* mumble_link = nullptr;
 
 // Set by the moments, taken by the Nexus render that ends the same frame.
-std::atomic<bool> terrain_drawn{false};
+std::atomic<bool> occluded_drawn{false};
 std::atomic<bool> over_drawn{false};
 std::atomic<bool> map_drawn{false};
 
@@ -39,9 +39,8 @@ void onMoment(const good_render::Moment* moment) {
     }
 
     // The finished world, before any UI, so the game's HUD and nameplates go over every marker:
-    // what is behind the terrain through world_quad, the rest into the draw list, which the
-    // service draws after the quads. No camera means no world to draw into this frame — leave it
-    // to the fallback.
+    // all of it through world_quad, or, with no world_quad, what nothing hides into the draw
+    // list. No camera means no world to draw into this frame — leave it to the fallback.
     // Over the full map too: GoodRender keeps the camera there, and the map is the game's UI,
     // drawn over this.
     if (moment->moment != good_render::MOMENT_WORLD_FINISHED || !moment->camera) return;
@@ -51,9 +50,9 @@ void onMoment(const good_render::Moment* moment) {
 
     if (moment->world_quad) {
         submit(*moment, *scene);
-        terrain_drawn = true;
-    }
-    if (moment->draw_list) {
+        occluded_drawn = true;
+        over_drawn = true;
+    } else if (moment->draw_list) {
         drawOver(*moment, *scene);
         over_drawn = true;
     }
@@ -74,7 +73,7 @@ void unload() {
 
 Drawn takeDrawn() {
     Drawn drawn;
-    drawn.terrain = terrain_drawn.exchange(false);
+    drawn.occluded = occluded_drawn.exchange(false);
     drawn.over = over_drawn.exchange(false);
     drawn.map = map_drawn.exchange(false);
     return drawn;
@@ -102,7 +101,7 @@ void submit(const good_render::Moment& moment, const Scene& scene) {
     const Camera camera = cameraFromMoment(*moment.camera, windowSize(moment));
 
     for (const SceneItem& item : scene.items) {
-        if (!item.texture || !item.behind_terrain) continue;
+        if (!item.texture) continue;
         // A billboard goes through world_quad as the overlay's quad, not through
         // world_billboard: Blish's billboard faces the ray to its own centre rather than the
         // camera's plane, and its size is clamped on its projected corners.
@@ -119,7 +118,13 @@ void submit(const good_render::Moment& moment, const Scene& scene) {
             coords[i][0] = uv[i].x;
             coords[i][1] = uv[i].y;
         }
-        moment.world_quad(world, coords, item.texture, item.colour);
+        // Through the GPU whatever hides it, even nothing, as Pathing draws everything: it
+        // foreshortens a texture where a draw list cannot. In Occlusion's order.
+        constexpr good_render::HiddenBehind kHiddenBehind[] = {
+            good_render::HIDDEN_BEHIND_NOTHING,
+            good_render::HIDDEN_BEHIND_CHARACTERS,
+            good_render::HIDDEN_BEHIND_SCENE};
+        moment.world_quad(world, coords, item.texture, item.colour, kHiddenBehind[static_cast<size_t>(item.occlusion)]);
     }
 }
 

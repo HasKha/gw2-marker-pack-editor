@@ -706,8 +706,9 @@ along the quad's diagonal instead of foreshortening — on a large marker that r
 saddle, and on a trail as the pattern sliding rather than compressing into the distance. So
 every textured quad is split in **world** space and each vertex projected on its own; the
 corners are coplanar, so a bilinear blend of them stays on the real surface.
-`viewer::affineQuadSubdivisions` sizes the grid from the error it is removing and returns 1 —
-one `AddImageQuad` — whenever there is nothing to correct, which is the common case. Blish gets all of this from the GPU for free.
+`viewer::perspectiveGrid` places the cuts, closer together where the quad is nearer, and
+returns one cell — one `AddImageQuad` — whenever there is nothing to correct, which is the
+common case. It cuts only the part of the quad in view (`viewer::visibleRegion`). Blish gets all of this from the GPU for free.
 
 The grid covers the whole quad rather than its visible part, so that its cells tile. Cells
 wholly behind the near plane are dropped and the few it cuts are clipped again at cell
@@ -729,8 +730,9 @@ mouse was last over in the world either. What `IsMapOpen` does as the map toggle
 [viewer.md](viewer.md#drawing).
 
 A draw list has no depth buffer, so through the overlay sink markers are not occluded by
-world geometry. Through GoodRender those behind the terrain are: `world_quad` hides each pixel
-behind what the game drew in front of it (see [viewer.md](viewer.md#drawing)). The editor's outlines and handles stay on the draw list, over
+world geometry. Through GoodRender the whole world goes to `world_quad`, which the GPU draws
+foreshortened with no subdividing, and those behind the terrain are hidden behind what the game
+drew in front of them (see [viewer.md](viewer.md#drawing)). The editor's outlines and handles stay on the draw list, over
 everything, which is what they are for.
 
 ImGuizmo takes the view and projection matrices of step 2, plus a model matrix per selected

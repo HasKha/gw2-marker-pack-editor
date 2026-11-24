@@ -1,5 +1,7 @@
 #include "viewer/render/overlay.h"
 
+#include <vector>
+
 namespace viewer::overlay {
 
 namespace {
@@ -75,9 +77,9 @@ void drawTexturedQuad(
     //
     // So the quad is subdivided in *world* space and every vertex projected. All four
     // corners of every quad drawn here are coplanar, so a bilinear blend of them stays on the
-    // real surface, and each cell ends up small enough that affine is invisible. How far to
-    // split is affineQuadSubdivisions, which lives with the projection because that is what
-    // it is about; this is the error it is allowed to leave, in pixels.
+    // real surface, and each cell ends up small enough that affine is invisible. Where to
+    // cut is perspectiveGrid, which lives with the projection because that is what it is
+    // about; this is the error it is allowed to leave, in pixels.
     constexpr float kQuadPixelTolerance = 0.5f;
 
     if ((colour & IM_COL32_A_MASK) == 0) return; // what AddImageQuad checks for us below
@@ -86,28 +88,31 @@ void drawTexturedQuad(
     const float* corner_depth = quad.corner_depth;
     const bool whole =
         quad.count == 4 && corner_depth[0] >= 0.0f && corner_depth[1] >= 0.0f && corner_depth[2] >= 0.0f && corner_depth[3] >= 0.0f;
-    const int steps = affineQuadSubdivisions(quad.screen, quad.depth, quad.count, kQuadPixelTolerance);
 
-    if (whole && steps <= 1) {
+    // The grid covers the visible part's extent in (u,v), so that its cells tile it: cells
+    // wholly behind the near plane are skipped and the few it cuts are clipped.
+    glm::vec2 low(0.0f);
+    glm::vec2 high(1.0f);
+    if (!visibleRegion(camera, quad.world, &low, &high)) return;
+    const QuadGrid cuts = perspectiveGrid(camera, quad.world, low, high, kQuadPixelTolerance);
+
+    if (whole && cuts.columns == 1 && cuts.rows == 1) {
         ImVec2 corners[5];
         screenCorners(quad, corners);
         list->AddImageQuad(texture, corners[0], corners[1], corners[2], corners[3], uv[0], uv[1], uv[2], uv[3], colour);
         return;
     }
 
-    // The grid covers the whole quad, not just the visible part, so that its cells tile:
-    // cells wholly behind the near plane are skipped and the few it cuts are clipped. A
-    // straddling quad always lands on the step cap, since a corner sitting on the near
-    // plane makes the depth spread enormous — which is exactly where the cells need to be
-    // smallest anyway.
-    constexpr int kMaxStride = kMaxQuadSubdivisions + 1;
-    GridVertex grid[kMaxStride * kMaxStride];
-    const int stride = steps + 1;
-    const float span = 1.0f / static_cast<float>(steps);
+    // Kept between calls, as the grid can be thousands of vertices: too many for the stack, and
+    // reused rather than allocated for every quad. One per thread, since the overlay and
+    // GoodRender's moments may draw on different ones.
+    thread_local std::vector<GridVertex> grid;
+    const int stride = cuts.columns + 1;
+    grid.resize(static_cast<size_t>(stride) * static_cast<size_t>(cuts.rows + 1));
 
-    for (int row = 0; row <= steps; ++row) {
-        for (int column = 0; column <= steps; ++column) {
-            grid[row * stride + column] = quadVertex(camera, quad, uv, glm::vec2(column * span, row * span));
+    for (int row = 0; row <= cuts.rows; ++row) {
+        for (int column = 0; column <= cuts.columns; ++column) {
+            grid[row * stride + column] = quadVertex(camera, quad, uv, glm::vec2(cuts.u[column], cuts.v[row]));
         }
     }
 
@@ -115,16 +120,17 @@ void drawTexturedQuad(
     // texture id each time, and that is a command each. A clipped cell can come out a
     // pentagon, so a quad the plane cuts reserves the worst case and hands the rest back;
     // one it does not is exact, which is the common case by a long way.
-    const int reserved_vertices = steps * steps * (whole ? 4 : 5);
-    const int reserved_indices = steps * steps * (whole ? 6 : 9);
+    const int cells = cuts.columns * cuts.rows;
+    const int reserved_vertices = cells * (whole ? 4 : 5);
+    const int reserved_indices = cells * (whole ? 6 : 9);
     int used_vertices = 0;
     int used_indices = 0;
 
     list->PushTextureID(texture);
     list->PrimReserve(reserved_indices, reserved_vertices);
 
-    for (int row = 0; row < steps; ++row) {
-        for (int column = 0; column < steps; ++column) {
+    for (int row = 0; row < cuts.rows; ++row) {
+        for (int column = 0; column < cuts.columns; ++column) {
             const int corner[4] = {
                 row * stride + column,
                 row * stride + column + 1,
@@ -147,8 +153,9 @@ void drawTexturedQuad(
             }
 
             glm::vec2 clipped[5];
-            const glm::vec2 low(column * span, row * span);
-            const int clipped_count = clipQuadRegion(corner_depth, low, low + glm::vec2(span), clipped);
+            const glm::vec2 cell_low(cuts.u[column], cuts.v[row]);
+            const glm::vec2 cell_high(cuts.u[column + 1], cuts.v[row + 1]);
+            const int clipped_count = clipQuadRegion(corner_depth, cell_low, cell_high, clipped);
             if (clipped_count < 3) continue;
 
             // A fan from the first corner: the cell is convex, and one plane cannot make it
@@ -172,9 +179,9 @@ void drawTexturedQuad(
     list->PopTextureID();
 }
 
-void drawScene(ImDrawList* list, const Camera& camera, const Scene& scene, bool terrain, bool over) {
+void drawScene(ImDrawList* list, const Camera& camera, const Scene& scene, bool occluded, bool over) {
     for (const SceneItem& item : scene.items) {
-        if (!item.texture || !(item.behind_terrain ? terrain : over)) continue;
+        if (!item.texture || !(item.occlusion != Occlusion::None ? occluded : over)) continue;
         glm::vec3 corners[4];
         const ImVec2* uv = nullptr;
         ClippedQuad quad;

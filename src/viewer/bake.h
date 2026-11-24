@@ -46,7 +46,7 @@ struct MarkerTransform {
 bool markerTransform(const pack::Pack& pack, const pack::Pathable& pathable, MarkerTransform* out);
 
 // Where a marker or trail is drawn with GoodRender: `render-layer`, our own attribute. Default
-// leaves it to the player's setting (WorldOptions::behind_terrain).
+// leaves it to the player's setting (WorldOptions::occlusion).
 enum class RenderLayer : uint8_t {
     Default,
     Windows, // "windows": over the world, under the game's UI. Named when that UI was only its windows

@@ -30,16 +30,21 @@ bool drawPack(settings::Settings* settings, bool* show_hidden) {
     changed |= slider("Max trail animation speed", &settings->max_trail_speed, 0.0f, 10.0f, "%.1f");
     changed |= slider("Marker scale", &settings->marker_scale, 0.1f, 4.0f, "%.2f");
     changed |= ImGui::Checkbox("Fade markers and trails during combat", &settings->combat_fade);
-    changed |= ImGui::Checkbox("Hide markers behind terrain", &settings->behind_terrain);
+    // In Occlusion's order.
+    const char* const occlusions[] = {"None", "Behind Characters", "Behind Characters and Terrain"};
+    ImGui::SetNextItemWidth(ImGui::GetFontSize() * 12.0f);
+    changed |= ImGui::Combo("Marker occlusion", &settings->occlusion, occlusions, IM_ARRAYSIZE(occlusions));
     if (ImGui::IsItemHovered()) {
         ImGui::SetTooltip(
+            "Default occlusion, if not set by the pack.\n"
             "Needs the GoodRender addon.\n"
             "Some packs decide this for their own markers.");
     }
     // TODO: ^ describe the tag for marker creators.
 
     changed |= ImGui::Checkbox("Allow markers to hide themselves", &settings->allow_auto_hide);
-    if (ImGui::IsItemHovered()) ImGui::SetTooltip("When off, every marker shows, including those hidden by festivals, schedules or after you used them.");
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("When off, every marker shows, including those hidden by festivals, schedules or after you used them.");
     changed |= ImGui::Checkbox("Allow markers to animate", &settings->allow_animation);
     changed |= ImGui::Checkbox("Smart categories", &settings->smart_categories);
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("Leaves categories with nothing on the current map out of the menu.");
@@ -59,7 +64,8 @@ bool drawPack(settings::Settings* settings, bool* show_hidden) {
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("Some markers copy text, such as a waypoint code, for you to paste in chat.");
 
     ImGui::Checkbox("Show hidden markers faded, to unhide them", show_hidden);
-    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Interact with a faded marker to bring it back. Turns itself off when the game restarts.");
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("Interact with a faded marker to bring it back. Turns itself off when the game restarts.");
     return changed;
 }
 

@@ -142,34 +142,53 @@ float quadPixelHeight(const glm::vec2* points, int count = 4);
 // would resize a marker for walking into it.
 float clampedBillboardSize(const Camera& camera, const glm::vec3& centre, float world_size, float min_size, float max_size);
 
-// The most ways a quad is ever split. The overlay sizes a stack grid on this, so it is a
-// bound rather than a preference.
-constexpr int kMaxQuadSubdivisions = 16;
+// The most ways a quad is ever split along one axis: a bound on the work, which a trail step
+// running from far ahead to beside the camera reaches before its error is under a pixel.
+constexpr int kMaxQuadSubdivisions = 64;
 
-// How many ways to split a projected quad along each axis before interpolating across it
-// *affinely* is worth less than `tolerance_pixels` of error.
+// Where to cut a quad so that interpolating *affinely* across each cell errs by less than a
+// tolerance: `columns` cells along u, cut at u[0..columns], and `rows` along v, cut at
+// v[0..rows], both in the quad's own (u,v) space.
+struct QuadGrid {
+    int columns = 1;
+    int rows = 1;
+    float u[kMaxQuadSubdivisions + 1] = {0.0f, 1.0f};
+    float v[kMaxQuadSubdivisions + 1] = {0.0f, 1.0f};
+};
+
+// The grid over the region `low`..`high` of the quad `world` — the part of it in front of
+// the camera — that leaves no cell drawn affinely more than `tolerance_pixels` from where the
+// perspective puts it, or as near that as kMaxQuadSubdivisions allows.
 //
 // A 2D draw list has no w to divide by, so anything it interpolates across a quad — the
 // texture coordinates, above all — is spread evenly over the screen positions rather than
 // over the surface. That is only right when the four corners came back from the projection
 // at the same depth, and a quad tilted away from the camera does not.
 //
-// Across an edge whose ends projected with clip depths w0 and w1, the affine midpoint lands
-// at parameter 1/2 where the correct one is w0/(w0+w1) — so the content is misplaced by a
-// fraction of the edge's screen length. Splitting the edge n ways divides both that
-// fraction and the length it is measured over by n, so the error falls as 1/n².
+// **The cuts are not even.** Along a line of the quad, a cell `dt` long at view depth w is
+// misplaced at its middle by about dt²/w³: a cell near the camera errs far more than one the
+// same length far away. Cut evenly, as this once was, a trail running past the camera was a
+// sawtooth — the arrows too stretched at each cell's far end, too flat at its near end, and a
+// jump at the next. Every cell errs alike when dt grows as w^1.5, which is cutting evenly in
+// 1/√w, so that is where the cuts go. Each axis is sized on its own, by measuring that error
+// along the region's two edges across it: a long, narrow trail step needs many rows and one
+// column.
 //
-// The depth spread is measured against the *near* end rather than the mean, deliberately.
-// The error is not spread evenly over the quad: it concentrates at the near corner, where
-// the cells come out widest on screen and shallowest in depth. Dividing by the mean sizes
-// the grid for the average cell and leaves that corner several times over tolerance.
+// One cell — draw the shape whole — when there is nothing to correct, as for a quad square
+// on to the camera.
+QuadGrid perspectiveGrid(const Camera& camera, const glm::vec3 world[4], glm::vec2 low, glm::vec2 high, float tolerance_pixels);
+
+// The extent in (u,v) of what of the quad `world` is in view — in front of the near plane and
+// inside the four sides of the screen — for perspectiveGrid to cut. False when none of it is.
 //
-// Returns 1 — draw the shape whole — when there is nothing to correct: a quad square on to
-// the camera, or one with a corner behind it, where the projection means nothing anyway.
-// Never more than kMaxQuadSubdivisions.
+// The four sides count as much as the near plane: a trail running past the camera spans
+// depths a hundredfold apart, and most of that range, the part beside the camera, is off the
+// screen. Cut over all of it, the cells go where nothing is seen.
 //
-// `count` is 4 for a whole quad and up to 5 for one the near plane has cut.
-int affineQuadSubdivisions(const glm::vec2* screen, const float* depth, int count, float tolerance_pixels);
+// A box round the visible part, not the part itself: each plane cuts the box the ones before
+// it left, and the box round what survives is kept. That is what a grid needs, since a cell
+// off the screen only costs drawing and none on it is missed.
+bool visibleRegion(const Camera& camera, const glm::vec3 world[4], glm::vec2* low, glm::vec2* high);
 
 // Builds the camera for this frame. Returns an invalid Camera when MumbleLink has no data
 // yet — at character select, during map load, or before the game has ticked.

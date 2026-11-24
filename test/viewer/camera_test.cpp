@@ -189,13 +189,11 @@ TEST_CASE("a quad square on to the camera needs no subdividing", "[camera]") {
     // Dead ahead the billboard is parallel to the camera plane, so all four corners come
     // back at the same depth and interpolating affinely across them is already exact.
     glm::vec3 world[4];
-    glm::vec2 screen[4];
-    float depth[4];
     REQUIRE(camera.billboardQuad(glm::vec3(0.0f, 0.0f, 50.0f), 20.0f, world));
-    for (int i = 0; i < 4; ++i) REQUIRE(camera.project(world[i], &screen[i], &depth[i]));
 
-    CHECK(depth[0] == Approx(depth[2]));
-    CHECK(viewer::affineQuadSubdivisions(screen, depth, 4, 0.5f) == 1);
+    const viewer::QuadGrid grid = viewer::perspectiveGrid(camera, world, glm::vec2(0.0f), glm::vec2(1.0f), 0.5f);
+    CHECK(grid.columns == 1);
+    CHECK(grid.rows == 1);
 }
 
 TEST_CASE("a large off-axis billboard is subdivided until affine is invisible", "[camera][regression]") {
@@ -220,34 +218,40 @@ TEST_CASE("a large off-axis billboard is subdivided until affine is invisible", 
     const float whole = affineEdgeError(camera, world[0], world[1]);
     CHECK(whole > 10.0f);
 
-    const int steps = viewer::affineQuadSubdivisions(screen, depth, 4, 0.5f);
-    CAPTURE(steps, whole);
-    REQUIRE(steps > 1);
-    REQUIRE(steps < viewer::kMaxQuadSubdivisions); // or the cap, not the formula, is on trial
+    const viewer::QuadGrid grid = viewer::perspectiveGrid(camera, world, glm::vec2(0.0f), glm::vec2(1.0f), 0.5f);
+    CAPTURE(grid.columns, grid.rows, whole);
+    REQUIRE(grid.columns > 1);
+    REQUIRE(grid.columns < viewer::kMaxQuadSubdivisions); // or the cap, not the sizing, is on trial
 
-    // Split that far, no cell is off by more than the pixel or so that was asked for. The
-    // near end is the worst of them, which is why the depth spread is measured there.
+    // Cut there, no cell is off by more than the pixel or so that was asked for.
     float worst = 0.0f;
-    for (int i = 0; i < steps; ++i) {
-        const float t0 = static_cast<float>(i) / static_cast<float>(steps);
-        const float t1 = static_cast<float>(i + 1) / static_cast<float>(steps);
-        const glm::vec3 a = world[0] + (world[1] - world[0]) * t0;
-        const glm::vec3 b = world[0] + (world[1] - world[0]) * t1;
+    for (int i = 0; i < grid.columns; ++i) {
+        const glm::vec3 a = world[0] + (world[1] - world[0]) * grid.u[i];
+        const glm::vec3 b = world[0] + (world[1] - world[0]) * grid.u[i + 1];
         worst = std::max(worst, affineEdgeError(camera, a, b));
     }
     CHECK(worst < 1.0f);
     CHECK(worst < whole / 20.0f);
 }
 
-TEST_CASE("subdividing is skipped for a quad with a corner behind the camera", "[camera]") {
+TEST_CASE("a long strip toward the camera is cut finer where it is nearer", "[camera][regression]") {
     const viewer::Camera camera = axisCamera();
 
-    // The renderer draws these as a screen-space square, so there is no world quad to grid
-    // and the depths are meaningless. Asking for a grid anyway would be asking to build one
-    // out of positions that are not on screen.
-    const glm::vec2 screen[4] = {{0.0f, 0.0f}, {800.0f, 0.0f}, {800.0f, 800.0f}, {0.0f, 800.0f}};
-    const float behind[4] = {-5.0f, 10.0f, 10.0f, -5.0f};
-    CHECK(viewer::affineQuadSubdivisions(screen, behind, 4, 0.5f) == 1);
+    // A metre-wide trail step on the floor from thirty metres out to half a metre ahead. Cut
+    // evenly along it, the cells near the camera span depths several times apart and are
+    // stretched a cell at a time, a sawtooth; cut evenly in 1/sqrt(depth), each errs alike.
+    const glm::vec3 world[4] = {{-1.5f, -1.5f, 30.0f}, {-0.5f, -1.5f, 30.0f}, {-0.5f, -1.5f, 0.5f}, {-1.5f, -1.5f, 0.5f}};
+    const viewer::QuadGrid grid = viewer::perspectiveGrid(camera, world, glm::vec2(0.0f), glm::vec2(1.0f), 0.5f);
+    CAPTURE(grid.columns, grid.rows);
+
+    // Across it the depth hardly changes; along it, it changes sixty-fold.
+    CHECK(grid.columns < grid.rows);
+    REQUIRE(grid.rows > 2);
+
+    // v runs from the far end to the near one: each cut nearer the camera is shorter.
+    for (int i = 0; i + 2 <= grid.rows; ++i) CHECK(grid.v[i + 1] - grid.v[i] > grid.v[i + 2] - grid.v[i + 1]);
+    CHECK(grid.v[0] == 0.0f);
+    CHECK(grid.v[grid.rows] == 1.0f);
 }
 
 TEST_CASE("clipping a quad's parameter space against the near plane", "[camera]") {

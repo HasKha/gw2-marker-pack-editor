@@ -9,9 +9,11 @@
 #include "viewer/scene.h"
 
 // The sink that draws the published scenes into the game's own frame through GoodRender. The
-// world at MOMENT_WORLD_FINISHED, under the game's whole UI: what is behind the terrain through
-// world_quad, each pixel hidden behind what the game drew in front of it, then the rest over it
-// through the draw list. The map at MOMENT_BEFORE_WINDOWS, over the HUD and under the windows.
+// world at MOMENT_WORLD_FINISHED, under the game's whole UI, all of it through world_quad in the
+// scene's order, each hidden behind what its Occlusion names of what the game drew in front of
+// it. The GPU draws those, so a texture foreshortens as it should, which through
+// a flat draw list it only does as far as the overlay's subdivision takes it. The map at
+// MOMENT_BEFORE_WINDOWS, over the HUD and under the windows.
 //
 // GoodRender is optional. Subscribing costs nothing while no service is loaded, and every
 // frame no moment draws a scene — no service, a loading screen — the Nexus render callback draws
@@ -29,7 +31,7 @@ void unload();
 // the overlay what they did not: every moment of a frame comes before its Present, so what the
 // service reached has already been drawn.
 struct Drawn {
-    bool terrain = false; // the world's items behind the terrain
+    bool occluded = false; // the world's items something of the world hides
     bool over = false; // the world's other items
     bool map = false;
 };
@@ -43,13 +45,13 @@ void onMoment(const good_render::Moment* moment);
 // pixels, the space minSize and maxSize are in.
 Camera cameraFromMoment(const good_render::Camera& camera, glm::vec2 viewport);
 
-// Hands what of `scene` is behind the terrain to the moment's world_quad, in order, with
-// billboards sized for the moment's camera. WORLD_FINISHED's body, apart so a test can give it a
-// moment of its own.
+// Hands all of `scene` to the moment's world_quad, in order, with billboards sized for the
+// moment's camera, each hidden behind what its Occlusion names.
+// WORLD_FINISHED's body, apart so a test can give it a moment of its own.
 void submit(const good_render::Moment& moment, const Scene& scene);
 
-// Draws the rest of `scene` into the moment's draw list, which GoodRender draws after the
-// quads: WORLD_FINISHED's other half.
+// Draws what of `scene` nothing hides into the moment's draw list: WORLD_FINISHED's body
+// when the moment has no world_quad. Flat, so a textured quad is subdivided as the overlay's are.
 void drawOver(const good_render::Moment& moment, const Scene& scene);
 
 } // namespace viewer::good_render_sink

@@ -18,9 +18,11 @@ struct Settings {
     // Pathing's pack settings for behaviors (ModuleSettings.cs), with its defaults.
     bool allow_auto_hide = true; // "Allow Markers to Automatically Hide"
     bool allow_animation = true; // "Allow Markers to Animate": bounce
-    // Ours: with GoodRender, what a pack leaves to the player is hidden behind the terrain.
-    // Off draws it over the world and under the game's UI; Blish HUD draws everything over both.
-    bool behind_terrain = false;
+    // Ours: with GoodRender, what of the world hides what a pack leaves to the player, an
+    // Occlusion. Its default, None, draws over the world and under the game's UI; Blish HUD
+    // draws everything over both. Saved as "occlusion"; a file from before it, with only
+    // "behind_terrain", reads that as Scene when it was on.
+    int occlusion = 0;
     bool smart_categories = true; // "Enable Smart Categories": the menu leaves out other maps'
     bool show_interact_prompt = true; // "Allow Markers to Show Interact Gear On-Screen"
     bool achievement_tooltips = true; // "Show Tooltips for Achievements": over a category in the menu

@@ -24,6 +24,21 @@ TEST_CASE("a broken settings file leaves the defaults standing", "[viewer][setti
     CHECK(viewer::settings::load(temp.path()).run_scripts);
 }
 
+TEST_CASE("a file from before Marker occlusion keeps what its checkbox said", "[viewer][settings][regression]") {
+    // "Hide markers behind terrain" on was behind the whole scene; off, or absent, behind nothing.
+    const corpus::TempDir temp("settings_occlusion");
+    writeFile(temp / viewer::settings::FILE_NAME, "{\"behind_terrain\": true}");
+    CHECK(viewer::settings::load(temp.path()).occlusion == 2);
+    writeFile(temp / viewer::settings::FILE_NAME, "{\"behind_terrain\": false}");
+    CHECK(viewer::settings::load(temp.path()).occlusion == 0);
+
+    // Once saved, the dropdown's own value wins, and one out of range is clamped.
+    writeFile(temp / viewer::settings::FILE_NAME, "{\"behind_terrain\": true, \"occlusion\": 1}");
+    CHECK(viewer::settings::load(temp.path()).occlusion == 1);
+    writeFile(temp / viewer::settings::FILE_NAME, "{\"occlusion\": 7}");
+    CHECK(viewer::settings::load(temp.path()).occlusion == 2);
+}
+
 TEST_CASE("the Blish HUD import is offered until it has been, and scripts run unless turned off", "[viewer][settings]") {
     const corpus::TempDir temp("settings_blish");
     CHECK_FALSE(viewer::settings::load(temp.path()).import_offered);
@@ -43,7 +58,7 @@ TEST_CASE("behavior settings start at Pathing's defaults and are kept", "[viewer
     CHECK(defaults.allow_auto_hide);
     CHECK(defaults.allow_animation);
     CHECK(defaults.smart_categories);
-    CHECK_FALSE(defaults.behind_terrain);
+    CHECK(defaults.occlusion == 0);
     CHECK(defaults.show_interact_prompt);
     CHECK(defaults.clipboard_consent == 0);
 
@@ -51,7 +66,7 @@ TEST_CASE("behavior settings start at Pathing's defaults and are kept", "[viewer
     settings.allow_auto_hide = false;
     settings.allow_animation = false;
     settings.smart_categories = false;
-    settings.behind_terrain = true;
+    settings.occlusion = 1;
     settings.show_interact_prompt = false;
     settings.clipboard_consent = 2;
     REQUIRE(viewer::settings::save(temp.path(), settings));
@@ -59,7 +74,7 @@ TEST_CASE("behavior settings start at Pathing's defaults and are kept", "[viewer
     CHECK_FALSE(loaded.allow_auto_hide);
     CHECK_FALSE(loaded.allow_animation);
     CHECK_FALSE(loaded.smart_categories);
-    CHECK(loaded.behind_terrain);
+    CHECK(loaded.occlusion == 1);
     CHECK_FALSE(loaded.show_interact_prompt);
     CHECK(loaded.clipboard_consent == 2);
 }

@@ -129,8 +129,8 @@ What goes where, through GoodRender:
 
 | What | How | Moment |
 |---|---|---|
-| markers and trails behind the terrain | `world_quad`, the corners the overlay would draw | `WORLD_FINISHED` |
-| markers and trails over the terrain, the default | `draw_list`, through `render/overlay.*` with the moment's camera; drawn after the quads | `WORLD_FINISHED` |
+| markers and trails, behind the terrain or over it | `world_quad`, the corners the overlay would draw, in the scene's order: `HIDDEN_BEHIND_SCENE` behind the terrain, `HIDDEN_BEHIND_NOTHING` over it | `WORLD_FINISHED` |
+| the same, from a moment with no `world_quad` | over the terrain only, into `draw_list` through `render/overlay.*` with the moment's camera; the overlay draws the rest | `WORLD_FINISHED` |
 | the minimap and the full map | `draw_list`, projected from MumbleLink's map fields as the moment reads them, over the world's | `BEFORE_WINDOWS` |
 | info text, the interact prompt, the map's tooltip and menu | ImGui windows | Nexus's render, over everything |
 
@@ -140,19 +140,22 @@ takes a centre and half sizes and faces it its own way. Building the corners our
 both sinks drawing the one shape `itemCorners` in `scene.*` gives them.
 
 **The world's markers go under the game's whole UI**: its HUD, nameplates and damage numbers
-as well as its windows, where Blish HUD draws over all of it. So both halves of the world are
-drawn at `WORLD_FINISHED`, and only the map waits for `BEFORE_WINDOWS`, over the HUD as the
-game's own map markers are. A draw list at `WORLD_FINISHED` has no depth, which is what over
-the terrain needs, and GoodRender draws it after the moment's quads, so an item over the terrain
-always lands on one behind it, whatever the scene's order. Within each half, the order is all
-there is, and it is Blish's: every trail first, then the markers back to front by where each
-stands, before its `heightOffset`, ties in the order loaded (`buildScene`). **Over the terrain is the default**,
-as Blish HUD draws every marker: the world never hides one. Behind the terrain is the player's choice, **Hide markers behind
-terrain** in the options, and a pack's per category or marker with `render-layer`, our own
-attribute (see [format.md](format.md#render-layer-ours)), which wins over the player's. There,
-`world_quad` does the occlusion: each pixel is hidden behind what the game drew in front of it,
-which no draw list ever is. The scene carries the choice per item (`SceneItem::behind_terrain`),
-settled when it is built.
+as well as its windows, where Blish HUD draws over all of it. So the world is drawn at
+`WORLD_FINISHED`, and only the map waits for `BEFORE_WINDOWS`, over the HUD as the game's own
+map markers are. **All of the world goes through `world_quad`**, over the terrain too, hidden
+behind nothing: a draw list is flat, so across a quad running away from the camera it spreads a
+texture evenly over the pixels, and a trail running past the camera came out stretched a cell
+at a time, however finely the overlay cut it. The GPU foreshortens it as Blish's does. One queue
+for both means the scene's order is all there is, and it is Blish's: every trail first, then
+the markers back to front by where each stands, before its `heightOffset`, ties in the order
+loaded (`buildScene`). **Hidden behind nothing is the default**, as Blish HUD draws every
+marker: the world never hides one. What does is the player's choice, **Marker occlusion** in
+the options — None, the default, Behind Characters, Behind Characters and Terrain — and a pack's per
+category or marker with `render-layer`, our own attribute (see
+[format.md](format.md#render-layer-ours)), which wins over the player's. `world_quad` does the
+occlusion, as GoodRender's `HiddenBehind`: each pixel is hidden behind what the game drew in
+front of it, all of it or only characters, which no draw list ever is. The scene carries the
+choice per item (`SceneItem::occlusion`), settled when it is built.
 
 **Fades are colour alpha, per quad.** `alpha`, `fadeNear`/`fadeFar`, the combat fade, the
 max-opacity setting and the 800 ms fade-in all multiply into the quad's colour on the CPU, as

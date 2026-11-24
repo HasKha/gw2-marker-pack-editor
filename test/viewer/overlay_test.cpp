@@ -33,7 +33,61 @@ void checkBufferConsistent(const ImDrawList& list) {
     }
 }
 
+// The texture coordinate of each corner is its place in the quad's own (u,v), so a uv names
+// the point of the surface it should be drawn at.
+const ImVec2 kParameterUv[4] = {{0, 0}, {1, 0}, {1, 1}, {0, 1}};
+
+// The farthest, in pixels, any point of the texture lands from where the perspective puts it,
+// over every triangle drawn with kParameterUv: at the middle of each edge, where interpolating
+// affinely across the triangle errs most. Only on screen: off it, nothing is seen to be wrong.
+float worstTextureError(const ImDrawList& list, const viewer::Camera& camera, const glm::vec3 world[4]) {
+    float worst = 0.0f;
+    for (int i = 0; i + 2 < list.IdxBuffer.Size; i += 3) {
+        for (int edge = 0; edge < 3; ++edge) {
+            const ImDrawVert& a = list.VtxBuffer[list.IdxBuffer[i + edge]];
+            const ImDrawVert& b = list.VtxBuffer[list.IdxBuffer[i + (edge + 1) % 3]];
+            const glm::vec2 drawn((a.pos.x + b.pos.x) * 0.5f, (a.pos.y + b.pos.y) * 0.5f);
+            const glm::vec2 uv((a.uv.x + b.uv.x) * 0.5f, (a.uv.y + b.uv.y) * 0.5f);
+            glm::vec2 meant(0.0f);
+            REQUIRE(camera.project(viewer::bilinearPoint(world, uv), &meant));
+            const bool on_screen = meant.x >= 0.0f && meant.y >= 0.0f && meant.x <= camera.viewport.x && meant.y <= camera.viewport.y;
+            if (on_screen) worst = std::max(worst, glm::length(drawn - meant));
+        }
+    }
+    return worst;
+}
+
 } // namespace
+
+TEST_CASE("a trail step running past the camera foreshortens smoothly", "[overlay][regression]") {
+    // A flat trail from ahead and below to past the camera's side, as one running from the
+    // character back past the camera does. Split evenly along its length, each cell near the
+    // camera spans depths several times apart and is still interpolated affinely: the arrows
+    // stretch too much at each cell's far end and too little at its near end, then jump at the
+    // next — a sawtooth instead of the steady stretch the GPU draws.
+    const viewer::Camera camera = test_camera::axisCamera();
+
+    SECTION("wholly in front") {
+        const glm::vec3 world[4] = {{-1.5f, -1.5f, 30.0f}, {-0.5f, -1.5f, 30.0f}, {-0.5f, -1.5f, 0.3f}, {-1.5f, -1.5f, 0.3f}};
+        DrawListFixture fixture;
+        viewer::overlay::ClippedQuad quad;
+        REQUIRE(viewer::overlay::clipAndProject(camera, world, &quad));
+        REQUIRE(quad.count == 4);
+        viewer::overlay::drawTexturedQuad(&fixture.list(), camera, fakeTexture(), quad, kParameterUv, IM_COL32_WHITE);
+        checkBufferConsistent(fixture.list());
+        CHECK(worstTextureError(fixture.list(), camera, world) < 2.0f);
+    }
+
+    SECTION("running on behind it") {
+        const glm::vec3 world[4] = {{-1.5f, -1.5f, 30.0f}, {-0.5f, -1.5f, 30.0f}, {-0.5f, -1.5f, -10.0f}, {-1.5f, -1.5f, -10.0f}};
+        DrawListFixture fixture;
+        viewer::overlay::ClippedQuad quad;
+        REQUIRE(viewer::overlay::clipAndProject(camera, world, &quad));
+        viewer::overlay::drawTexturedQuad(&fixture.list(), camera, fakeTexture(), quad, kParameterUv, IM_COL32_WHITE);
+        checkBufferConsistent(fixture.list());
+        CHECK(worstTextureError(fixture.list(), camera, world) < 2.0f);
+    }
+}
 
 TEST_CASE("a quad wholly in front and square on is one AddImageQuad", "[overlay]") {
     DrawListFixture fixture;
