@@ -20,7 +20,10 @@ menu: open a pack, edit it in the world where it is drawn, save it back.
   fails before it: see [testing.md](docs/testing.md).
 - **Keep [plan.md](docs/plan.md) true.** A change that finishes, starts or reorders something on it
   updates it in the same change.
-- **Scratch goes in `tmp/`**, gitignored, and nothing committed references it.
+- **Scratch goes in `tmp/`**, gitignored, and nothing committed references it. A script worth keeping
+  is cleaned up and moved to `scripts/`, with a docstring saying what it is for.
+- **Python runs in the uv environment**: `uv run scripts/<script>.py`, and `uv add --bounds exact <package>`
+  rather than working around a missing library or reaching for `uv run --with`.
 - Build: `cmake -S . -B build && cmake --build build --config Release`, or `--config Debug` into
   `bin/Debug/`. A new file needs a configure pass.
 - Tests: `ctest --test-dir build -C Release --output-on-failure`, a few seconds, no game needed.

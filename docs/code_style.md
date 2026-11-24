@@ -57,6 +57,6 @@ Each step is a short block under a comment saying what it does.
 - **UI text is `ImGui::Text`.** `TextDisabled` only for what is really off (a control that cannot be used, a
   pack not loaded), never to quieten a heading. `TextWrapped` only for long or variable text.
 - **An icon in a window is Font Awesome**, as text: `viewer::ui::fonts::label(ICON_FA_TRASH, "Delete")`,
-  inside a `fonts::push()`. An icon new to `src/` draws only once `tools/convert_fonts.py` is run again; its
+  inside a `fonts::push()`. An icon new to `src/` draws only once `scripts/convert_fonts.py` is run again; its
   docstring says how. Where the icon is the whole control and the font may not be built, draw it with
   `ImDrawList`, as `eyeButton` in `editor/ui/tree_window.cpp` does.

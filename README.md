@@ -43,6 +43,16 @@ ctest --test-dir build -C Release --output-on-failure
 The tests run against real marker packs, which this repo does not ship; see
 [docs/testing.md](docs/testing.md).
 
+### Scripts
+
+`scripts/` generates the sources that are checked in rather than built: the icon font, the addon's own
+icon, the map's icons. They run in the [uv](https://docs.astral.sh/uv/) environment `pyproject.toml`
+pins, and each docstring says when to run it:
+
+```bash
+uv run scripts/convert_fonts.py
+```
+
 ### Contributing
 
 Pull requests are welcome.

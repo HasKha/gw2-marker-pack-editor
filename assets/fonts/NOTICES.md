@@ -1,6 +1,6 @@
 # Fonts
 
-Compiled into the addon, so their licences ship with it. `tools/convert_fonts.py` subsets each to what
+Compiled into the addon, so their licences ship with it. `scripts/convert_fonts.py` subsets each to what
 the addon draws, without hinting, kerning or layout tables, none of which ImGui 1.80 reads, and
 compresses it into `src/viewer/ui/`. The outlines and metrics of what is kept are unchanged, and so is
 the name table, which holds each font's copyright and licence.

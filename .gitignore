@@ -264,3 +264,6 @@ build/
 
 # Scratch, never committed
 tmp/
+
+# the uv environment scripts/ runs in, see CLAUDE.md
+.venv/

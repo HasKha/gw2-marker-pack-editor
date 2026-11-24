@@ -1,6 +1,6 @@
 # Icons
 
-Images compiled into the addon. `tools/embed_icons.py` writes them, byte for byte, into
+Images compiled into the addon. `scripts/embed_icons.py` writes them, byte for byte, into
 `src/viewer/ui/map_icon_data.h`.
 
 | File | What | Source | Rights |
