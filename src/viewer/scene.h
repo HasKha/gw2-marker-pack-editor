@@ -89,6 +89,9 @@ struct WorldOptions {
     float marker_scale = 1.0f; // "Marker Scale": iconSize and minSize
     bool combat_fade = true; // "Fade Markers and Trails During Combat": half opacity
     bool in_combat = false; // MumbleLink's, this frame
+    // Nexus's IsGameplay: false on a loading screen, where MumbleLink keeps its last frame's
+    // camera, and IsMapOpen with it, while nothing of the world is on screen.
+    bool in_gameplay = true;
     bool show_hidden = false; // what behaviors filter is drawn too, a marker at half opacity
     // Ours: what hides what its pack leaves to the player (RenderLayer::Default), with GoodRender.
     Occlusion occlusion = Occlusion::None;

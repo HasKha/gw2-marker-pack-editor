@@ -195,8 +195,10 @@ those markers show through. Behind the terrain, the game's own walls hide them a
 `ERenderType_Render`, projected with `camera.*`, over everything.
 Only what no moment drew: every moment of a frame comes before its Present, so each moment
 sets a flag for what it drew — behind the terrain, over it, the map — and the Nexus render
-takes them (`good_render_sink::takeDrawn`) and draws the rest. A loading screen, or no service
-at all, and the overlay draws. **The world is drawn with the full map up**: it stays on screen
+takes them (`good_render_sink::takeDrawn`) and draws the rest: with no service at all, the
+overlay draws. **Nothing is drawn on a loading screen**, where MumbleLink is not written and
+keeps the frame before it, the camera and `IsMapOpen` with it: both scenes are built empty while
+Nexus's `IsGameplay` is off. **The world is drawn with the full map up**: it stays on screen
 while the map fades in and out over it, GoodRender keeps the camera, and the map is the game's
 UI, over `WORLD_FINISHED`. MumbleLink's `IsMapOpen` comes on at once and goes off late, about
 three quarters of the way through closing, so the scene does not read it. The overlay does: it

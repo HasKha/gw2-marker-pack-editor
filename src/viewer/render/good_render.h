@@ -16,8 +16,7 @@
 // MOMENT_BEFORE_WINDOWS, over the HUD and under the windows.
 //
 // GoodRender is optional. Subscribing costs nothing while no service is loaded, and every
-// frame no moment draws a scene — no service, a loading screen — the Nexus render callback draws
-// it instead.
+// frame no moment draws a scene — no service — the Nexus render callback draws it instead.
 namespace viewer::good_render_sink {
 
 // Subscribes, whether or not the service is loaded yet: it calls once it is. The map is

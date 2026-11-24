@@ -561,6 +561,20 @@ TEST_CASE("the scene is built while the map is open, for GoodRender to draw unde
     CHECK(built.scene.items.size() == 1);
 }
 
+TEST_CASE("nothing is in the scene on a loading screen", "[scene]") {
+    Built built;
+    viewer::BakedPathables pathables;
+    pathables.markers = {marker({0, 0, 5}, 0)};
+    viewer::runtime::install(&built.installed, loadedPack("pack", pathables));
+
+    // MumbleLink as the frame before the loading screen left it: a waypoint taken from the map.
+    viewer::Camera camera = test_camera::axisCamera();
+    camera.map_open = true;
+    built.options.in_gameplay = false;
+    built.build(camera);
+    CHECK(built.scene.items.empty());
+}
+
 TEST_CASE("a trail is in the scene as its ribbon's quads", "[scene]") {
     Built built;
     viewer::BakedPathables pathables;

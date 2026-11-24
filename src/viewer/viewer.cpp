@@ -761,6 +761,12 @@ float uiScale() {
     return map::uiScale(mumble_state.ui_size);
 }
 
+// Nexus's IsGameplay, which is off on a loading screen: MumbleLink is not written there, and
+// keeps the last frame before it. Taken as on without the link, rather than never drawing.
+bool inGameplay() {
+    return !nexus_link || nexus_link->IsGameplay;
+}
+
 WorldOptions worldOptions() {
     WorldOptions options;
     options.enabled = persisted.world_pathables;
@@ -770,6 +776,7 @@ WorldOptions worldOptions() {
     options.marker_scale = persisted.marker_scale;
     options.combat_fade = persisted.combat_fade;
     options.in_combat = mumble_state.is_in_combat;
+    options.in_gameplay = inGameplay();
     options.show_hidden = show_hidden;
     options.occlusion = static_cast<Occlusion>(persisted.occlusion);
     return options;
@@ -792,11 +799,11 @@ map_scene::Options mapOptions() {
 }
 
 // What the minimap or the full map shows this frame. Nothing on a map the API has not
-// described, as in Pathing.
+// described, as in Pathing, nor on a loading screen.
 void buildMapScene(const TextureLookup& texture) {
     const std::shared_ptr<map_scene::MapScene> next = map_scenes.take();
     const float fade = map_fade.update(mumble_state, ImGui::GetTime());
-    if (const map::MapDetails* details = mumble_state.available ? maps.find(mumble_state.map_id) : nullptr) {
+    if (const map::MapDetails* details = mumble_state.available && inGameplay() ? maps.find(mumble_state.map_id) : nullptr) {
         std::vector<map_scene::Layer> layers{map_scene::Layer{&live, &visible, texture, &map_trails}};
         if (edited_live) layers.push_back(map_scene::Layer{edited_live, &kNoNodes, edited_texture, &edited_map_trails});
         map_scene::build(layers, *details, mumble_state, mapOptions(), fade, uiScale(), next.get());
