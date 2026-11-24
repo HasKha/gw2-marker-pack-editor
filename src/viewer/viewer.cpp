@@ -1039,20 +1039,20 @@ void removeMenuPlaces() {
 }
 
 void drawOptionsPage() {
-    bool places = ImGui::Checkbox("Show the menu in Nexus's menu", &persisted.menu_in_nexus);
+    ImGui::Text("Interface");
+    bool places = ImGui::Checkbox("Show the menu in Nexus's right-click menu", &persisted.menu_in_nexus);
     places |= ImGui::Checkbox("Show an icon in Nexus's bar", &persisted.menu_icon);
-    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Click it to open the Markus menu.");
     if (places) {
         applyMenuPlaces();
         settings::save(folder, persisted);
     }
+    if (ImGui::Button(ui::fonts::label(ICON_FA_TERMINAL, "Open Lua script console").c_str())) console_window = true;
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Messages and errors from pack scripts, for pack authors.");
+
+    ImGui::Spacing();
     ImGui::Separator();
-
-    if (ImGui::Button(ui::fonts::label(ICON_FA_FILE_IMPORT, "Import from Blish HUD...").c_str())) openImport();
-    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Copies your marker packs from Blish HUD, with the categories you turned on or off\nand the markers you hid.");
-
-    const bool scripts_changed = ImGui::Checkbox("Run pack scripts", &persisted.run_scripts);
-    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Some packs come with scripts that add menus or change their markers as you play.");
+    ImGui::TextUnformatted("Marker Packs");
+    const bool scripts_changed = ImGui::Checkbox("Enable Lua scripts", &persisted.run_scripts);
     if (scripts_changed) {
         settings::save(folder, persisted);
         // Off throws every handler away, and what scripts did to the map with them; on starts
@@ -1060,6 +1060,12 @@ void drawOptionsPage() {
         scripts->reset();
         replaceLiveMap(live.map_id);
     }
+    if (ImGui::Button(ui::fonts::label(ICON_FA_BOX_ARCHIVE, "Manage Packs").c_str())) catalog_window = true;
+    if (ImGui::Button(ui::fonts::label(ICON_FA_ROTATE_RIGHT, "Reload marker packs").c_str())) reloadPacks();
+    ImGui::SameLine();
+    ImGui::Text("%s", loadingStatus().c_str());
+    if (ImGui::Button(ui::fonts::label(ICON_FA_FILE_IMPORT, "Import from BlishHUD...").c_str())) openImport();
+    ImGui::Spacing();
 
     if (ImGui::CollapsingHeader("Markers")) {
         if (ui::options::drawPack(&persisted, &show_hidden)) settings::save(folder, persisted);
@@ -1097,15 +1103,6 @@ void drawOptionsPage() {
             break;
         }
     }
-
-    if (ImGui::Button(ui::fonts::label(ICON_FA_ROTATE_RIGHT, "Reload packs").c_str())) reloadPacks();
-    ImGui::SameLine();
-    ImGui::Text("%s", loadingStatus().c_str());
-
-    ImGui::Checkbox("Script console", &console_window);
-    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Messages and errors from pack scripts, for pack authors.");
-    ImGui::SameLine();
-    ImGui::Checkbox("Marker Packs", &catalog_window);
 }
 
 void drawOptions() {

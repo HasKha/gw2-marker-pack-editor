@@ -5,6 +5,8 @@
 #include <algorithm>
 #include <iterator>
 
+#include "viewer/api_key.h"
+
 namespace viewer::ui::options {
 
 namespace {
@@ -158,6 +160,30 @@ bool aboveBelowCheckbox(bool* value, ImTextureID above, ImTextureID below) {
     return changed;
 }
 
+// A link, which imgui 1.80 has none of: underlined text in a blue of its own, since no style
+// colour reads as one on every theme, lighter and with a hand while hovered. True when clicked.
+bool link(const char* text) {
+    const ImVec4 colour(0.35f, 0.65f, 1.0f, 1.0f);
+    const ImVec4 hovered_colour(0.60f, 0.80f, 1.0f, 1.0f);
+    // Whether it is hovered before it is drawn, to draw it in the right colour.
+    const ImVec2 min = ImGui::GetCursorScreenPos();
+    const ImVec2 max(min.x + ImGui::CalcTextSize(text).x, min.y + ImGui::GetTextLineHeight());
+    const bool hovered = ImGui::IsWindowHovered() && ImGui::IsMouseHoveringRect(min, max);
+    ImGui::PushStyleColor(ImGuiCol_Text, hovered ? hovered_colour : colour);
+    ImGui::TextUnformatted(text);
+    ImGui::PopStyleColor();
+    const ImVec2 drawn_min = ImGui::GetItemRectMin();
+    const ImVec2 drawn_max = ImGui::GetItemRectMax();
+    ImGui::GetWindowDrawList()->AddLine(
+        ImVec2(drawn_min.x, drawn_max.y),
+        drawn_max,
+        ImGui::GetColorU32(hovered ? hovered_colour : colour));
+    if (!ImGui::IsItemHovered()) return false;
+    ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+    ImGui::SetTooltip("Opens it in your browser.");
+    return ImGui::IsItemClicked();
+}
+
 } // namespace
 
 bool drawMaps(settings::Settings* settings, ImTextureID above, ImTextureID below) {
@@ -177,23 +203,24 @@ bool drawMaps(settings::Settings* settings, ImTextureID above, ImTextureID below
 KeyAction drawApiKey(const std::string& registered, char* field, size_t field_size, bool checking, const std::string& status) {
     KeyAction action = KeyAction::None;
 
-    // How a key is made, with the applications page a link: imgui 1.80 has none of its own,
-    // so it is text in the link colour, underlined and with a hand while hovered.
+    // How a key is made, the applications page's address a link. When the line has no room
+    // for the address, it goes under the words, where the bullet's text starts.
     ImGui::Bullet();
     ImGui::SameLine();
-    ImGui::Text("Navigate to the official");
-    ImGui::SameLine();
-    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_ButtonHovered));
-    ImGui::Text("applications page.");
-    ImGui::PopStyleColor();
-    if (ImGui::IsItemHovered()) {
-        const ImVec2 min = ImGui::GetItemRectMin();
-        const ImVec2 max = ImGui::GetItemRectMax();
-        ImGui::GetWindowDrawList()->AddLine(ImVec2(min.x, max.y), max, ImGui::GetColorU32(ImGuiCol_ButtonHovered));
-        ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
-        ImGui::SetTooltip("account.arena.net/applications");
+    const float text_x = ImGui::GetCursorPosX();
+    ImGui::TextUnformatted("Navigate to the official applications page");
+    const float address = ImGui::CalcTextSize("()").x + ImGui::CalcTextSize(api_key::APPLICATIONS_URL).x;
+    const float right = ImGui::GetWindowPos().x + ImGui::GetWindowContentRegionMax().x;
+    if (ImGui::GetItemRectMax().x + ImGui::GetStyle().ItemSpacing.x + address <= right) {
+        ImGui::SameLine();
+    } else {
+        ImGui::SetCursorPosX(text_x);
     }
-    if (ImGui::IsItemClicked()) action = KeyAction::OpenApplications;
+    ImGui::TextUnformatted("(");
+    ImGui::SameLine(0.0f, 0.0f);
+    if (link(api_key::APPLICATIONS_URL)) action = KeyAction::OpenApplications;
+    ImGui::SameLine(0.0f, 0.0f);
+    ImGui::TextUnformatted(")");
 
     ImGui::Bullet();
     ImGui::SameLine();

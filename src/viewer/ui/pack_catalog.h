@@ -7,7 +7,7 @@
 #include "viewer/catalog.h"
 #include "viewer/downloads.h"
 
-// The Marker Packs window: Pathing's PackRepoView and its MarkerPackHero rows — download,
+// The Marker Pack Library window: Pathing's PackRepoView and its MarkerPackHero rows — download,
 // update, keep updated, the pack's page, delete — sorted into two tabs, Installed for the packs
 // on disk and Library for the rest.
 namespace viewer::ui::pack_catalog {

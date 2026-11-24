@@ -185,7 +185,7 @@ std::vector<Action> draw(const std::vector<Row>& rows, const std::string& librar
     }
 
     ImGui::SetNextWindowSize(ImVec2(ImGui::GetFontSize() * 36.0f, ImGui::GetFontSize() * 30.0f), ImGuiCond_FirstUseEver);
-    if (ImGui::Begin("Marker Packs", open)) {
+    if (ImGui::Begin("Marker Pack Library", open)) {
         // The filter, above the tabs, so it holds across both.
         static char filter[128] = "";
         ImGui::SetNextItemWidth(-1.0f);

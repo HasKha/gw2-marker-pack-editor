@@ -208,11 +208,11 @@ Pathing's FlatMap and `RenderToMiniMap`, in `map.*` and `map_scene.*`.
 ## The menu
 
 Blish HUD's (`ui/main_menu.*`): **All Markers** and **Scripts** as `[ ] name >` rows, children opening on
-hover, then Manage Marker Packs, Options and Open Editor. All Markers' own box is stored under the empty id;
+hover, then Manage Packs, Options and Open Editor. All Markers' own box is stored under the empty id;
 a bind, Toggle Markers, turns it on and off. **Smart categories** (default on) hide categories with nothing
 on the current map (`runtime::nodesOnMap`) behind an "N Categories Are Hidden" row.
 
-It is shown in Nexus's menu, the menu of our icon in Nexus's bar, or both. Nexus opens an icon's context
+It is shown in Nexus's right-click menu, the menu of our icon in Nexus's bar (the default), or both. Nexus opens an icon's context
 menu on right click and presses its keybind ("Open Markus menu") on left click, so the left click opens a
 popup of ours under the icon (`placeMenu`). Both are added and removed from the options page, which is safe
 since Nexus locks its quick access only while drawing the bar.

@@ -94,7 +94,7 @@ void drawCensus(const script::Engine& engine) {
 void draw(const script::Engine& engine, const runtime::Installed& installed, const std::filesystem::path& save_file, bool* open) {
     if (!*open) return;
     ImGui::SetNextWindowSize(ImVec2(640.0f, 400.0f), ImGuiCond_FirstUseEver);
-    if (ImGui::Begin("Script console", open)) {
+    if (ImGui::Begin("Lua script console", open)) {
         const size_t census = engine.census().entries().size();
         if (ImGui::BeginTabBar("##tabs")) {
             if (ImGui::BeginTabItem("Messages")) {

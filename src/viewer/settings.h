@@ -33,8 +33,9 @@ struct Settings {
     int info_display = 0; // InfoDisplay: Pathing's "Marker Info Display Mode"
 
     // Pathing's pack settings for the world, as WorldOptions takes them.
-    // Where the menu is: in Nexus's own menu, and behind an icon of ours in Nexus's bar.
-    bool menu_in_nexus = true;
+    // Where the menu is: in Nexus's own right-click menu, and behind an icon of ours in Nexus's
+    // bar. The icon alone unless the player asks for both.
+    bool menu_in_nexus = false;
     bool menu_icon = true;
 
     bool world_pathables = true;

@@ -52,6 +52,20 @@ TEST_CASE("the Blish HUD import is offered until it has been, and scripts run un
     CHECK_FALSE(viewer::settings::load(temp.path()).run_scripts);
 }
 
+TEST_CASE("the menu starts behind our icon only, and where it is shown is kept", "[viewer][settings]") {
+    const corpus::TempDir temp("settings_menu");
+    const viewer::settings::Settings defaults = viewer::settings::load(temp.path());
+    CHECK_FALSE(defaults.menu_in_nexus);
+    CHECK(defaults.menu_icon);
+
+    viewer::settings::Settings settings;
+    settings.menu_in_nexus = true;
+    settings.menu_icon = false;
+    REQUIRE(viewer::settings::save(temp.path(), settings));
+    CHECK(viewer::settings::load(temp.path()).menu_in_nexus);
+    CHECK_FALSE(viewer::settings::load(temp.path()).menu_icon);
+}
+
 TEST_CASE("behavior settings start at Pathing's defaults and are kept", "[viewer][settings]") {
     const corpus::TempDir temp("settings_behaviors");
     const viewer::settings::Settings defaults = viewer::settings::load(temp.path());

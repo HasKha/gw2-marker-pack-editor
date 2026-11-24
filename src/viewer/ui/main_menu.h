@@ -40,7 +40,7 @@ struct Context {
     achievements::Catalog* achievements = nullptr;
     bool achievement_tooltips = true;
 
-    // The separator above Manage Marker Packs. Left out of Nexus's own menu, which already draws
+    // The separator above Manage Packs. Left out of Nexus's own menu, which already draws
     // one between each addon's items and the next.
     bool separator = true;
 };
