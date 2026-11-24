@@ -36,16 +36,18 @@ struct MarkerTransform {
 // invisible anchors, and Pathing drops them too.
 bool markerTransform(const pack::Pack& pack, const pack::Pathable& pathable, MarkerTransform* out);
 
-// Where a marker or trail is drawn with GoodRender: `render-layer`, our own attribute. Default
-// leaves it to the player's setting (WorldOptions::occlusion).
-enum class RenderLayer : uint8_t {
-    Default,
-    Windows, // "windows": over the world, under the game's UI
-    Terrain, // "terrain": behind whatever of the world is in front of it
+// What of the world in front of a marker or trail hides it, when GoodRender draws it: the
+// player's "Marker occlusion", in this order, and GoodRender's HiddenBehind. A pack chooses it
+// for its own with `occlusion`, our own attribute, whose words are the attribute table's
+// `choices` in this order too.
+enum class Occlusion : uint8_t {
+    None, // "none", the default: over the whole world, as Blish HUD draws every marker
+    Characters, // "characters": through walls and hills, never through someone in front of it
+    Scene, // "scene": as the world itself is
 };
 
-// `render-layer`'s value, in any case; Default for anything else.
-RenderLayer parseRenderLayer(std::string_view value);
+// `occlusion`'s value, in any case; nothing for anything else, which leaves it to the player.
+std::optional<Occlusion> parseOcclusion(std::string_view value);
 
 // `cull`: Pathing's CullDirection, the rasterizer state a marker or trail is drawn with. Which
 // face each keeps is named by the first triangle Blish draws, its first three vertices v0, v1,
@@ -79,7 +81,7 @@ struct BakedMarker {
     bool in_game_visibility = true;
     bool map_visibility = true;
     bool minimap_visibility = true;
-    RenderLayer render_layer = RenderLayer::Default;
+    std::optional<Occlusion> occlusion; // the pack's; nothing leaves it to the player
     Cull cull = Cull::None;
     float map_display_size = 20.0f; // across, in Blish HUD's pixels at MapScale 1 — see map_scene.*
     bool scale_on_map_with_zoom = true;
@@ -132,7 +134,7 @@ struct BakedTrail {
     bool in_game_visibility = true;
     bool map_visibility = true;
     bool minimap_visibility = true;
-    RenderLayer render_layer = RenderLayer::Default;
+    std::optional<Occlusion> occlusion; // as BakedMarker's
     Cull cull = Cull::None;
 
     std::shared_ptr<const behaviors::Behaviors> behaviors; // filters and script only; null for none

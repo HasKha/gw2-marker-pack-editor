@@ -77,9 +77,9 @@ bool resolveRotation(const pack::Pack& pack, const pack::Pathable& pathable, glm
     return present;
 }
 
-RenderLayer renderLayerOf(const pack::Pack& pack, const pack::Pathable& pathable) {
-    const std::string* value = pack.effectiveValue(pathable, "render-layer");
-    return value ? parseRenderLayer(*value) : RenderLayer::Default;
+std::optional<Occlusion> occlusionOf(const pack::Pack& pack, const pack::Pathable& pathable) {
+    const std::string* value = pack.effectiveValue(pathable, "occlusion");
+    return value ? parseOcclusion(*value) : std::nullopt;
 }
 
 // `value` is `lowercase_name` in any case.
@@ -100,10 +100,11 @@ Cull cullOf(const pack::Pack& pack, const pack::Pathable& pathable) {
 
 } // namespace
 
-RenderLayer parseRenderLayer(std::string_view value) {
-    if (equalsLowercase(value, "windows")) return RenderLayer::Windows;
-    if (equalsLowercase(value, "terrain")) return RenderLayer::Terrain;
-    return RenderLayer::Default;
+std::optional<Occlusion> parseOcclusion(std::string_view value) {
+    if (equalsLowercase(value, "none")) return Occlusion::None;
+    if (equalsLowercase(value, "characters")) return Occlusion::Characters;
+    if (equalsLowercase(value, "scene")) return Occlusion::Scene;
+    return std::nullopt;
 }
 
 // ImVec2 predates constexpr constructors in the imgui Nexus ships, hence const.
@@ -162,7 +163,7 @@ bool bakeMarker(const pack::Pack& pack, const pack::Pathable& pathable, BakedMar
     out->in_game_visibility = pack.effectiveBool(pathable, "ingamevisibility");
     out->map_visibility = pack.effectiveBool(pathable, "mapvisibility");
     out->minimap_visibility = pack.effectiveBool(pathable, "minimapvisibility");
-    out->render_layer = renderLayerOf(pack, pathable);
+    out->occlusion = occlusionOf(pack, pathable);
     out->cull = cullOf(pack, pathable);
     out->map_display_size = pack.effectiveFloat(pathable, "mapdisplaysize");
     out->scale_on_map_with_zoom = pack.effectiveBool(pathable, "scaleonmapwithzoom");
@@ -206,7 +207,7 @@ BakedPathables bake(const pack::Pack& pack) {
             trail.in_game_visibility = pack.effectiveBool(pathable, "ingamevisibility");
             trail.map_visibility = pack.effectiveBool(pathable, "mapvisibility");
             trail.minimap_visibility = pack.effectiveBool(pathable, "minimapvisibility");
-            trail.render_layer = renderLayerOf(pack, pathable);
+            trail.occlusion = occlusionOf(pack, pathable);
             trail.cull = cullOf(pack, pathable);
             trail.behaviors = behaviors::bakeBehaviors(pack, pathable, false);
 

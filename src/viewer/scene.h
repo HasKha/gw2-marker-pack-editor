@@ -9,6 +9,7 @@
 #include <string>
 #include <vector>
 
+#include "viewer/bake.h"
 #include "viewer/camera.h"
 #include "viewer/runtime.h"
 
@@ -20,14 +21,6 @@
 // so it is resolved in the sink for the same reason. Fades are not: they are measured from the
 // player, whom no moment knows about.
 namespace viewer {
-
-// What of the world in front of a marker or trail hides it, when GoodRender draws it: the
-// player's "Marker occlusion", in this order, and GoodRender's HiddenBehind.
-enum class Occlusion : uint8_t {
-    None, // "None", the default: over the whole world, as Blish HUD draws every marker
-    Characters, // "Behind Characters": through walls and hills, never through someone in front of it
-    Scene, // "Behind Characters and Terrain": as the world itself is
-};
 
 struct SceneItem {
     enum class Kind : uint8_t {
@@ -93,7 +86,7 @@ struct WorldOptions {
     // camera, and IsMapOpen with it, while nothing of the world is on screen.
     bool in_gameplay = true;
     bool show_hidden = false; // what behaviors filter is drawn too, a marker at half opacity
-    // Ours: what hides what its pack leaves to the player (RenderLayer::Default), with GoodRender.
+    // Ours: what hides what its pack leaves to the player (no `occlusion`), with GoodRender.
     Occlusion occlusion = Occlusion::None;
 };
 

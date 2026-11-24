@@ -5,7 +5,9 @@
 
 #include <algorithm>
 #include <iterator>
+#include <string>
 
+#include "pack/attributes.h"
 #include "viewer/api_key.h"
 #include "viewer/ui/fonts.h"
 #include "viewer/ui/style.h"
@@ -55,7 +57,23 @@ bool drawPack(settings::Settings* settings, bool* show_hidden) {
             "Needs the GoodRender addon.\n"
             "Some packs decide this for their own markers.");
     }
-    // TODO: ^ describe the tag for marker creators.
+    // How a pack decides it, for its author: the occlusion attribute, its words from the table,
+    // which lists them in Occlusion's order too.
+    if (ImGui::TreeNode("For Pack Authors")) {
+        ImGui::TextWrapped(
+            "A pack chooses this for its own markers and trails with the occlusion attribute, which overrides this option. "
+            "Set on a category, everything in it inherits it.");
+        const pack::AttributeDef* occlusion = pack::findAttribute("occlusion");
+        for (size_t i = 0; occlusion && i < occlusion->choices.size() && i < std::size(kOcclusions); ++i) {
+            const std::string choice(occlusion->choices[i]);
+            ImGui::BulletText("occlusion=\"%s\": %s", choice.c_str(), kOcclusions[i]);
+        }
+        ImGui::TextWrapped(
+            "Any other value, or no attribute, leaves it to this option. Without GoodRender, and in other marker addons, it does "
+            "nothing. Not to be confused with occlude, which hides other markers.");
+        ImGui::TextColored(style::muted(), "<MarkerCategory name=\"walls\" occlusion=\"scene\"/>");
+        ImGui::TreePop();
+    }
     changed |= ImGui::Checkbox("Fade markers and trails during combat", &settings->combat_fade);
     style::endDisabled();
 

@@ -4,10 +4,12 @@
 #include <imgui.h>
 
 #include <algorithm>
+#include <cctype>
 #include <cstdio>
 #include <cstring>
 #include <set>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "editor/pathable_edit.h"
@@ -67,13 +69,21 @@ bool isValid(const editor::State& state, editor::NodeRef node) {
 // keep their slot — but there is nothing left worth showing for it.
 using editor::isDeleted;
 
-// Draws the editor for one value. Returns the new text when the user changed it.
-// The widget is picked purely from the table's ValueKind.
-bool editValue(const char* id, pack::ValueKind kind, const std::string& current, std::string* out) {
+// The value in any case, untrimmed, as the readers of an Enum compare it.
+bool equalsIgnoringCase(std::string_view a, std::string_view b) {
+    return a.size() == b.size() && std::equal(a.begin(), a.end(), b.begin(), [](char x, char y) {
+               return std::tolower(static_cast<unsigned char>(x)) == std::tolower(static_cast<unsigned char>(y));
+           });
+}
+
+// Draws the editor for one value of `def`, null for an attribute the table does not know.
+// Returns the new text when the user changed it. The widget is picked purely from the table.
+bool editValue(const char* id, const pack::AttributeDef* def, const std::string& current, std::string* out) {
     ImGui::PushID(id);
     ImGui::SetNextItemWidth(-1.0f);
 
     bool changed = false;
+    const pack::ValueKind kind = def ? def->kind : pack::ValueKind::String;
 
     switch (kind) {
     case pack::ValueKind::Float: {
@@ -133,6 +143,25 @@ bool editValue(const char* id, pack::ValueKind kind, const std::string& current,
             changed = true;
         }
         break;
+    }
+    case pack::ValueKind::Enum: {
+        // Only an Enum comes from the table, so `def` is there. The value as written stays the
+        // preview, so one no reader acts on still shows.
+        if (!def->choices.empty()) {
+            if (ImGui::BeginCombo("##v", current.c_str())) {
+                for (std::string_view choice : def->choices) {
+                    const std::string label(choice);
+                    if (ImGui::Selectable(label.c_str(), equalsIgnoringCase(current, choice))) {
+                        *out = label;
+                        changed = true;
+                    }
+                }
+                ImGui::EndCombo();
+            }
+            break;
+        }
+        // A list of words, which is text.
+        [[fallthrough]];
     }
     default: {
         // Sized to the value: packs ship tip-descriptions over a kilobyte, which a fixed buffer
@@ -285,13 +314,12 @@ void drawExplicit(editor::State& state, editor::NodeRef node) {
 
             ImGui::TableNextColumn();
             std::string updated;
-            const pack::ValueKind kind = def ? def->kind : pack::ValueKind::String;
             const std::string merge_key =
                 "attr:" + std::to_string(static_cast<int>(node.kind)) + ":" + std::to_string(node.index) + ":" + attribute.key;
 
             // Keyed on the field: dragging one number is one step, but moving to the next
             // attribute starts another.
-            if (editValue(attribute.key.c_str(), kind, attribute.value, &updated)) {
+            if (editValue(attribute.key.c_str(), def, attribute.value, &updated)) {
                 undo::Step step(state, "Edit " + attribute.name, merge_key);
                 undo::attributes(state, node);
                 attributes->set(attribute.name, updated);
@@ -536,8 +564,7 @@ void drawMultiSelection(editor::State& state) {
                 ImGui::SameLine();
             }
             std::string updated;
-            const pack::ValueKind kind = def ? def->kind : pack::ValueKind::String;
-            if (editValue(key.c_str(), kind, same ? first->value : std::string(), &updated)) {
+            if (editValue(key.c_str(), def, same ? first->value : std::string(), &updated)) {
                 undo::Step step(state, "Edit " + key + " on " + std::to_string(nodes.size()) + " items", "bulk:" + key);
                 for (editor::NodeRef node : nodes) {
                     pack::AttributeCollection* attributes = attributesOf(state, node);

@@ -54,6 +54,11 @@ struct AttributeDef {
 
     std::string_view default_value; // as it would appear in XML; empty means none
     std::string_view doc;
+
+    // For an Enum holding one word, every word a reader acts on, as we write it; the property
+    // panel offers them in a dropdown. Empty for free text and for the list-valued filters
+    // (`festival`, `mount`...), which take several words at once.
+    std::vector<std::string_view> choices;
 };
 
 const std::vector<AttributeDef>& attributeTable();

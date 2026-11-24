@@ -152,17 +152,31 @@ From `Pathing/State/UserResources/Population/*.cs`.
 | `rotate-x/y/z` | 0 | |
 | visibilities, `scaleonmapwithzoom`, `canfade` | true | true |
 
-### render-layer (ours)
+### occlusion (ours)
 
-Our own attribute, ignored by other readers, inherited like any other. Case-insensitive.
+Our own attribute, on a marker, a trail or a category, inherited like any other. Other readers ignore it.
+It lets a pack choose the player's **Marker occlusion** for its own pathables, and it overrides the
+player's choice. Each value is one of that option's choices:
 
-| Value | Drawn with GoodRender |
-|---|---|
-| `windows` | over the world, under the game's HUD and windows |
-| `terrain` | behind whatever of the world is in front of it |
-| absent or other | as the player's Marker occlusion says |
+| Value | Marker occlusion | Drawn with GoodRender |
+|---|---|---|
+| `none` | None | over the world, under the game's HUD and windows |
+| `characters` | Behind characters | through walls and hills, never through a character in front of it |
+| `scene` | Behind characters and terrain | behind whatever of the world is in front of it |
+| absent, empty or other | (the player's) | as the player's Marker occlusion says |
 
-Without GoodRender it changes nothing. Unrelated to `occlude`, which is about markers hiding markers.
+Matched in any case and untrimmed, as Pathing reads an enum. The editor offers the three values in a
+dropdown. The options window describes the attribute under Marker occlusion, so authors find it there.
+
+```xml
+<MarkerCategory name="walls" occlusion="scene"/>
+```
+
+Without GoodRender it changes nothing. It has nothing to do with `occlude`, which makes markers hide other
+markers.
+
+v2.2.0 shipped it as `render-layer`, with `windows` and `terrain`. No corpus pack used it, so the old
+names are not read.
 
 ### GUID
 

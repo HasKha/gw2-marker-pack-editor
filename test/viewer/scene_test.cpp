@@ -317,9 +317,10 @@ TEST_CASE("what hides a marker is the pack's choice, or the player's where it ma
     using viewer::Occlusion;
     Built built;
     viewer::BakedPathables pathables;
-    pathables.markers = {marker({0, 0, 5}, 0), marker({0, 0, 6}, 0), marker({0, 0, 7}, 0)};
-    pathables.markers[1].render_layer = viewer::RenderLayer::Terrain;
-    pathables.markers[2].render_layer = viewer::RenderLayer::Windows;
+    pathables.markers = {marker({0, 0, 5}, 0), marker({0, 0, 6}, 0), marker({0, 0, 7}, 0), marker({0, 0, 8}, 0)};
+    pathables.markers[1].occlusion = Occlusion::Scene;
+    pathables.markers[2].occlusion = Occlusion::None;
+    pathables.markers[3].occlusion = Occlusion::Characters;
     viewer::runtime::install(&built.installed, loadedPack("pack", pathables));
     const viewer::Camera camera = test_camera::axisCamera();
 
@@ -335,10 +336,11 @@ TEST_CASE("what hides a marker is the pack's choice, or the player's where it ma
     for (const Occlusion player : {Occlusion::None, Occlusion::Characters, Occlusion::Scene}) {
         built.options.occlusion = player;
         built.build(camera);
-        REQUIRE(built.scene.items.size() == 3);
+        REQUIRE(built.scene.items.size() == 4);
         CHECK(occlusion(5.0f) == player);
         CHECK(occlusion(6.0f) == Occlusion::Scene);
         CHECK(occlusion(7.0f) == Occlusion::None);
+        CHECK(occlusion(8.0f) == Occlusion::Characters);
     }
 }
 

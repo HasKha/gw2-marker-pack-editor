@@ -14,15 +14,6 @@ namespace viewer {
 
 namespace {
 
-// The pack's render-layer where it names one, the player's choice where it does not.
-Occlusion occlusionOf(RenderLayer layer, const WorldOptions& options) {
-    switch (layer) {
-    case RenderLayer::Terrain: return Occlusion::Scene;
-    case RenderLayer::Windows: return Occlusion::None;
-    default: return options.occlusion;
-    }
-}
-
 std::atomic<std::shared_ptr<const Scene>> latest;
 
 // Below this an item is invisible: under one step of an 8-bit alpha.
@@ -138,7 +129,7 @@ void appendLayer(
         // (which BounceModifier tweens into the heightOffset) left out. Hero's pack draws
         // markers at one spot from positions that differ, and relies on this to stack them.
         item.depth = squaredDistance(marker.position - glm::vec3(0.0f, marker.height_offset, 0.0f), camera.position);
-        item.occlusion = occlusionOf(marker.render_layer, options);
+        item.occlusion = marker.occlusion.value_or(options.occlusion);
         if (marker.has_rotation) {
             // Fixed in the world, so it foreshortens with the viewing angle. minSize and
             // maxSize clamp a billboard's screen size and do not apply: clamping a
@@ -195,7 +186,7 @@ void appendLayer(
             // StandardTrail.DrawOrder is float.MaxValue: every trail under every marker, trails
             // in the order loaded.
             item.depth = std::numeric_limits<float>::max();
-            item.occlusion = occlusionOf(trail.render_layer, options);
+            item.occlusion = trail.occlusion.value_or(options.occlusion);
             if (layer.edited) {
                 item.pathable = trail.pathable;
                 item.is_trail = true;

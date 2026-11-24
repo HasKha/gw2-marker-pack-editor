@@ -8,8 +8,10 @@
 #include <fstream>
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "corpus.h"
+#include "pack/attributes.h"
 #include "pack/source.h"
 #include "pack/xml_reader.h"
 #include "viewer/bake.h"
@@ -108,24 +110,48 @@ TEST_CASE("a trail fades at 700 and 900 unless it says otherwise", "[bake]") {
     CHECK(baked.trails[1].anim_speed == Approx(2.0f));
 }
 
-TEST_CASE("render-layer is inherited, and anything but its two values leaves it to the player", "[bake]") {
-    const corpus::TempDir temp("bake_render_layer");
-    const Loaded loaded = loadXml(temp, R"(<MarkerCategory name="walls" render-layer="Terrain"/>
+TEST_CASE("occlusion is inherited, and anything but its three values leaves it to the player", "[bake]") {
+    const corpus::TempDir temp("bake_occlusion");
+    const Loaded loaded = loadXml(temp, R"(<MarkerCategory name="walls" occlusion="Scene"/>
         <MarkerCategory name="free"/>
         <POIs>
             <POI type="walls" xpos="0" ypos="0" zpos="0"/>
-            <POI type="walls" xpos="0" ypos="0" zpos="0" render-layer="windows"/>
-            <POI type="free" xpos="0" ypos="0" zpos="0" render-layer="sky"/>
+            <POI type="walls" xpos="0" ypos="0" zpos="0" occlusion="none"/>
+            <POI type="walls" xpos="0" ypos="0" zpos="0" occlusion="CHARACTERS"/>
+            <POI type="free" xpos="0" ypos="0" zpos="0" occlusion="sky"/>
+            <POI type="free" xpos="0" ypos="0" zpos="0" occlusion=""/>
+            <POI type="free" xpos="0" ypos="0" zpos="0" occlusion="terrain" render-layer="windows"/>
             <Trail type="walls" trailData="a.trl"/>
         </POIs>)");
 
+    using viewer::Occlusion;
     const viewer::BakedPathables baked = viewer::bake(loaded.model);
-    REQUIRE(baked.markers.size() == 3);
-    CHECK(baked.markers[0].render_layer == viewer::RenderLayer::Terrain);
-    CHECK(baked.markers[1].render_layer == viewer::RenderLayer::Windows);
-    CHECK(baked.markers[2].render_layer == viewer::RenderLayer::Default);
+    REQUIRE(baked.markers.size() == 6);
+    CHECK(baked.markers[0].occlusion == Occlusion::Scene);
+    CHECK(baked.markers[1].occlusion == Occlusion::None);
+    CHECK(baked.markers[2].occlusion == Occlusion::Characters);
+    CHECK_FALSE(baked.markers[3].occlusion);
+    CHECK_FALSE(baked.markers[4].occlusion);
+    // v2.2.0's render-layer and its words are not read.
+    CHECK_FALSE(baked.markers[5].occlusion);
     REQUIRE(baked.trails.size() == 1);
-    CHECK(baked.trails[0].render_layer == viewer::RenderLayer::Terrain);
+    CHECK(baked.trails[0].occlusion == Occlusion::Scene);
+}
+
+TEST_CASE("every occlusion the editor offers is one the viewer acts on, in Marker occlusion's order", "[bake]") {
+    // The editor's dropdown is the table's `choices`; parseOcclusion is what reads them.
+    const pack::AttributeDef* def = pack::findAttribute("occlusion");
+    REQUIRE(def != nullptr);
+    const std::vector<viewer::Occlusion> expected = {
+        viewer::Occlusion::None,
+        viewer::Occlusion::Characters,
+        viewer::Occlusion::Scene,
+    };
+    REQUIRE(def->choices.size() == expected.size());
+    for (size_t i = 0; i < expected.size(); ++i) {
+        INFO("choice " << def->choices[i]);
+        CHECK(viewer::parseOcclusion(def->choices[i]) == expected[i]);
+    }
 }
 
 TEST_CASE("cull is inherited, a name in any case, and anything else culls nothing", "[bake]") {

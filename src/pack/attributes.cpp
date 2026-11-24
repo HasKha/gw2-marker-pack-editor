@@ -67,7 +67,14 @@ const std::vector<AttributeDef>& table() {
         {"rotate-x", "rotate-x", kFloat, kAppliesPoi, true, "0", "Fixed X rotation, degrees."},
         {"rotate-y", "rotate-y", kFloat, kAppliesPoi, true, "0", "Fixed Y rotation, degrees."},
         {"rotate-z", "rotate-z", kFloat, kAppliesPoi, true, "0", "Fixed Z rotation, degrees."},
-        {"cull", "cull", kEnum, kAppliesPathable, true, "none", "Face culling: none, clockwise, counterclockwise."},
+        {"cull",
+         "cull",
+         kEnum,
+         kAppliesPathable,
+         true,
+         "none",
+         "Face culling: none, clockwise, counterclockwise.",
+         {"none", "clockwise", "counterclockwise"}},
         {"occlude", "occlude", kBool, kAppliesPoi, true, "0", "Draw opaque so world geometry can hide it."},
         {"iswall", "isWall", kBool, kAppliesTrail, true, "0", "Orient the trail ribbon vertically."},
         {"animspeed", "animSpeed", kFloat, kAppliesTrail, true, "1", "Texture scroll speed along the trail."},
@@ -143,14 +150,20 @@ const std::vector<AttributeDef>& table() {
         {"script-tick", "script-tick", kStr, kAppliesPathable, true, "", "Lua run every tick."},
         {"script-trigger", "script-trigger", kStr, kAppliesPathable, true, "", "Lua run on trigger."},
         // ── Ours ──────────────────────────────────────────────────────────────
-        // Where GoodRender draws it; Pathing has no such choice and ignores it. See format.md.
-        {"render-layer",
-         "render-layer",
+        // What of the world hides it, with GoodRender; Pathing has no such choice and ignores
+        // it. Unrelated to `occlude`. The choices are viewer::Occlusion's, in the order of the
+        // player's Marker occlusion, which they override. See format.md.
+        {"occlusion",
+         "occlusion",
          kEnum,
          kAppliesPathable,
          true,
          "",
-         "With GoodRender: terrain hides it behind the world, windows draws it over."},
+         "With GoodRender, what hides it, overriding the player's Marker occlusion:\n"
+         "none: only the game's UI\n"
+         "characters: the game's UI and characters\n"
+         "scene: the game's UI and the whole world",
+         {"none", "characters", "scene"}},
         // Ours and other editors', not Blish's: Pathing has a populate for it on both
         // pathable types and calls neither. Free on anything, so it stays kAppliesAll.
         {"edittag", "editTag", kStr, kAppliesAll, true, "", "Free-form tag used by editors to group markers."},

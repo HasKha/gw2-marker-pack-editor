@@ -95,6 +95,15 @@ TEST_CASE("every attribute table row is well formed", "[attributes]") {
 
         CHECK(pack::findAttribute(def.key) == &def);
         CHECK(pack::findAttribute(def.display) == &def);
+
+        // A dropdown of words, one of which is the default when there is one.
+        if (!def.choices.empty()) {
+            CHECK(def.kind == pack::ValueKind::Enum);
+            for (std::string_view choice : def.choices) CHECK(pack::attributeKey(choice) == std::string(choice));
+            if (!def.default_value.empty()) {
+                CHECK(std::find(def.choices.begin(), def.choices.end(), def.default_value) != def.choices.end());
+            }
+        }
     }
 }
 
