@@ -4,6 +4,7 @@
 
 #include "editor/ui/windows.h"
 #include "util/json_file.h"
+#include "util/path_text.h"
 #include "viewer/settings.h"
 #include "viewer/viewer.h"
 
@@ -95,8 +96,8 @@ void load(editor::Settings* editor, std::filesystem::path* last_folder, std::fil
         }
     }
 
-    *last_folder = util::json_file::readString(parsed, "last_folder");
-    *last_image_folder = util::json_file::readString(parsed, "last_image_folder");
+    *last_folder = util::pathFromText(util::json_file::readString(parsed, "last_folder"));
+    *last_image_folder = util::pathFromText(util::json_file::readString(parsed, "last_image_folder"));
 
     written = capture(*editor, *last_folder, *last_image_folder);
 }
@@ -109,8 +110,8 @@ void update(const editor::Settings& editor, const std::filesystem::path& last_fo
     out["select_in_viewport"] = editor.select_in_viewport;
     out["gizmo"] = static_cast<int>(editor.gizmo);
     for (size_t i = 0; i < kWindowCount; ++i) out["windows"][ui::windows::key(windowId(i))] = ui::windows::visible(windowId(i));
-    out["last_folder"] = last_folder.string();
-    out["last_image_folder"] = last_image_folder.string();
+    out["last_folder"] = util::pathText(last_folder);
+    out["last_image_folder"] = util::pathText(last_image_folder);
 
     if (util::json_file::write(file, out)) written = capture(editor, last_folder, last_image_folder);
 }

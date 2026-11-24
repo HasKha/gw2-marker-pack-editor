@@ -26,7 +26,7 @@ std::optional<nlohmann::json> readObject(const std::filesystem::path& file);
 // when any of that fails, with the old file standing.
 bool writeText(const std::filesystem::path& file, std::string_view text);
 
-// writeText of `value`.
+// writeText of `value`, with any string in it that is not UTF-8 repaired rather than thrown on.
 bool write(const std::filesystem::path& file, const nlohmann::json& value);
 
 // One member of `object`, or `fallback` when it is missing or of another type. nlohmann's own

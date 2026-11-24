@@ -15,6 +15,7 @@
 #include "editor/undo.h"
 #include "pack/attributes.h"
 #include "pack/source.h"
+#include "util/path_text.h"
 
 namespace ui::resource_window {
 
@@ -456,18 +457,18 @@ void addFile(editor::State& state, const std::filesystem::path& file, std::strin
 
     std::ifstream input(file, std::ios::binary);
     if (!input) {
-        if (status) *status = "Could not open " + file.filename().string();
+        if (status) *status = "Could not open " + util::pathText(file.filename());
         return;
     }
 
     std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
     if (bytes.empty()) {
-        if (status) *status = file.filename().string() + " is empty";
+        if (status) *status = util::pathText(file.filename()) + " is empty";
         return;
     }
 
     const std::string folder = originalFolder(target_folder);
-    const std::string destination = folder.empty() ? file.filename().string() : folder + "/" + file.filename().string();
+    const std::string destination = folder.empty() ? util::pathText(file.filename()) : folder + "/" + util::pathText(file.filename());
     const std::string key = pack::normalizePath(destination);
 
     const pack::DataSource* source = resources::source();

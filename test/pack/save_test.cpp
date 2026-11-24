@@ -15,6 +15,7 @@
 #include "pack/trl.h"
 #include "pack/writer.h"
 #include "pack/xml_reader.h"
+#include "util/path_text.h"
 
 namespace {
 
@@ -30,7 +31,7 @@ Loaded load(const std::filesystem::path& path) {
 
     std::string error;
     out.source = pack::open(path, &error);
-    INFO("opening " << path.string() << ": " << error);
+    INFO("opening " << util::pathText(path) << ": " << error);
     REQUIRE(out.source != nullptr);
     REQUIRE(pack::loadPack(*out.source, &out.model, &error));
 
@@ -256,4 +257,17 @@ TEST_CASE("a trail written by the editor reads back point for point", "[save][tr
 
     // Writing what was just read must not drift.
     CHECK(pack::trl::write(read_back) == bytes);
+}
+
+TEST_CASE("a pack saves into a folder with a non-ASCII name", "[save][regression]") {
+    // miniz opens a name as UTF-8. "Jörg Łódź": ö in the ANSI code page is not UTF-8, and Ł is
+    // in no Western code page, where path::string() throws.
+    const corpus::TempDir temp("non_ascii_folder");
+    const std::filesystem::path folder = temp.path() / util::pathFromText("J\xC3\xB6rg \xC5\x81\xC3\xB3" "d\xC5\xBA");
+    std::filesystem::create_directories(folder);
+    const std::filesystem::path target = folder / "pack.zip";
+
+    const pack::Pack created = pack::createPack("markers.xml", "markustest", "Markus Test");
+    saveTo(created, nullptr, target);
+    CHECK(load(target).model.categories.size() == 1);
 }

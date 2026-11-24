@@ -46,3 +46,16 @@ TEST_CASE("no old folder, nothing to do", "[viewer][store]") {
     CHECK(viewer::store::adoptFolder(temp / "MarkerPackEditor", temp / "Markus").empty());
     CHECK(std::filesystem::is_directory(temp / "Markus"));
 }
+
+TEST_CASE("a stored value that is not UTF-8 saves rather than throws", "[viewer][store]") {
+    // Lua strings are bytes: a script that cuts "Zhé" short with string.sub stores half of é,
+    // where Pathing's strings are characters and cannot hold that.
+    const corpus::TempDir temp("kv_not_utf8");
+    viewer::store::KeyValues storage;
+    storage.upsert("tehstrails/name", "Zh\xC3");
+    REQUIRE(storage.save(temp / "kv.json"));
+
+    viewer::store::KeyValues read;
+    read.load(temp / "kv.json");
+    CHECK(read.read("tehstrails/name") == "Zh\xEF\xBF\xBD"); // U+FFFD in its place
+}

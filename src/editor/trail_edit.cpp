@@ -7,6 +7,7 @@
 #include "editor/pathable_edit.h"
 #include "editor/resources.h"
 #include "editor/undo.h"
+#include "util/path_text.h"
 
 namespace trail_edit {
 
@@ -325,7 +326,7 @@ bool exportToFile(const std::filesystem::path& file, std::string* error) {
     std::ofstream out(file, std::ios::binary | std::ios::trunc);
     if (out) out.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
     if (!out) {
-        if (error) *error = "Could not write " + file.string();
+        if (error) *error = "Could not write " + util::pathText(file);
         return false;
     }
     return true;

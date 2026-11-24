@@ -36,7 +36,10 @@ bool writeText(const std::filesystem::path& file, std::string_view text) {
 }
 
 bool write(const std::filesystem::path& file, const nlohmann::json& value) {
-    return writeText(file, value.dump(2) + "\n");
+    // A string that is not UTF-8 is written with U+FFFD for what does not decode, where
+    // nlohmann's default throws: a script's Storage value is bytes Lua made, perhaps half a
+    // character cut off by string.sub, and the throw would come from a render callback.
+    return writeText(file, value.dump(2, ' ', false, nlohmann::json::error_handler_t::replace) + "\n");
 }
 
 bool readBool(const nlohmann::json& object, const char* key, bool fallback) {

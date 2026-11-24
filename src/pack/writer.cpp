@@ -6,6 +6,8 @@
 #include <fstream>
 #include <unordered_map>
 
+#include "util/path_text.h"
+
 namespace pack {
 
 namespace {
@@ -149,8 +151,9 @@ SaveResult buildZip(const Pack& pack, const DataSource* source, const std::files
     const std::filesystem::path temporary = pendingPath(target);
 
     mz_zip_archive zip{};
-    if (!mz_zip_writer_init_file(&zip, temporary.string().c_str(), 0)) {
-        result.error = "Could not create " + temporary.string();
+    // miniz takes the name as UTF-8, and opens it with _wfopen on Windows.
+    if (!mz_zip_writer_init_file(&zip, util::pathText(temporary).c_str(), 0)) {
+        result.error = "Could not create " + util::pathText(temporary);
         return result;
     }
 
@@ -274,7 +277,7 @@ bool commitZip(const std::filesystem::path& target, std::string* error) {
 
     std::error_code ec;
     if (!std::filesystem::exists(temporary, ec)) {
-        if (error) *error = "Nothing was built for " + target.string();
+        if (error) *error = "Nothing was built for " + util::pathText(target);
         return false;
     }
 
@@ -325,12 +328,12 @@ SaveResult saveToDirectory(const Pack& pack, const std::filesystem::path& root) 
 
         std::ofstream file(destination, std::ios::binary | std::ios::trunc);
         if (!file) {
-            result.error = "Could not write " + destination.string();
+            result.error = "Could not write " + util::pathText(destination);
             return result;
         }
         file.write(it->second.data(), static_cast<std::streamsize>(it->second.size()));
         if (!file) {
-            result.error = "Could not write " + destination.string();
+            result.error = "Could not write " + util::pathText(destination);
             return result;
         }
         ++result.entries_written;
@@ -345,7 +348,7 @@ SaveResult saveToDirectory(const Pack& pack, const std::filesystem::path& root) 
         std::ofstream file(destination, std::ios::binary | std::ios::trunc);
         if (file) file.write(reinterpret_cast<const char*>(asset.bytes.data()), static_cast<std::streamsize>(asset.bytes.size()));
         if (!file) {
-            result.error = "Could not write " + destination.string();
+            result.error = "Could not write " + util::pathText(destination);
             return result;
         }
         ++result.entries_written;

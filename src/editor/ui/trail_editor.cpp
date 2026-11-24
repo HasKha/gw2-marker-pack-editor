@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "editor/trail_edit.h"
+#include "util/path_text.h"
 
 namespace ui::trail_editor {
 
@@ -265,7 +266,7 @@ void exportTo(editor::State& state, const std::filesystem::path& file, std::stri
 
     std::string error;
     if (trail_edit::exportToFile(file, &error)) {
-        if (status) *status = "Wrote " + file.filename().string();
+        if (status) *status = "Wrote " + util::pathText(file.filename());
     } else if (status) {
         *status = error.empty() ? "No trail open" : error;
     }

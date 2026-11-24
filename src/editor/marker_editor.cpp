@@ -27,6 +27,7 @@
 #include "pack/source.h"
 #include "pack/writer.h"
 #include "pack/xml_reader.h"
+#include "util/path_text.h"
 #include "viewer/camera.h"
 #include "viewer/edited.h"
 #include "viewer/registry.h"
@@ -183,13 +184,13 @@ void openPack(std::filesystem::path path) {
     std::string error;
     std::unique_ptr<pack::DataSource> source = pack::open(path, &error);
     if (!source) {
-        status_message = "Could not open " + path.filename().string() + ": " + error;
+        status_message = "Could not open " + util::pathText(path.filename()) + ": " + error;
         log(ELogLevel_WARNING, status_message);
         return;
     }
 
     if (!pack::loadPack(*source, &state.pack, &error)) {
-        status_message = "Could not read " + path.filename().string() + ": " + error;
+        status_message = "Could not read " + util::pathText(path.filename()) + ": " + error;
         log(ELogLevel_WARNING, status_message);
         return;
     }
@@ -212,7 +213,7 @@ void openPack(std::filesystem::path path) {
             log(ELogLevel_WARNING, warning.file + ": " + warning.message);
         }
     }
-    log(ELogLevel_INFO, "Opened " + path.filename().string() + " — " + status_message);
+    log(ELogLevel_INFO, "Opened " + util::pathText(path.filename()) + " — " + status_message);
 }
 
 // True only when the OS cursor is actually on screen. Nexus stops updating ImGui's
@@ -361,7 +362,7 @@ void savePackTo(const std::filesystem::path& target, bool as_directory) {
         state.pack.clearAssetChanges();
         state.dirty = false;
         status_message =
-            "Saved " + std::to_string(result.entries_written) + " changed file(s)" + assetSummary(result) + " to " + target.string();
+            "Saved " + std::to_string(result.entries_written) + " changed file(s)" + assetSummary(result) + " to " + util::pathText(target);
         log(ELogLevel_INFO, status_message);
         return;
     }
@@ -398,7 +399,7 @@ void savePackTo(const std::filesystem::path& target, bool as_directory) {
         state.pack.from_directory = false;
         state.pack.source_path = target;
         status_message = "Saved " + std::to_string(result.entries_written) + " entries (" + std::to_string(result.files_rewritten) +
-                         " xml rewritten)" + assetSummary(result) + " to " + target.filename().string();
+                         " xml rewritten)" + assetSummary(result) + " to " + util::pathText(target.filename());
         log(ELogLevel_INFO, status_message);
     }
 
@@ -523,7 +524,7 @@ void drawMenuBar(ui::windows::Id owner) {
         if (ImGui::MenuItem(icon(ICON_FA_FLOPPY_DISK, "Save As...").c_str(), nullptr, false, state.loaded && !file_dialog::isPending())) {
             dialog_purpose = DialogPurpose::SaveAs;
             const std::string suggested =
-                open_pack_path.empty() ? std::string("markers.zip") : open_pack_path.filename().replace_extension(".zip").string();
+                open_pack_path.empty() ? std::string("markers.zip") : util::pathText(open_pack_path.filename().replace_extension(".zip"));
             file_dialog::requestSaveFile(packFolder(), suggested, {{"Marker pack", "zip,taco"}});
         }
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("Always saves as a .zip.");
@@ -708,9 +709,9 @@ void drawPackHeader() {
     if (file_dialog::isPending()) {
         ImGui::TextDisabled("(file dialog open)");
     } else if (state.loaded) {
-        const std::string name = state.pack.from_directory ? open_pack_path.filename().string() + "/" : open_pack_path.filename().string();
+        const std::string name = state.pack.from_directory ? util::pathText(open_pack_path.filename()) + "/" : util::pathText(open_pack_path.filename());
         ImGui::TextDisabled("%s%s", name.c_str(), state.dirty ? " *" : "");
-        if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", open_pack_path.string().c_str());
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", util::pathText(open_pack_path).c_str());
     } else {
         ImGui::TextDisabled("No pack open. Use File > Open Pack.");
     }
