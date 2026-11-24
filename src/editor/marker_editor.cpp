@@ -1004,8 +1004,8 @@ void bindHistory(bool bound) {
         // The bindings everyone already has in their fingers, as the defaults.
         api->InputBinds.RegisterWithString(KEYBIND_UNDO_ID, onEditKeybind, "CTRL+Z");
         api->InputBinds.RegisterWithString(KEYBIND_REDO_ID, onEditKeybind, "CTRL+Y");
-        api->Localization.Set(KEYBIND_UNDO_ID, "en", "Undo (marker pack editor)");
-        api->Localization.Set(KEYBIND_REDO_ID, "en", "Redo (marker pack editor)");
+        api->Localization.Set(KEYBIND_UNDO_ID, "en", "Undo (Markus Editor)");
+        api->Localization.Set(KEYBIND_REDO_ID, "en", "Redo (Markus Editor)");
     } else {
         api->InputBinds.Deregister(KEYBIND_UNDO_ID);
         api->InputBinds.Deregister(KEYBIND_REDO_ID);

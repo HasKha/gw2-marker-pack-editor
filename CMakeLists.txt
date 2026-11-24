@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.31)
-project(MarkerPackEditor)
+project(Markus)
 
 # Keep in step with the release tag: Nexus compares the tag on GitHub against the version
 # compiled in here, and only offers an update when the tag is greater. Tags are
@@ -38,7 +38,7 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${PROJECT_SOURCE_DIR}/bin/")
 # Every target is the folder it is in, defined by that folder's CMakeLists.txt; the table of
 # them, and what links what, is docs/architecture.md#build-targets. Listed from the bottom of
 # the layering up: each library links only those above it in this list.
-include(mpe)
+include(markus)
 
 # enable_testing() rather than include(CTest): we want ctest, not the CDash submission
 # targets and options that module also brings along. Before the folders, so the tests they

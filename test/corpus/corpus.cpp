@@ -5,20 +5,20 @@
 #include <cstdlib>
 #include <fstream>
 
-#ifndef MPE_TEST_PACK_DIR_DEFAULT
-    #define MPE_TEST_PACK_DIR_DEFAULT ""
+#ifndef MARKUS_TEST_PACK_DIR_DEFAULT
+    #define MARKUS_TEST_PACK_DIR_DEFAULT ""
 #endif
 
-#ifndef MPE_TEST_FOLDER_PACK_DEFAULT
-    #define MPE_TEST_FOLDER_PACK_DEFAULT ""
+#ifndef MARKUS_TEST_FOLDER_PACK_DEFAULT
+    #define MARKUS_TEST_FOLDER_PACK_DEFAULT ""
 #endif
 
 namespace corpus {
 
 namespace {
 
-constexpr const char* kEnvironmentVariable = "MPE_TEST_PACK_DIR";
-constexpr const char* kFolderEnvironmentVariable = "MPE_TEST_FOLDER_PACK";
+constexpr const char* kEnvironmentVariable = "MARKUS_TEST_PACK_DIR";
+constexpr const char* kFolderEnvironmentVariable = "MARKUS_TEST_FOLDER_PACK";
 
 // Environment first so a folder elsewhere can be used without reconfiguring; a variable
 // that is set but wrong resolves to nothing rather than silently falling back.
@@ -49,12 +49,12 @@ bool isPackFile(const std::filesystem::path& path) {
 
 std::filesystem::path dir() {
     // Resolved once: it cannot change under a running process, and every test asks.
-    static const std::filesystem::path resolved = resolveDirectory(kEnvironmentVariable, MPE_TEST_PACK_DIR_DEFAULT);
+    static const std::filesystem::path resolved = resolveDirectory(kEnvironmentVariable, MARKUS_TEST_PACK_DIR_DEFAULT);
     return resolved;
 }
 
 std::filesystem::path folderPack() {
-    static const std::filesystem::path resolved = resolveDirectory(kFolderEnvironmentVariable, MPE_TEST_FOLDER_PACK_DEFAULT);
+    static const std::filesystem::path resolved = resolveDirectory(kFolderEnvironmentVariable, MARKUS_TEST_FOLDER_PACK_DEFAULT);
     return resolved;
 }
 
@@ -88,7 +88,7 @@ std::string missingMessage() {
     message += kEnvironmentVariable;
     message += " to a folder holding .zip/.taco packs";
 
-    const std::string baked = MPE_TEST_PACK_DIR_DEFAULT;
+    const std::string baked = MARKUS_TEST_PACK_DIR_DEFAULT;
     if (!baked.empty()) message += " (tried " + baked + ")";
 
     return message + ".";
@@ -96,7 +96,7 @@ std::string missingMessage() {
 
 TempDir::TempDir(const std::string& name) {
     std::error_code ec;
-    path_ = std::filesystem::temp_directory_path(ec) / ("mpe_test_" + name);
+    path_ = std::filesystem::temp_directory_path(ec) / ("markus_test_" + name);
     // Removed first: a previous run that was killed mid-test leaves its directory behind,
     // and starting from whatever it managed to write is not a test of anything.
     std::filesystem::remove_all(path_, ec);

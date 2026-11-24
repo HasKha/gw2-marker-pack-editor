@@ -16,7 +16,7 @@
 namespace http {
 
 // What we call ourselves, unless a request says otherwise.
-constexpr const wchar_t* kUserAgent = L"MarkerPackEditor";
+constexpr const wchar_t* kUserAgent = L"Markus";
 
 // Ends a request from another thread at once, even one waiting on the server for its whole
 // timeout: cancel() closes the request handle the worker is blocked in, which is how WinHTTP

@@ -20,11 +20,11 @@ pack-layer work by launching the game, or by hand.
 
 | Target | Answers | Does |
 |---|---|---|
-| `mpe_pack_test`, `mpe_http_test`, `mpe_viewer_test`, `mpe_editor_test` | *is it broken?* | assert, under Catch2, and fail a build: one binary per library, from `test/<library>/`, linking that library and nothing above it |
-| `mpe_probe` | *what does this pack look like?* | prints and lints: what it found, what it could not parse, what a save would change |
+| `markus_pack_test`, `markus_http_test`, `markus_viewer_test`, `markus_editor_test` | *is it broken?* | assert, under Catch2, and fail a build: one binary per library, from `test/<library>/`, linking that library and nothing above it |
+| `markus_probe` | *what does this pack look like?* | prints and lints: what it found, what it could not parse, what a save would change |
 
-The format's sweep over every corpus pack, `corpus_test.cpp`, is in `mpe_viewer_test` rather than
-`mpe_pack_test`: the same pass checks the viewer's bake, and loading the corpus is most of its time.
+The format's sweep over every corpus pack, `corpus_test.cpp`, is in `markus_viewer_test` rather than
+`markus_pack_test`: the same pass checks the viewer's bake, and loading the corpus is most of its time.
 Beside the binaries, ctest runs a `<folder>_layering` case per library under `src/`, which fails on an
 include of a library above it ([architecture.md](architecture.md#build-targets)).
 
@@ -34,7 +34,7 @@ with it. Turning it into assertions would throw that away, and turning the tests
 back to reading nine blocks of numbers and remembering what they were last time.
 
 ```bash
-mpe_probe --save-test <scratch-dir> <pack.zip> <pack-folder>
+markus_probe --save-test <scratch-dir> <pack.zip> <pack-folder>
 ```
 
 `<scratch-dir>` goes under `tmp/`.
@@ -45,15 +45,15 @@ Real packs, not fixtures: by default the packs in `<Documents>/Guild Wars 2/addo
 resolved at configure time, plus the `gw2-markers` checkout as a folder source. 947 XML files, 3,863 entries
 in the largest archive, comments and BOMs and CRLFs and mixed-case paths that no synthetic file would think
 to contain. Nothing is checked in: these are other people's packs, some of them hundreds of megabytes, and
-testing against what authors actually ship is the whole point. `mpe_corpus` resolves the location, so the
+testing against what authors actually ship is the whole point. `markus_corpus` resolves the location, so the
 tests and the probe cannot disagree about it.
 
 Point it elsewhere without reconfiguring:
 
 | Variable | What |
 |---|---|
-| `MPE_TEST_PACK_DIR` | folder of `.zip`/`.taco` packs |
-| `MPE_TEST_FOLDER_PACK` | an *unzipped* pack, to check a folder source matches its zip |
+| `MARKUS_TEST_PACK_DIR` | folder of `.zip`/`.taco` packs |
+| `MARKUS_TEST_FOLDER_PACK` | an *unzipped* pack, to check a folder source matches its zip |
 
 Both exist as CMake cache variables too, for setting the default at configure time.
 
@@ -77,7 +77,7 @@ reader.
 
 ## The viewer
 
-`mpe_viewer_test`, from `test/viewer/`, links `mpe_viewer` and nothing of the editor; ctest runs it with
+`markus_viewer_test`, from `test/viewer/`, links `markus_viewer` and nothing of the editor; ctest runs it with
 the rest. A viewer test that needs an editor header does not compile, which is the point. Nothing in it
 needs a device: the quad path draws into a real `ImDrawList` made from a bare ImGui context, the texture
 cache runs against an `AddonAPI` whose one texture function is a fake, and the GoodRender sink submits to
@@ -113,10 +113,10 @@ downloads its smallest pack; it is hidden, so ctest never runs it. Run it by han
 or how the catalog is read:
 
 ```bash
-bin/Release/mpe_viewer_test.exe "[.web]"
+bin/Release/markus_viewer_test.exe "[.web]"
 ```
 
-What does not need the web runs with the rest, in `mpe_http_test`: `http_test.cpp` points requests at a
+What does not need the web runs with the rest, in `markus_http_test`: `http_test.cpp` points requests at a
 server on localhost that accepts and never answers, and checks that cancelling one ends it at once rather
 than after its timeouts.
 
@@ -128,7 +128,7 @@ folder as Pathing does and reads it back: packs, both category file formats, Sto
 
 ## Above the pack layer
 
-`mpe_editor_test` links `mpe_editor`, so anything in the editor a test reaches is linked in, and what touches
+`markus_editor_test` links `markus_editor`, so anything in the editor a test reaches is linked in, and what touches
 Nexus goes through an `AddonAPI*` left null ([architecture.md](architecture.md#build-targets)).
 `selection_test.cpp` covers the click rules, pruning and the two selections; `trail_test.cpp` covers
 creating trails, following the selection and renaming `traildata`. The rest of the editor is plain

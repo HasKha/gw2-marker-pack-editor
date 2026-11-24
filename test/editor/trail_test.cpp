@@ -144,7 +144,7 @@ TEST_CASE("a trail that cannot be opened does not leave the last one showing", "
 TEST_CASE("two trails in a real pack's category get their own .trl", "[trail]") {
     const std::filesystem::path folder = corpus::folderPack();
     if (folder.empty()) {
-        SKIP("No folder pack: set MPE_TEST_FOLDER_PACK");
+        SKIP("No folder pack: set MARKUS_TEST_FOLDER_PACK");
     }
 
     editor::State state;
@@ -190,7 +190,7 @@ TEST_CASE("two trails in a real pack's category get their own .trl", "[trail]") 
 // meant to catch up on a later one.
 TEST_CASE("laying out a second trail leaves the first one's points alone", "[trail]") {
     const std::filesystem::path folder = corpus::folderPack();
-    if (folder.empty()) SKIP("No folder pack: set MPE_TEST_FOLDER_PACK");
+    if (folder.empty()) SKIP("No folder pack: set MARKUS_TEST_FOLDER_PACK");
 
     editor::State state;
     undo::clear();

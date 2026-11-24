@@ -1,8 +1,25 @@
 #include "viewer/store.h"
 
 #include "util/json_file.h"
+#include "util/path_text.h"
 
 namespace viewer::store {
+
+std::string adoptFolder(const std::filesystem::path& from, const std::filesystem::path& to) {
+    std::error_code ec;
+    if (!std::filesystem::is_directory(from, ec)) return {};
+    if (std::filesystem::exists(to, ec)) {
+        if (!std::filesystem::is_empty(to, ec) || ec) return {};
+        // A rename onto an empty folder fails on Windows, so the empty one goes first.
+        if (!std::filesystem::remove(to, ec) || ec) return "could not replace " + util::pathText(to) + ": " + ec.message();
+    }
+    std::filesystem::rename(from, to, ec);
+    if (!ec) return {};
+    // A file held open in the old folder, say. The packs stay there for a later load to move.
+    std::error_code ignored;
+    std::filesystem::create_directories(to, ignored);
+    return "could not move " + util::pathText(from) + " to " + util::pathText(to) + ": " + ec.message();
+}
 
 bool CategoryStates::enabled(const std::string& id, bool fallback) const {
     const auto it = states_.find(id);

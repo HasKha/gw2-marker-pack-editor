@@ -21,11 +21,11 @@ struct Definition {
 // One row per window, in View menu order. Everything a window needs to be known by lives
 // here rather than being spelled out at each use.
 constexpr Definition kWindows[kCount] = {
-    {"Marker Pack Editor##MPE_Tree", "Tree", "tree", true},
-    {"Marker Details##MPE_Details", "Details", "details", true},
-    {"Marker Toolbar##MPE_Toolbar", "Toolbar", "toolbar", true},
-    {"Trail Editor##MPE_Trail", "Trail Editor", "trail_editor", false},
-    {"Pack Resources##MPE_Resources", "Resources", "resources", false},
+    {"Markus Editor##Markus_Tree", "Tree", "tree", true},
+    {"Marker Details##Markus_Details", "Details", "details", true},
+    {"Marker Toolbar##Markus_Toolbar", "Toolbar", "toolbar", true},
+    {"Trail Editor##Markus_Trail", "Trail Editor", "trail_editor", false},
+    {"Pack Resources##Markus_Resources", "Resources", "resources", false},
 };
 
 // Seeded from the table rather than spelled out per index: adding a window has to stay one

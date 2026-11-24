@@ -1,4 +1,4 @@
-# MarkerPackEditor
+# Markus
 
 A [Nexus](https://raidcore.gg/Nexus) addon for creating and editing GW2 marker packs —
 the `.zip`/`.taco` packs consumed by the [Blish HUD Pathing
@@ -11,14 +11,16 @@ the pack is a zip again.
 
 ## Install
 
-1. Download `MarkerPackEditor.dll` from the
-   [latest release](https://github.com/HasKha/gw2-marker-pack-editor/releases/latest).
-2. Drop it in `<Guild Wars 2>/addons/`.
+1. Download `Markus.dll` from the
+   [latest release](https://github.com/HasKha/gw2-markus/releases/latest).
+2. Drop it in `<Guild Wars 2>/addons/`. Up to 1.6 the addon was called Marker Pack Editor:
+   delete `MarkerPackEditor.dll` from there. Its folder, `addons/MarkerPackEditor/`, moves to
+   `addons/Markus/` on the first load, with your packs and settings.
 3. Enable it in Nexus.
 
 ## Using it
 
-Every pack in `<Guild Wars 2>/addons/MarkerPackEditor/packs/` is drawn in the world. On the
+Every pack in `<Guild Wars 2>/addons/Markus/packs/` is drawn in the world. On the
 first load, if Blish HUD has marker packs, the addon offers to import them: it copies them into
 its own folder with what Pathing remembers — the categories you turned on or off, what pack
 scripts stored, markers hidden until a time. **Import from Blish HUD...** in the options offers

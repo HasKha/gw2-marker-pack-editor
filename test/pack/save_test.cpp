@@ -135,7 +135,7 @@ TEST_CASE("a pack built from nothing saves and reopens", "[save]") {
     const TempDir temp("new_pack");
     const std::filesystem::path target = temp / "new-pack.zip";
 
-    pack::Pack created = pack::createPack("markers.xml", "mpetest", "MPE Test");
+    pack::Pack created = pack::createPack("markers.xml", "markustest", "Markus Test");
     REQUIRE(created.files.size() == 1);
     REQUIRE(created.categories.size() == 1);
 
@@ -157,11 +157,11 @@ TEST_CASE("a pack built from nothing saves and reopens", "[save]") {
     // The marker's type has to resolve, or it comes back as an orphan under "Unresolved".
     CHECK(reopened.model.pathables[0].category != pack::kNoIndex);
 
-    const pack::Category* root = reopened.model.findCategory("mpetest");
+    const pack::Category* root = reopened.model.findCategory("markustest");
     REQUIRE(root != nullptr);
     const std::string* display = root->attributes.value("displayname");
     REQUIRE(display != nullptr);
-    CHECK(*display == "MPE Test");
+    CHECK(*display == "Markus Test");
 }
 
 TEST_CASE("pending asset changes are applied by a save", "[save]") {
@@ -186,17 +186,17 @@ TEST_CASE("pending asset changes are applied by a save", "[save]") {
 
     // Something that was not, added.
     const std::vector<uint8_t> bytes{1, 2, 3, 4, 5};
-    original.model.addAsset("Data/mpe_test_added.bin", bytes);
+    original.model.addAsset("Data/markus_test_added.bin", bytes);
 
     saveTo(original.model, original.source.get(), target);
 
     const Loaded reopened = load(target);
     CHECK_FALSE(reopened.source->contains(removed));
-    REQUIRE(reopened.source->contains("data/mpe_test_added.bin"));
+    REQUIRE(reopened.source->contains("data/markus_test_added.bin"));
 
     std::vector<uint8_t> read_back;
     std::string error;
-    REQUIRE(reopened.source->read("data/mpe_test_added.bin", &read_back, &error));
+    REQUIRE(reopened.source->read("data/markus_test_added.bin", &read_back, &error));
     CHECK(read_back == bytes);
 }
 
@@ -207,7 +207,7 @@ TEST_CASE("an entry name longer than a fixed buffer survives a save", "[save][re
     const TempDir temp("long_name");
     const std::filesystem::path target = temp / "long-name.zip";
 
-    pack::Pack created = pack::createPack("markers.xml", "mpetest", "MPE Test");
+    pack::Pack created = pack::createPack("markers.xml", "markustest", "Markus Test");
 
     std::string deep;
     while (deep.size() < 600) deep += "a_reasonably_long_directory_segment/";

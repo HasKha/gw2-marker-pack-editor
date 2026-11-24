@@ -246,7 +246,7 @@ TEST_CASE("downloads: what fails, or is no pack, leaves nothing behind") {
 }
 
 // Hidden: it reaches the web, so ctest never runs it. Run it by hand after touching http.* or
-// the catalog's reading: mpe_viewer_test "[.web]".
+// the catalog's reading: markus_viewer_test "[.web]".
 TEST_CASE("web: the real catalog reads, and its smallest pack downloads and opens", "[.web]") {
     const http::Cancel cancel;
     const std::optional<std::string> body = http::get(REPO_URL, cancel, std::chrono::seconds(15));

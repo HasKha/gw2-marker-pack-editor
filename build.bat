@@ -14,4 +14,4 @@ cd /d "%~dp0build" || exit /b 1
 
 cmake --build . --config %CONFIG% || exit /b 1
 
-copy /y "%~dp0bin\%CONFIG%\MarkerPackEditor.dll" "C:\Program Files\Guild Wars 2\addons\MarkerPackEditor.dll" || exit /b 1
+copy /y "%~dp0bin\%CONFIG%\Markus.dll" "C:\Program Files\Guild Wars 2\addons\Markus.dll" || exit /b 1

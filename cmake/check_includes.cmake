@@ -1,6 +1,6 @@
 # Fails when anything under src/<FOLDER>/ includes a folder of src/ that is neither FOLDER nor
-# one of ALLOWED (comma-separated). Run by ctest as <FOLDER>_layering, which mpe_layering() in
-# mpe.cmake registers; the reason it exists is there.
+# one of ALLOWED (comma-separated). Run by ctest as <FOLDER>_layering, which markus_layering() in
+# markus.cmake registers; the reason it exists is there.
 string(REPLACE "," ";" allowed "${ALLOWED}")
 list(APPEND allowed "${FOLDER}")
 

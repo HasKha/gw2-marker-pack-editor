@@ -7,7 +7,7 @@
 #include "editor/editor_state.h"
 
 // The handful of things that should survive a game restart, in
-// `<addons>/MarkerPackEditor/settings.json`.
+// `<addons>/Markus/settings.json`.
 //
 // Deliberately not in here: anything about the *pack*. Visibility toggles, the selection
 // and the open trail all belong to a pack, not to the editor, and a settings file that

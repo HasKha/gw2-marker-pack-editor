@@ -6,7 +6,7 @@ include_guard()
 # Every .h and .cpp under the calling folder, into `target`. A folder is one target, so it is
 # described by where its files are rather than by a list kept beside them; a new file needs a
 # configure pass to be seen. Grouped in the IDE by their path from the repository root.
-function(mpe_target_sources target)
+function(markus_target_sources target)
     file(GLOB_RECURSE sources "${CMAKE_CURRENT_SOURCE_DIR}/*.h" "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp")
     target_sources(${target} PRIVATE ${sources})
     source_group(TREE "${PROJECT_SOURCE_DIR}" PREFIX "" FILES ${sources})
@@ -19,7 +19,7 @@ endfunction()
 # a header from above would still compile, and only fail, if at all, at a link that may not
 # happen until the library is used on its own. Checking the source is what makes the layering
 # a build failure rather than a convention. See docs/architecture.md#build-targets.
-function(mpe_layering)
+function(markus_layering)
     cmake_parse_arguments(PARSE_ARGV 0 arg "" "" "ALLOWS")
     get_filename_component(folder "${CMAKE_CURRENT_SOURCE_DIR}" NAME)
     list(JOIN arg_ALLOWS "," allowed)

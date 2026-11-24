@@ -3,7 +3,7 @@
 #include <filesystem>
 #include <string>
 
-// The viewer's own settings, in `<addons>/MarkerPackEditor/viewer.json`.
+// The viewer's own settings, in `<addons>/Markus/viewer.json`.
 namespace viewer::settings {
 
 constexpr const char* FILE_NAME = "viewer.json";

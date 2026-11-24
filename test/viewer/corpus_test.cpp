@@ -1,10 +1,10 @@
 // Invariants that must hold for every real pack in the corpus.
 //
 // These are the claims docs/plan.md makes about the reader and the writer, turned into
-// assertions. They ran as printf output from mpe_probe before, which meant reading nine
+// assertions. They ran as printf output from markus_probe before, which meant reading nine
 // blocks of numbers and remembering what they were last time.
 //
-// The format's sweep, in mpe_viewer_test rather than mpe_pack_test because the same pass
+// The format's sweep, in markus_viewer_test rather than markus_pack_test because the same pass
 // checks the viewer's bake of every pack it loads.
 
 #include <catch2/catch_test_macros.hpp>
@@ -229,7 +229,7 @@ TEST_CASE("a folder pack and the zip built from it give the same model", "[corpu
     // moment either is edited, and a red test that means "you have not re-exported lately"
     // is a test nobody can read. Zipping the folder we just loaded cannot drift.
     const std::filesystem::path folder = corpus::folderPack();
-    if (folder.empty()) SKIP("no unzipped pack available; set MPE_TEST_FOLDER_PACK");
+    if (folder.empty()) SKIP("no unzipped pack available; set MARKUS_TEST_FOLDER_PACK");
 
     const Loaded from_folder = load(folder);
     CHECK(from_folder.model.from_directory);

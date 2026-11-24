@@ -37,7 +37,7 @@ extern "C" __declspec(dllexport) AddonDefinition* GetAddonDef() {
     AddonDef.Unload = AddonUnload;
     AddonDef.Flags = EAddonFlags_None;
     AddonDef.Provider = EUpdateProvider_GitHub;
-    AddonDef.UpdateLink = "https://github.com/HasKha/gw2-marker-pack-editor";
+    AddonDef.UpdateLink = "https://github.com/HasKha/gw2-markus";
     return &AddonDef;
 }
 

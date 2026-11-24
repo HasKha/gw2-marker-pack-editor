@@ -168,7 +168,7 @@ not been worth a table row plus a "deprecated" flag to keep it out of the picker
 
 TmfLib ships a vendored `NanoXml` rather than using a standard parser, which suggested
 packs in the wild might contain markup a conformant parser rejects. **Measured, and it
-does not hold.** `mpe_probe` over every pack in the Blish HUD markers folder:
+does not hold.** `markus_probe` over every pack in the Blish HUD markers folder:
 
 | | |
 |---|---|

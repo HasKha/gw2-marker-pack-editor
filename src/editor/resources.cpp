@@ -17,7 +17,7 @@ const pack::Pack* pending_pack = nullptr;
 // that a map's markers fill in within a fraction of a second.
 viewer::LoadBudget budget{4};
 
-viewer::TextureCache textures{"MPE_"};
+viewer::TextureCache textures{"Markus_"};
 
 // Misses are cached too, so a missing trail is not retried every frame.
 std::unordered_map<std::string, std::shared_ptr<const pack::trl::Trail>> trails;

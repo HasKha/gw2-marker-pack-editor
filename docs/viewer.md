@@ -45,11 +45,11 @@ What `src/` becomes; [plan.md](plan.md#the-viewer) says which parts exist.
 ```
 src/
   addon/entry.cpp  AddonDefinition; loads the viewer, and the editor when the setting is on
-  util/            mpe_util: paths as UTF-8 text, small JSON files (architecture.md#build-targets)
-  http/            mpe_http: HTTPS GETs and downloads on a worker, through WinHTTP, that cancel;
+  util/            markus_util: paths as UTF-8 text, small JSON files (architecture.md#build-targets)
+  http/            markus_http: HTTPS GETs and downloads on a worker, through WinHTTP, that cancel;
                    Background, one job on a thread of its own, its answer read from frames
-  pack/            mpe_pack — unchanged. The format, nothing else
-  viewer/          mpe_viewer, links mpe_pack and mpe_http
+  pack/            markus_pack — unchanged. The format, nothing else
+  viewer/          markus_viewer, links markus_pack and markus_http
     viewer.*       lifecycle, the addon's name and folder, its options page, EditorHooks: start, render, WndProc
     settings.*     viewer.json: the menu's places, and Pathing's settings by its names
     registry.*     installed packs: discovery, enable/disable, loading on workers, the merged tree
@@ -87,12 +87,12 @@ src/
                    map_menu.* (the maps' tooltip and menu), options.* (Pathing's settings),
                    pack_catalog.* (Marker Packs, the catalog's window), import_window.*
                    (the Blish HUD import)
-  editor/          mpe_editor, links mpe_pack and mpe_viewer
+  editor/          markus_editor, links markus_pack and markus_viewer
 ```
 
 **The dependency only points one way.** `editor/` includes `viewer/`; `viewer/` never
-includes `editor/`, and two things hold it: `mpe_viewer_test` links `mpe_viewer` without
-`mpe_editor`, and the ctest case `viewer_layering` fails on any `editor/` include under
+includes `editor/`, and two things hold it: `markus_viewer_test` links `markus_viewer` without
+`markus_editor`, and the ctest case `viewer_layering` fails on any `editor/` include under
 `src/viewer/`. Where the viewer has to reach the editor — the Edit button, the editor's
 overlays — it calls a hook `entry.cpp` connects, null while editing is off. So the viewer
 builds and tests without the editor, and an editor change cannot reach a player who never

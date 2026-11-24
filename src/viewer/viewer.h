@@ -10,12 +10,19 @@
 // one options page Nexus shows for the addon.
 namespace viewer {
 
-constexpr const char* ADDON_NAME = "Marker Pack Editor";
-// Nexus resolves this to <game>/addons/MarkerPackEditor and creates it. Both the viewer's
+constexpr const char* ADDON_NAME = "Markus";
+// Nexus resolves this to <game>/addons/Markus and creates it. Both the viewer's
 // settings and the editor's live inside, and our own packs in its `packs` folder.
-constexpr const char* ADDON_FOLDER = "MarkerPackEditor";
+constexpr const char* ADDON_FOLDER = "Markus";
+// The same folder under the addon's old name, which releases up to 1.6 wrote to. load() moves
+// it to ADDON_FOLDER once; see store::adoptFolder.
+constexpr const char* OLD_ADDON_FOLDER = "MarkerPackEditor";
 constexpr const char* PACKS_FOLDER = "packs";
 
+// The ids below are Nexus's, and Nexus keeps a player's binds and bar layout under them, so
+// they still carry the addon's old name: renaming them would drop those. Nexus shows the
+// names Localization.Set gives them, never the ids.
+//
 // The bind our icon in Nexus's bar presses for a left click, which opens the menu.
 constexpr const char* KEYBIND_MENU_ID = "KB_MarkerPackEditor_Markers";
 // Turns All Markers on or off. Unset unless the player sets it.

@@ -5,7 +5,7 @@
 #include <string_view>
 #include <vector>
 
-// Where the real marker packs live, shared by mpe_probe and the test binaries.
+// Where the real marker packs live, shared by markus_probe and the test binaries.
 //
 // The corpus is deliberately *not* checked into the repo: these are other people's packs,
 // some of them hundreds of megabytes, and the whole point of testing against them is that
@@ -13,8 +13,8 @@
 // — see corpusDir() for how it is pointed at them.
 namespace corpus {
 
-// The folder holding the packs. In order: the MPE_TEST_PACK_DIR environment variable, then
-// the path baked in at configure time (MPE_TEST_PACK_DIR_DEFAULT, which CMake resolves to
+// The folder holding the packs. In order: the MARKUS_TEST_PACK_DIR environment variable, then
+// the path baked in at configure time (MARKUS_TEST_PACK_DIR_DEFAULT, which CMake resolves to
 // the Blish HUD markers folder). Empty when neither names a real directory.
 //
 // The environment wins so a pack folder elsewhere can be used without reconfiguring.
@@ -32,7 +32,7 @@ std::filesystem::path pack(std::string_view file_name);
 // because the corpus folder holds archives, and the folder DataSource has to be shown to
 // resolve to the same model as the zip built from it.
 //
-// From MPE_TEST_FOLDER_PACK, else the path baked in at configure time. Empty when neither
+// From MARKUS_TEST_FOLDER_PACK, else the path baked in at configure time. Empty when neither
 // is a real directory.
 std::filesystem::path folderPack();
 

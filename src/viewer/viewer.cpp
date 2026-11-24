@@ -1058,7 +1058,7 @@ void drawOptions() {
 void drawOptionsWindow() {
     if (!options_window) return;
     ImGui::SetNextWindowSize(ImVec2(480.0f, 520.0f), ImGuiCond_FirstUseEver);
-    if (ImGui::Begin("Marker Pack Options", &options_window)) drawOptionsPage();
+    if (ImGui::Begin("Markus Options", &options_window)) drawOptionsPage();
     ImGui::End();
 }
 
@@ -1072,6 +1072,13 @@ void load(AddonAPI* aApi, Mumble::Data* aMumbleLink) {
     // Nexus makes the directory; the files are ours.
     const char* directory = api->Paths.GetAddonDirectory(ADDON_FOLDER);
     folder = directory ? std::filesystem::path(directory) : std::filesystem::path();
+    // Before anything reads from it. The editor asked for the folder already, so Nexus has made
+    // it, but reads nothing from it before Open Editor.
+    if (!folder.empty()) {
+        const std::filesystem::path addons = (folder.has_filename() ? folder : folder.parent_path()).parent_path();
+        const std::string error = store::adoptFolder(addons / OLD_ADDON_FOLDER, folder);
+        if (!error.empty()) api->Log(ELogLevel_WARNING, ADDON_NAME, error.c_str());
+    }
     persisted = settings::load(folder);
     account_progress.open(folder.empty() ? folder : folder / account::CACHE_FILE_NAME, persisted.api_key, utcNow());
     achievement_details.open(folder.empty() ? folder : folder / achievements::CACHE_FILE_NAME);
@@ -1123,7 +1130,7 @@ void load(AddonAPI* aApi, Mumble::Data* aMumbleLink) {
     // Nexus presses a shortcut's bind for a left click on it and has no other way to say so, so
     // the menu has a bind: unset, and named for what it is there for.
     api->InputBinds.RegisterWithString(KEYBIND_MENU_ID, onMenuKeybind, "(null)");
-    api->Localization.Set(KEYBIND_MENU_ID, "en", "Marker pack icon (left click)");
+    api->Localization.Set(KEYBIND_MENU_ID, "en", "Markus icon (left click)");
     api->InputBinds.RegisterWithString(KEYBIND_ALL_MARKERS_ID, onAllMarkersKeybind, "(null)");
     api->Localization.Set(KEYBIND_ALL_MARKERS_ID, "en", "Toggle Markers"); // Pathing's name for it
     api->Textures.GetOrCreateFromMemory(ICON_TEXTURE_ID, const_cast<unsigned char*>(ui::icon_data::kIcon), sizeof(ui::icon_data::kIcon));

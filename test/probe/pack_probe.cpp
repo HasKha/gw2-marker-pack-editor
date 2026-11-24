@@ -1,7 +1,7 @@
 // Console harness for the pack layer. Point it at real marker packs and it reports what
 // parsed, what did not, and whether the XML survives a byte-exact round trip.
 //
-//   mpe_probe <pack.zip> [more.zip ...]
+//   markus_probe <pack.zip> [more.zip ...]
 
 #include <pugixml.hpp>
 
@@ -648,7 +648,7 @@ int probeAssetChanges(pack::Pack& loaded, const pack::DataSource& source, const 
         return 0;
     }
 
-    const std::string added = "mpe-probe-added.bin";
+    const std::string added = "markus-probe-added.bin";
     const std::vector<uint8_t> payload = {'m', 'p', 'e', 0x00, 0x01};
 
     loaded.addAsset(added, payload);
@@ -949,7 +949,7 @@ int probeAddCategory(pack::Pack& loaded, const pack::DataSource& source, const s
     }
 
     const size_t file_index = loaded.categories[parent].declarations.back().file;
-    const size_t added = loaded.addCategory(parent, "mpeprobe", file_index);
+    const size_t added = loaded.addCategory(parent, "markusprobe", file_index);
     if (added == pack::kNoIndex) {
         std::printf("  ADD CATEGORY FAIL  addCategory returned nothing\n");
         return 1;
@@ -1052,7 +1052,7 @@ int probePack(const std::filesystem::path& file) {
 // A pack created in the editor has no DataSource, so its save is the one path that writes
 // an archive out of nothing but the model. Needs no input pack, so it runs once.
 int probeNewPack(const std::filesystem::path& out_dir) {
-    pack::Pack created = pack::createPack("markers.xml", "mpeprobe", "MPE Probe");
+    pack::Pack created = pack::createPack("markers.xml", "markusprobe", "Markus Probe");
     if (created.categories.size() != 1 || created.files.size() != 1) {
         std::printf("  NEW PACK FAIL  createPack gave %zu files, %zu categories\n", created.files.size(), created.categories.size());
         return 1;
@@ -1111,11 +1111,11 @@ int probeNewPack(const std::filesystem::path& out_dir) {
         ++failures;
     }
 
-    const pack::Category* root = reloaded.findCategory("mpeprobe");
+    const pack::Category* root = reloaded.findCategory("markusprobe");
     if (!root) {
         std::printf("  NEW PACK: the root category did not come back\n");
         ++failures;
-    } else if (const std::string* display = root->attributes.value("displayname"); !display || *display != "MPE Probe") {
+    } else if (const std::string* display = root->attributes.value("displayname"); !display || *display != "Markus Probe") {
         std::printf("  NEW PACK: DisplayName did not survive\n");
         ++failures;
     }
@@ -1143,7 +1143,7 @@ int main(int argc, char** argv) {
     }
 
     if (packs.empty()) {
-        std::printf("usage: mpe_probe [--save-test <dir>] <pack.zip|folder> [more ...]\n");
+        std::printf("usage: markus_probe [--save-test <dir>] <pack.zip|folder> [more ...]\n");
         return 2;
     }
 

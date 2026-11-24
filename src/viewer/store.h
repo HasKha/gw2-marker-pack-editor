@@ -6,8 +6,15 @@
 #include <string>
 #include <unordered_map>
 
-// What outlives a session about the packs themselves, in `<addons>/MarkerPackEditor/`.
+// What outlives a session about the packs themselves, in `<addons>/Markus/`.
 namespace viewer::store {
+
+// Moves the addon's folder from `from`, its old name, to `to`, so a player's packs and settings
+// follow the addon across the rename. Only when `from` is a folder and `to` is missing or empty:
+// Nexus creates `to` as soon as anything asks for it, and a `to` with something in it is the
+// new name's own and wins. Returns what went wrong, empty when nothing did or there was
+// nothing to move; `to` exists afterwards either way.
+std::string adoptFolder(const std::filesystem::path& from, const std::filesystem::path& to);
 
 constexpr const char* CATEGORIES_FILE_NAME = "categories.json";
 constexpr const char* STORAGE_FILE_NAME = "kv.json"; // Pathing's own name for it

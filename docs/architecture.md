@@ -14,7 +14,7 @@ reaches back. What follows describes the editor.
 
 The invariants every change keeps. The sections below are why.
 
-- **`mpe_pack` knows nothing of Nexus, imgui or the game.** `src/pack/` links only `mpe_util`,
+- **`markus_pack` knows nothing of Nexus, imgui or the game.** `src/pack/` links only `markus_util`,
   pugixml, miniz and glm, which is what lets the whole format be tested offline. Never add an
   addon header to it.
 - **An attribute is defined once, in the attribute table.** Parsing, serialization, the
@@ -92,32 +92,32 @@ Thirteen, because the code worth testing outside the game is most of it:
 
 | Target | Kind | Contents |
 |---|---|---|
-| `mpe_util` | static lib | `src/util/` — paths as UTF-8 text, the small JSON files kept between sessions. Links nlohmann_json, **includes nothing else of ours** |
-| `mpe_http` | static lib | `src/http/` — requests on a worker through WinHTTP, and `Background`, the one-job thread. Links `mpe_util` |
-| `mpe_pack` | static lib | `src/pack/` — the format. Links `mpe_util`, pugixml, miniz, glm. **Knows nothing about Nexus, imgui or the game.** |
-| `mpe_viewer` | static lib | `src/viewer/` — the viewer. Links `mpe_pack` and `mpe_http` plus imgui, Nexus, Mumble, GoodRender, sol2. **Never the editor** |
-| `mpe_editor` | static lib | `src/editor/` — the editor. Links `mpe_viewer` plus ImGuizmo, NFD |
-| `MarkerPackEditor` | shared lib | `src/addon/` — `entry.cpp` and nothing else. Links `mpe_editor` |
-| `mpe_corpus` | static lib | `test/corpus/` — where the real packs are. Shared by the test targets so they cannot disagree about it |
-| `mpe_probe` | console exe | `test/probe/` — the harness that prints. Links `mpe_pack` |
-| `mpe_http_test` | console exe | `test/http/` — requests that cancel, and `Background`. Links `mpe_http` and nothing else of ours |
-| `mpe_pack_test` | console exe | `test/pack/` — the format's assertions. Links `mpe_pack` and not the viewer |
-| `mpe_viewer_test` | console exe | `test/viewer/` — the viewer's, and the corpus sweep, which checks the format and the bake in one pass. Links `mpe_viewer` and not the editor, which is the proof it can |
-| `mpe_editor_test` | console exe | `test/editor/` — the editor's. Links `mpe_editor` |
+| `markus_util` | static lib | `src/util/` — paths as UTF-8 text, the small JSON files kept between sessions. Links nlohmann_json, **includes nothing else of ours** |
+| `markus_http` | static lib | `src/http/` — requests on a worker through WinHTTP, and `Background`, the one-job thread. Links `markus_util` |
+| `markus_pack` | static lib | `src/pack/` — the format. Links `markus_util`, pugixml, miniz, glm. **Knows nothing about Nexus, imgui or the game.** |
+| `markus_viewer` | static lib | `src/viewer/` — the viewer. Links `markus_pack` and `markus_http` plus imgui, Nexus, Mumble, GoodRender, sol2. **Never the editor** |
+| `markus_editor` | static lib | `src/editor/` — the editor. Links `markus_viewer` plus ImGuizmo, NFD |
+| `Markus` | shared lib | `src/addon/` — `entry.cpp` and nothing else. Links `markus_editor` |
+| `markus_corpus` | static lib | `test/corpus/` — where the real packs are. Shared by the test targets so they cannot disagree about it |
+| `markus_probe` | console exe | `test/probe/` — the harness that prints. Links `markus_pack` |
+| `markus_http_test` | console exe | `test/http/` — requests that cancel, and `Background`. Links `markus_http` and nothing else of ours |
+| `markus_pack_test` | console exe | `test/pack/` — the format's assertions. Links `markus_pack` and not the viewer |
+| `markus_viewer_test` | console exe | `test/viewer/` — the viewer's, and the corpus sweep, which checks the format and the bake in one pass. Links `markus_viewer` and not the editor, which is the proof it can |
+| `markus_editor_test` | console exe | `test/editor/` — the editor's. Links `markus_editor` |
 
 **One folder per target, and its `CMakeLists.txt` defines it.** The root `CMakeLists.txt` brings
 in the dependencies and adds the folders, from the bottom of the layering up; a folder's own file
-names its target, what it links, and what it may include. `mpe_target_sources()` in
-`cmake/mpe.cmake` takes every `.h` and `.cpp` under the folder, so a file's folder says which
+names its target, what it links, and what it may include. `markus_target_sources()` in
+`cmake/markus.cmake` takes every `.h` and `.cpp` under the folder, so a file's folder says which
 target it is in and no target is described by subtracting another's sources.
 
 **The libraries are layered, and the build holds it**: `util` < `http`, `pack` < `viewer` <
 `editor` < `addon`, each including only what is below it. Every library sees all of `src/` as its
-include root, so a header from above would still compile; `mpe_layering()` registers a ctest
+include root, so a header from above would still compile; `markus_layering()` registers a ctest
 case per folder, `<folder>_layering`, that fails on an `#include` of a folder it does not list.
 A test binary that links one library and nothing above it is the same rule checked at the link.
 
-`mpe_editor` exists so `mpe_editor_test` links the code the addon runs rather than naming source
+`markus_editor` exists so `markus_editor_test` links the code the addon runs rather than naming source
 files a second time. Only the objects a test reaches get linked in, so nothing there needs
 a live Nexus or an imgui context; what does touch Nexus goes through an `AddonAPI*` that
 stays null, which `editor/resources.cpp` already has to handle for a pack made in the
@@ -129,12 +129,12 @@ Why there are two test targets, and what they are pointed at, is [testing.md](te
 
 ```
 src/
-  addon/entry.cpp      — MarkerPackEditor.dll
+  addon/entry.cpp      — Markus.dll
                        Nexus entry, AddonDefinition, loads the viewer and, when enabled, the editor
-  util/                — mpe_util: path_text.h (paths as UTF-8 text), json_file.* (lenient
+  util/                — markus_util: path_text.h (paths as UTF-8 text), json_file.* (lenient
                        reads, all-or-nothing writes of small JSON files)
-  http/                — mpe_http: http.* (GETs and downloads that cancel), background.h
-  pack/                — mpe_pack, no Nexus/imgui dependency
+  http/                — markus_http: http.* (GETs and downloads that cancel), background.h
+  pack/                — markus_pack, no Nexus/imgui dependency
     source.*           DataSource: a pack is a zip OR a folder. Path normalization.
     zip.*              DataSource over a .zip/.taco, via miniz
     attributes.*       THE attribute table: name, kind, default, inheritance
@@ -142,8 +142,8 @@ src/
     xml_reader.*       pugixml -> model; the document is kept and owned by the Pack
     writer.*           serializes the document back out, rebuilds the zip (format.md)
     trl.*              .trl read/write, byte-exact
-  viewer/              — mpe_viewer; see viewer.md for what it grows into
-  editor/              — mpe_editor
+  viewer/              — markus_viewer; see viewer.md for what it grows into
+  editor/              — markus_editor
     marker_editor.*    lifecycle, the windows and the shared menu bar, save/open, WndProc,
                        drawing the open pack
     pathable_edit.*    creating and deleting markers and categories
@@ -566,7 +566,7 @@ Asking `applies_to` where the answer is `settableOn` was a real bug: the "add at
 picker offered a category only its own five structural attributes, so there was no way to
 give a category an icon size at all. Anything filtering the attribute table by node kind
 wants `settableOn`; `applies_to` is for deciding whether a value has an effect where it sits,
-which is what the property panel's "does nothing here" warning and `mpe_probe`'s matching
+which is what the property panel's "does nothing here" warning and `markus_probe`'s matching
 lint are for. The reasoning behind each classification is in [format.md](format.md).
 
 ## A pack is a zip or a folder
@@ -581,7 +581,7 @@ artifact: editing it and then rebuilding from source would throw the edits away.
 
 Both paths behave identically. The same `normalizePath` applies to directory entries, so a
 folder and the zip built from it resolve resources the same way — verified by running
-`mpe_probe` over both and getting identical models.
+`markus_probe` over both and getting identical models.
 
 Two things stay different, and both are recorded on `Pack`:
 

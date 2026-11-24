@@ -1,4 +1,4 @@
-# MarkerPackEditor — plan
+# Markus — plan
 
 Roadmap and current state. Living document: update it in the same change that makes it
 stale. It holds *what is left and in what order* — not how anything works.
@@ -46,7 +46,7 @@ it, save it back, and the edited markers show correctly in Blish HUD.**
 | Settings | the Settings toggles, gizmo mode, which windows are open and where the browsers start, kept in `settings.json` |
 | Create pack | `New Pack...` builds an empty pack in memory; Save As writes the first zip |
 | Write | serializes the owned document; comments, order, spelling, BOM, CRLF and the file split survive. 947/947 files stable on rewrite |
-| Tests | `mpe_pack_test`, 22 cases over attributes, the model and saving; `mpe_editor_test`, 21 over the selection rules and the trail editing layer; `mpe_http_test`, 3 over cancelling requests and the one-job thread; `mpe_viewer_test`, 181 over the real pack corpus, the camera, the quad path, textures, settings, the bake, the registry, the ribbon, the scene, the GoodRender sink, the Lua scripts, the behaviors, the maps, the catalog, the edited pack and personal copies, the scripts over every scripted corpus pack, plus one hidden case that reaches the real catalog; and a check per library under `src/` that it includes nothing above it. All run by `ctest` |
+| Tests | `markus_pack_test`, 22 cases over attributes, the model and saving; `markus_editor_test`, 21 over the selection rules and the trail editing layer; `markus_http_test`, 3 over cancelling requests and the one-job thread; `markus_viewer_test`, 185 over the real pack corpus, the folder moving across the rename, the camera, the quad path, textures, settings, the bake, the registry, the ribbon, the scene, the GoodRender sink, the Lua scripts, the behaviors, the maps, the catalog, the edited pack and personal copies, the scripts over every scripted corpus pack, plus one hidden case that reaches the real catalog; and a check per library under `src/` that it includes nothing above it. All run by `ctest` |
 
 A pack can be edited end to end, grown new branches, and started from nothing. The test
 row's claims are measured against the corpus in [testing.md](testing.md).
@@ -67,7 +67,7 @@ Roughly in order.
   next one. `gw2-markers/scripts/shared.py` remains the spec.
 - **Enum value lists** from the gw2pathing.com attribute pages, so `ValueKind::Enum` gets a
   dropdown instead of a text box.
-- **Validation pass in the UI**, reusing what `mpe_probe`'s lint already checks. Worth more
+- **Validation pass in the UI**, reusing what `markus_probe`'s lint already checks. Worth more
   now that new content can be authored in the editor rather than only edited. Two of the
   lint's checks already have a counterpart in the property panel — an unknown attribute and
   one that does nothing where it sits are both flagged there — so the pattern is set.
@@ -77,7 +77,7 @@ Roughly in order.
   [format.md](format.md).
 - **Move pack loading off the render thread** if a large pack starts to stutter. 56k
   markers has not been slow enough to need it.
-- **Tests above the pack layer.** `mpe_editor_test` links `mpe_editor`, so anything there is
+- **Tests above the pack layer.** `markus_editor_test` links `markus_editor`, so anything there is
   reachable: `selection_test.cpp` covers the click rules and `trail_test.cpp` covers
   creating trails, following the selection and renaming traildata. Undo itself and the
   editor's indexes are still covered by hand and could go the same way. The windows cannot.
@@ -147,11 +147,11 @@ between. How each part works is [viewer.md](viewer.md).
 
 ### 0. Split, with no change in behaviour — done offline
 
-`mpe_viewer` exists in `src/viewer/`: the camera, `LoadBudget` and `TextureCache`, the
+`markus_viewer` exists in `src/viewer/`: the camera, `LoadBudget` and `TextureCache`, the
 draw-list quad path as `render/overlay.*`, and the lifecycle that owns the addon's options
 page. `entry.cpp` loaded the editor only when "Enable pack editing" was on (gone since: see
 milestone 7). Every case that passed before still passes,
-`mpe_viewer_test` links without `mpe_editor`, and `viewer_layering` holds the
+`markus_viewer_test` links without `markus_editor`, and `viewer_layering` holds the
 include rule.
 
 **Left: one pull in game**, to answer one question: does the editor open, draw and save a pack
