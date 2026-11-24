@@ -30,6 +30,10 @@ void unload();
 void push();
 void pop();
 
+// Inside a push(), the same font larger, for a title in a list, until pop(). Without the icons.
+// The current font while ours is not built.
+void pushHeading();
+
 // Whether the icons draw: the font is built.
 bool ready();
 

@@ -18,7 +18,12 @@ namespace {
 ImFontAtlas atlas;
 ID3D11ShaderResourceView* atlas_view = nullptr;
 ImFont* font = nullptr;
+ImFont* heading = nullptr;
 bool tried = false;
+
+// How much larger pushHeading()'s font is than the text: enough to stand out as a title in a
+// list, small enough that a long name still fits beside its author.
+constexpr float kHeadingScale = 1.2f;
 ID3D11Device* atlas_device = nullptr;
 std::string status_text = "not built yet";
 
@@ -123,6 +128,17 @@ void build(const ImFont* source) {
         &icons,
         kIconRanges);
 
+    // The heading, built at its size rather than scaled up from the text's, which blurs.
+    ImFontConfig large = *config;
+    large.FontData = IM_ALLOC(static_cast<size_t>(config->FontDataSize));
+    std::memcpy(large.FontData, config->FontData, static_cast<size_t>(config->FontDataSize));
+    large.FontDataOwnedByAtlas = true;
+    large.SizePixels = config->SizePixels * kHeadingScale;
+    large.GlyphRanges = kTextRanges;
+    large.MergeMode = false;
+    large.DstFont = nullptr;
+    ImFont* built_heading = atlas.AddFont(&large);
+
     const bool uploaded = upload(atlas_device);
     // The glyphs are all that is drawn from; the font files and the pixels were only for building.
     atlas.ClearInputData();
@@ -133,6 +149,7 @@ void build(const ImFont* source) {
     }
     alignIcons(built);
     font = built;
+    heading = built_heading;
     status_text = std::string("built from ") + config->Name;
 }
 
@@ -145,6 +162,7 @@ void load(ID3D11Device* device) {
 void unload() {
     clear();
     font = nullptr;
+    heading = nullptr;
     tried = false;
     status_text = "not built yet";
     atlas_device = nullptr;
@@ -167,6 +185,16 @@ void push() {
 
 void pop() {
     ImGui::PopFont();
+}
+
+void pushHeading() {
+    const ImFont* current = ImGui::GetFont();
+    if (!heading) {
+        ImGui::PushFont(ImGui::GetFont());
+        return;
+    }
+    heading->Scale = current->FontSize * current->Scale * kHeadingScale / heading->FontSize;
+    ImGui::PushFont(heading);
 }
 
 bool ready() {

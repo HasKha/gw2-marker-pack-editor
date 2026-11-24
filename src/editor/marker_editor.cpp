@@ -33,6 +33,7 @@
 #include "viewer/registry.h"
 #include "viewer/scene.h"
 #include "viewer/ui/fonts.h"
+#include "viewer/ui/style.h"
 #include "viewer/viewer.h"
 
 namespace marker_editor {
@@ -525,11 +526,11 @@ void drawMenuBar(ui::windows::Id owner) {
         ImGui::EndMenu();
     }
 
-    if (ImGui::BeginMenu("Settings")) {
-        ImGui::MenuItem("3D highlight", nullptr, &state.settings.highlight_3d);
+    if (ImGui::BeginMenu("Options")) {
+        ImGui::MenuItem("3D Highlight", nullptr, &state.settings.highlight_3d);
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("Outline the selection in the world.");
 
-        ImGui::MenuItem("Select in viewport", nullptr, &state.settings.select_in_viewport);
+        ImGui::MenuItem("Select in Viewport", nullptr, &state.settings.select_in_viewport);
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("Click a marker in the world to select it.");
 
         ImGui::EndMenu();
@@ -582,7 +583,7 @@ void applyPendingAction() {
 void drawConfirmPopup(ui::windows::Id owner) {
     if (!confirm_pending || owner != confirm_owner) return;
 
-    constexpr const char* kTitle = "Discard changes?";
+    constexpr const char* kTitle = "Discard Changes?";
 
     if (open_confirm_popup) {
         ImGui::OpenPopup(kTitle);
@@ -594,19 +595,22 @@ void drawConfirmPopup(ui::windows::Id owner) {
         ImGui::TextDisabled("%s", pending_action == PendingAction::Reload ? "Reloading will discard them." : "Closing will discard them.");
         ImGui::Separator();
 
-        if (ImGui::Button("Discard", ImVec2(110, 0))) {
+        const std::string discard = icon(ICON_FA_TRASH, "Discard");
+        const std::string save_first = icon(ICON_FA_FLOPPY_DISK, "Save First");
+        const float width = viewer::ui::style::buttonWidth({discard.c_str(), save_first.c_str(), "Cancel"});
+        if (ImGui::Button(discard.c_str(), ImVec2(width, 0))) {
             confirm_pending = false; // applied at the end of the frame
             ImGui::CloseCurrentPopup();
         }
         ImGui::SameLine();
-        if (ImGui::Button("Save first", ImVec2(110, 0))) {
+        if (ImGui::Button(save_first.c_str(), ImVec2(width, 0))) {
             savePack();
             if (state.dirty) pending_action = PendingAction::None; // the save failed, so keep the pack
             confirm_pending = false;
             ImGui::CloseCurrentPopup();
         }
         ImGui::SameLine();
-        if (ImGui::Button("Cancel", ImVec2(110, 0))) {
+        if (ImGui::Button("Cancel", ImVec2(width, 0))) {
             pending_action = PendingAction::None;
             confirm_pending = false;
             ImGui::CloseCurrentPopup();
@@ -620,7 +624,7 @@ void drawConfirmPopup(ui::windows::Id owner) {
 void drawNewPackPopup(ui::windows::Id owner) {
     if (owner != confirm_owner) return;
 
-    constexpr const char* kTitle = "New pack";
+    constexpr const char* kTitle = "New Pack";
 
     if (open_new_pack_popup) {
         ImGui::OpenPopup(kTitle);
@@ -643,12 +647,14 @@ void drawNewPackPopup(ui::windows::Id owner) {
     ImGui::TextDisabled("Lives in memory until Save As writes the zip.");
     ImGui::Separator();
 
-    if (ImGui::Button("Create", ImVec2(110, 0))) {
+    const std::string create = icon(ICON_FA_CHECK, "Create");
+    const float width = viewer::ui::style::buttonWidth({create.c_str(), "Cancel"});
+    if (ImGui::Button(create.c_str(), ImVec2(width, 0))) {
         newPack(new_pack_file, new_pack_name, new_pack_display);
         if (state.loaded) ImGui::CloseCurrentPopup();
     }
     ImGui::SameLine();
-    if (ImGui::Button("Cancel", ImVec2(110, 0))) ImGui::CloseCurrentPopup();
+    if (ImGui::Button("Cancel", ImVec2(width, 0))) ImGui::CloseCurrentPopup();
 
     ImGui::EndPopup();
 }
@@ -686,7 +692,8 @@ void drawPackHeader() {
     if (file_dialog::isPending()) {
         ImGui::TextDisabled("(file dialog open)");
     } else if (state.loaded) {
-        const std::string name = state.pack.from_directory ? util::pathText(open_pack_path.filename()) + "/" : util::pathText(open_pack_path.filename());
+        const std::string name =
+            state.pack.from_directory ? util::pathText(open_pack_path.filename()) + "/" : util::pathText(open_pack_path.filename());
         ImGui::TextDisabled("%s%s", name.c_str(), state.dirty ? " *" : "");
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", util::pathText(open_pack_path).c_str());
     } else {
@@ -710,15 +717,6 @@ void drawDetailsWindow() {
     ImGui::End();
 }
 
-// imgui 1.80 predates BeginDisabled (docs/code_style.md), so a disabled button is one drawn dim
-// whose press is ignored. It still hovers, which is what carries the reason why.
-bool button(const char* label, bool enabled) {
-    if (!enabled) ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.4f);
-    const bool pressed = ImGui::Button(label);
-    if (!enabled) ImGui::PopStyleVar();
-    return pressed && enabled;
-}
-
 // Everything the create buttons need to agree on before they do anything.
 bool canCreate(bool needs_character) {
     if (!state.loaded) {
@@ -735,7 +733,7 @@ bool canCreate(bool needs_character) {
 // Adds a marker where the character is standing. Placement follows the selection, so the
 // button needs no target of its own — see pathable_edit::addPoi.
 void drawAddPoi() {
-    if (!button("Add POI", state.loaded)) {
+    if (!viewer::ui::style::button(icon(ICON_FA_LOCATION_DOT, "Add POI").c_str(), state.loaded)) {
         if (ImGui::IsItemHovered()) {
             ImGui::SetTooltip(
                 state.loaded ? "Adds a marker at the character's position.\n"
@@ -757,7 +755,7 @@ void drawAddPoi() {
 }
 
 void drawAddTrail() {
-    if (!button("Add Trail", state.loaded)) {
+    if (!viewer::ui::style::button(icon(ICON_FA_ROUTE, "Add Trail").c_str(), state.loaded)) {
         if (ImGui::IsItemHovered()) {
             ImGui::SetTooltip(
                 state.loaded ? "Adds an empty trail and a .trl for it to point at.\n"
@@ -802,7 +800,7 @@ size_t categoryPopupReference() {
 }
 
 void drawAddCategory() {
-    if (button("Add Category...", state.loaded)) {
+    if (viewer::ui::style::button(icon(ICON_FA_FOLDER_PLUS, "Add Category...").c_str(), state.loaded)) {
         if (canCreate(false)) {
             const size_t reference = categoryPopupReference();
             const std::string default_name = reference < state.pack.categories.size() ? state.pack.categories[reference].id : "";
@@ -820,7 +818,7 @@ void drawAddCategory() {
                          : "Open or create a pack first.");
     }
 
-    constexpr const char* kTitle = "New category";
+    constexpr const char* kTitle = "New Category";
     if (open_category_popup) {
         ImGui::OpenPopup(kTitle);
         open_category_popup = false;
@@ -861,12 +859,13 @@ void drawAddCategory() {
     ImGui::Separator();
 
     const bool enabled = new_category_name[0] != '\0' && new_category_display_name[0] != '\0';
-    if (!enabled) ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.4f);
-    const bool create_pressed = ImGui::Button("Create", ImVec2(110, 0));
-    if (!enabled) ImGui::PopStyleVar();
-    const bool create = enabled && (create_pressed || name_submitted || display_submitted);
+    const std::string create_label = icon(ICON_FA_CHECK, "Create");
+    const float width = viewer::ui::style::buttonWidth({create_label.c_str(), "Cancel"});
+    const bool create_pressed = viewer::ui::style::button(create_label.c_str(), enabled, width);
+    if (!enabled && ImGui::IsItemHovered()) ImGui::SetTooltip("Give it a name and a display name first.");
+    const bool create = create_pressed || (enabled && (name_submitted || display_submitted));
     ImGui::SameLine();
-    if (ImGui::Button("Cancel", ImVec2(110, 0))) ImGui::CloseCurrentPopup();
+    if (ImGui::Button("Cancel", ImVec2(width, 0))) ImGui::CloseCurrentPopup();
 
     if (create) {
         const size_t added = pathable_edit::addCategory(
@@ -896,7 +895,7 @@ void drawToolbarWindow() {
     ImGui::SameLine();
 
     int mode = static_cast<int>(state.settings.gizmo);
-    ImGui::RadioButton("Disabled", &mode, static_cast<int>(editor::GizmoMode::Disabled));
+    ImGui::RadioButton("Off", &mode, static_cast<int>(editor::GizmoMode::Disabled));
     ImGui::SameLine();
     ImGui::RadioButton("Translate", &mode, static_cast<int>(editor::GizmoMode::Translate));
     ImGui::SameLine();

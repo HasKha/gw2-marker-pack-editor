@@ -51,6 +51,7 @@
 #include "viewer/ui/options.h"
 #include "viewer/ui/pack_catalog.h"
 #include "viewer/ui/script_console.h"
+#include "viewer/ui/style.h"
 #include "viewer/utc.h"
 
 namespace viewer {
@@ -535,12 +536,12 @@ void finishKeyCheck() {
         persisted.api_key = done.key;
         account_progress.setKey(persisted.api_key, utcNow());
         std::fill(std::begin(key_field), std::end(key_field), char{});
-        key_status = settings::save(folder, persisted)
-                         ? "Key added."
-                         : "Key added, but it could not be saved: you will need to add it again next time.";
+        key_status = settings::save(folder, persisted) ? "Key added."
+                                                       : "Key added, but it could not be saved: you will need to add it again next time.";
         break;
     case api_key::Outcome::MissingPermissions:
-        key_status = "This key is missing permissions: " + done.check.missing + ". Make a new one with \"account\" and \"progression\" selected.";
+        key_status =
+            "This key is missing permissions: " + done.check.missing + ". Make a new one with \"account\" and \"progression\" selected.";
         break;
     case api_key::Outcome::Rejected: key_status = "This key was not accepted. Check that you copied all of it."; break;
     case api_key::Outcome::NoAnswer: key_status = "Could not reach the GW2 API to check the key. Try again in a moment."; break;
@@ -1038,42 +1039,44 @@ void removeMenuPlaces() {
     persisted.menu_icon = icon;
 }
 
+// The page's sections, the first three open until the player closes them: what a new player
+// sets up, the API key among it, before what fine-tunes the drawing.
 void drawOptionsPage() {
-    ImGui::Text("Interface");
-    bool places = ImGui::Checkbox("Show the menu in Nexus's right-click menu", &persisted.menu_in_nexus);
-    places |= ImGui::Checkbox("Show an icon in Nexus's bar", &persisted.menu_icon);
-    if (places) {
-        applyMenuPlaces();
-        settings::save(folder, persisted);
+    if (ImGui::CollapsingHeader("Interface", ImGuiTreeNodeFlags_DefaultOpen)) {
+        bool places = ImGui::Checkbox("Show the menu in Nexus's right-click menu", &persisted.menu_in_nexus);
+        places |= ImGui::Checkbox("Show an icon in Nexus's bar", &persisted.menu_icon);
+        if (places) {
+            applyMenuPlaces();
+            settings::save(folder, persisted);
+        }
     }
-    if (ImGui::Button(ui::fonts::label(ICON_FA_TERMINAL, "Open Lua script console").c_str())) console_window = true;
-    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Messages and errors from pack scripts, for pack authors.");
 
-    ImGui::Spacing();
-    ImGui::Separator();
-    ImGui::TextUnformatted("Marker Packs");
-    const bool scripts_changed = ImGui::Checkbox("Enable Lua scripts", &persisted.run_scripts);
-    if (scripts_changed) {
-        settings::save(folder, persisted);
-        // Off throws every handler away, and what scripts did to the map with them; on starts
-        // them again from pack.lua.
-        scripts->reset();
-        replaceLiveMap(live.map_id);
-    }
-    if (ImGui::Button(ui::fonts::label(ICON_FA_BOX_ARCHIVE, "Manage Packs").c_str())) catalog_window = true;
-    if (ImGui::Button(ui::fonts::label(ICON_FA_ROTATE_RIGHT, "Reload marker packs").c_str())) reloadPacks();
-    ImGui::SameLine();
-    ImGui::Text("%s", loadingStatus().c_str());
-    if (ImGui::Button(ui::fonts::label(ICON_FA_FILE_IMPORT, "Import from BlishHUD...").c_str())) openImport();
-    ImGui::Spacing();
+    if (ImGui::CollapsingHeader("Marker Packs", ImGuiTreeNodeFlags_DefaultOpen)) {
+        const bool scripts_changed = ImGui::Checkbox("Enable Lua scripts", &persisted.run_scripts);
+        if (scripts_changed) {
+            settings::save(folder, persisted);
+            // Off throws every handler away, and what scripts did to the map with them; on starts
+            // them again from pack.lua.
+            scripts->reset();
+            replaceLiveMap(live.map_id);
+        }
+        ImGui::SameLine();
+        if (ImGui::Button(ui::fonts::label(ICON_FA_TERMINAL, "Open Lua Script Console").c_str())) console_window = true;
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("Messages and errors from pack scripts, for pack authors.");
 
-    if (ImGui::CollapsingHeader("Markers")) {
-        if (ui::options::drawPack(&persisted, &show_hidden)) settings::save(folder, persisted);
+        // One width for the three, so they stand as a column.
+        const std::string manage = ui::fonts::label(ICON_FA_BOX_ARCHIVE, "Manage Packs");
+        const std::string reload = ui::fonts::label(ICON_FA_ROTATE_RIGHT, "Reload Packs");
+        const std::string import = ui::fonts::label(ICON_FA_FILE_IMPORT, "Import from Blish HUD...");
+        const float width = ui::style::buttonWidth({manage.c_str(), reload.c_str(), import.c_str()});
+        if (ui::style::button(manage.c_str(), true, width)) catalog_window = true;
+        if (ui::style::button(reload.c_str(), true, width)) reloadPacks();
+        ImGui::SameLine();
+        ImGui::Text("%s", loadingStatus().c_str());
+        if (ui::style::button(import.c_str(), true, width)) openImport();
     }
-    if (ImGui::CollapsingHeader("Map and Minimap") && ui::options::drawMaps(&persisted, aboveBelowImage(true), aboveBelowImage(false))) {
-        settings::save(folder, persisted);
-    }
-    if (ImGui::CollapsingHeader("GW2 API key")) {
+
+    if (ImGui::CollapsingHeader("GW2 API Key", ImGuiTreeNodeFlags_DefaultOpen)) {
         switch (ui::options::drawApiKey(persisted.api_key, key_field, sizeof(key_field), key_check != nullptr, key_status)) {
         case ui::options::KeyAction::None: break;
         case ui::options::KeyAction::OpenApplications: openInBrowser(api_key::APPLICATIONS_URL); break;
@@ -1102,6 +1105,13 @@ void drawOptionsPage() {
             key_status = "Saved API data cleared.";
             break;
         }
+    }
+
+    if (ImGui::CollapsingHeader("Markers")) {
+        if (ui::options::drawPack(&persisted, &show_hidden)) settings::save(folder, persisted);
+    }
+    if (ImGui::CollapsingHeader("Map and Minimap") && ui::options::drawMaps(&persisted, aboveBelowImage(true), aboveBelowImage(false))) {
+        settings::save(folder, persisted);
     }
 }
 
@@ -1189,7 +1199,7 @@ void load(AddonAPI* aApi, Mumble::Data* aMumbleLink) {
     // Nexus presses a shortcut's bind for a left click on it and has no other way to say so, so
     // the menu has a bind: unset, and named for what it is there for.
     api->InputBinds.RegisterWithString(KEYBIND_MENU_ID, onMenuKeybind, "(null)");
-    api->Localization.Set(KEYBIND_MENU_ID, "en", "Open Markus menu");
+    api->Localization.Set(KEYBIND_MENU_ID, "en", "Open Markus Menu");
     api->InputBinds.RegisterWithString(KEYBIND_ALL_MARKERS_ID, onAllMarkersKeybind, "(null)");
     api->Localization.Set(KEYBIND_ALL_MARKERS_ID, "en", "Toggle Markers"); // Pathing's name for it
     api->Textures.GetOrCreateFromMemory(ICON_TEXTURE_ID, const_cast<unsigned char*>(ui::icon_data::kIcon), sizeof(ui::icon_data::kIcon));

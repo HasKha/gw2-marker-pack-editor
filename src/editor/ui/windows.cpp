@@ -13,7 +13,7 @@ constexpr size_t kCount = static_cast<size_t>(Id::Count);
 
 struct Definition {
     const char* title; // with the ##id suffix
-    const char* label; // what the View menu calls it
+    const char* label; // what the View menu calls it: the title before its ##id
     const char* key; // what the settings file calls it
     bool visible_by_default;
 };
@@ -22,10 +22,10 @@ struct Definition {
 // here rather than being spelled out at each use.
 constexpr Definition kWindows[kCount] = {
     {"Markus Editor##Markus_Tree", "Tree", "tree", true},
-    {"Marker Details##Markus_Details", "Details", "details", true},
-    {"Marker Toolbar##Markus_Toolbar", "Toolbar", "toolbar", true},
+    {"Marker Details##Markus_Details", "Marker Details", "details", true},
+    {"Marker Toolbar##Markus_Toolbar", "Marker Toolbar", "toolbar", true},
     {"Trail Editor##Markus_Trail", "Trail Editor", "trail_editor", false},
-    {"Pack Resources##Markus_Resources", "Resources", "resources", false},
+    {"Pack Resources##Markus_Resources", "Pack Resources", "resources", false},
 };
 
 // Seeded from the table rather than spelled out per index: adding a window has to stay one

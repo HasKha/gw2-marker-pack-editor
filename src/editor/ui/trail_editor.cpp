@@ -1,5 +1,6 @@
 #include "editor/ui/trail_editor.h"
 
+#include <IconsFontAwesome7.h>
 #include <imgui.h>
 
 #include <algorithm>
@@ -9,6 +10,8 @@
 
 #include "editor/trail_edit.h"
 #include "util/path_text.h"
+#include "viewer/ui/fonts.h"
+#include "viewer/ui/style.h"
 
 namespace ui::trail_editor {
 
@@ -63,7 +66,8 @@ void drawHeader(editor::State& state, const viewer::Camera& camera) {
     if (ImGui::IsItemDeactivatedAfterEdit()) trail_edit::setMapId(state, map_id);
 
     ImGui::SameLine();
-    if (ImGui::Button("Set to current map")) trail_edit::setMapId(state, static_cast<int32_t>(camera.map_id));
+    if (ImGui::Button(viewer::ui::fonts::label(ICON_FA_MAP_LOCATION_DOT, "Set to Current Map").c_str()))
+        trail_edit::setMapId(state, static_cast<int32_t>(camera.map_id));
     if (ImGui::IsItemHovered()) {
         ImGui::SetTooltip(camera.valid ? "Current map: %u" : "The game has not reported a map yet", camera.map_id);
     }
@@ -108,7 +112,7 @@ void drawPointList(editor::State& state) {
 // the trail when nothing is selected. Walking the route and dropping points is how these
 // are authored, and a point can be dragged afterwards like any other.
 void drawAddPoint(editor::State& state, const viewer::Camera& camera, size_t selected) {
-    if (!ImGui::Button("Add point")) {
+    if (!ImGui::Button(viewer::ui::fonts::label(ICON_FA_PLUS, "Add Point").c_str())) {
         if (ImGui::IsItemHovered()) {
             ImGui::SetTooltip(
                 "Adds a point at the character's position,\n"
@@ -152,13 +156,13 @@ void drawSelectedPoint(editor::State& state, const viewer::Camera& camera) {
     ImGui::SameLine();
     // erasePoints drops the point selection itself — the indices it held all move. The
     // trail stays selected either way, so the editor stays open on it.
-    if (ImGui::Button("Delete selected")) trail_edit::erasePoints(state, selected);
+    if (ImGui::Button(viewer::ui::fonts::label(ICON_FA_TRASH, "Delete Selected").c_str())) trail_edit::erasePoints(state, selected);
     ImGui::SameLine();
     ImGui::TextDisabled("%zu selected", selected.size());
 }
 
 void drawCirclePopup(editor::State& state, const viewer::Camera& camera) {
-    constexpr const char* kTitle = "Add circle";
+    constexpr const char* kTitle = "Add Circle";
 
     if (open_circle_popup) {
         ImGui::OpenPopup(kTitle);
@@ -169,7 +173,7 @@ void drawCirclePopup(editor::State& state, const viewer::Camera& camera) {
 
     ImGui::PushItemWidth(220.0f);
     ImGui::DragFloat3("Centre", &circle.centre.x, 0.05f);
-    if (ImGui::Button("Use character position")) circle.centre = camera.player;
+    if (ImGui::Button(viewer::ui::fonts::label(ICON_FA_CROSSHAIRS, "Use Character Position").c_str())) circle.centre = camera.player;
 
     ImGui::DragFloat("Radius", &circle.radius, 0.05f, 0.0f, 0.0f, "%.3f");
     ImGui::InputInt("Segments", &circle.segments);
@@ -181,12 +185,14 @@ void drawCirclePopup(editor::State& state, const viewer::Camera& camera) {
     ImGui::TextDisabled("Appends %d points as a new segment.", circle.segments + 1);
 
     ImGui::Separator();
-    if (ImGui::Button("Add", ImVec2(110, 0))) {
+    const std::string add = viewer::ui::fonts::label(ICON_FA_PLUS, "Add");
+    const float width = viewer::ui::style::buttonWidth({add.c_str(), "Cancel"});
+    if (ImGui::Button(add.c_str(), ImVec2(width, 0))) {
         trail_edit::addArc(state, circle.centre, circle.radius, circle.segments, circle.angle_start, circle.angle_end);
         ImGui::CloseCurrentPopup();
     }
     ImGui::SameLine();
-    if (ImGui::Button("Cancel", ImVec2(110, 0))) ImGui::CloseCurrentPopup();
+    if (ImGui::Button("Cancel", ImVec2(width, 0))) ImGui::CloseCurrentPopup();
 
     ImGui::EndPopup();
 }
@@ -199,15 +205,17 @@ Request drawMenu(editor::State& state, const viewer::Camera& camera) {
 
     const bool open = trail_edit::isOpen();
 
-    if (ImGui::MenuItem("Reload from file", nullptr, false, open)) trail_edit::reload(state);
+    if (ImGui::MenuItem(viewer::ui::fonts::label(ICON_FA_ROTATE_RIGHT, "Reload from File").c_str(), nullptr, false, open))
+        trail_edit::reload(state);
     if (ImGui::IsItemHovered() && open) ImGui::SetTooltip("Throws away the edits and rereads the .trl from the pack.");
 
-    if (ImGui::MenuItem("Save to file...", nullptr, false, open)) request = Request::Export;
+    if (ImGui::MenuItem(viewer::ui::fonts::label(ICON_FA_FILE_EXPORT, "Save to File...").c_str(), nullptr, false, open))
+        request = Request::Export;
     if (ImGui::IsItemHovered() && open) ImGui::SetTooltip("Writes a copy outside the pack. Editing already saves with the pack.");
 
     ImGui::Separator();
 
-    if (ImGui::MenuItem("Add circle...", nullptr, false, open)) {
+    if (ImGui::MenuItem(viewer::ui::fonts::label(ICON_FA_CIRCLE_NOTCH, "Add Circle...").c_str(), nullptr, false, open)) {
         // Only the centre follows the character; the rest is whatever was used last.
         circle.centre = camera.player;
         open_circle_popup = true;

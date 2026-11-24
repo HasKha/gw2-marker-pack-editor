@@ -8,6 +8,7 @@
 #include "util/json_file.h"
 #include "util/path_text.h"
 #include "viewer/ui/fonts.h"
+#include "viewer/ui/style.h"
 
 namespace viewer::ui::script_console {
 
@@ -15,29 +16,33 @@ namespace {
 
 ImVec4 colourOf(script::Level level) {
     switch (level) {
-    case script::Level::Warn: return ImVec4(1.0f, 0.8f, 0.3f, 1.0f);
-    case script::Level::Error: return ImVec4(1.0f, 0.4f, 0.4f, 1.0f);
-    case script::Level::System: return ImVec4(0.6f, 0.6f, 0.6f, 1.0f);
+    case script::Level::Warn: return style::WARNING;
+    case script::Level::Error: return style::ERROR_TEXT;
+    case script::Level::System: return style::muted();
     default: return ImGui::GetStyleColorVec4(ImGuiCol_Text);
     }
 }
 
 void drawMessages(const script::Engine& engine, const std::filesystem::path& save_file) {
     static uint64_t seen_revision = 0;
-    static std::string save_status; // what the last Save did, until the next
+    static std::string status; // what the last Copy or Save did, until the next
 
     // The whole log, tracebacks included, for a player to send with a report.
-    if (ImGui::Button(fonts::label(ICON_FA_COPY, "Copy").c_str())) ImGui::SetClipboardText(engine.console().text().c_str());
+    if (ImGui::Button(fonts::label(ICON_FA_COPY, "Copy").c_str())) {
+        ImGui::SetClipboardText(engine.console().text().c_str());
+        status = "Copied " + std::to_string(engine.console().messages().size()) + " messages to the clipboard";
+    }
     if (!save_file.empty()) {
         ImGui::SameLine();
         if (ImGui::Button(fonts::label(ICON_FA_FLOPPY_DISK, "Save").c_str())) {
-            save_status = util::json_file::writeText(save_file, engine.console().text()) ? "Saved to " + util::pathText(save_file)
-                                                                                          : "Could not write " + util::pathText(save_file);
+            status = util::json_file::writeText(save_file, engine.console().text()) ? "Saved to " + util::pathText(save_file)
+                                                                                    : "Could not write " + util::pathText(save_file);
         }
-        if (!save_status.empty()) {
-            ImGui::SameLine();
-            ImGui::TextUnformatted(save_status.c_str());
-        }
+    }
+    if (!status.empty()) {
+        ImGui::SameLine();
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextColored(style::muted(), "%s", status.c_str());
     }
 
     ImGui::BeginChild("##messages", ImVec2(0, 0), false, ImGuiWindowFlags_HorizontalScrollbar);
@@ -72,11 +77,15 @@ void drawWatches(const script::Engine& engine) {
 }
 
 void drawTimes(const script::Engine& engine, const runtime::Installed& installed) {
+    bool any = false;
     for (size_t pack = 0; pack < installed.packs.size(); ++pack) {
         const double milliseconds = engine.frameSeconds(pack) * 1000.0;
-        if (milliseconds <= 0.0) continue;
-        ImGui::Text("%8.3f ms  %s", milliseconds, util::pathText(installed.packs[pack]->loaded->path.filename()).c_str());
+        if (milliseconds > 0.0) {
+            ImGui::Text("%8.3f ms  %s", milliseconds, util::pathText(installed.packs[pack]->loaded->path.filename()).c_str());
+            any = true;
+        }
     }
+    if (!any) ImGui::TextColored(style::muted(), "No pack script ran this frame.");
 }
 
 void drawCensus(const script::Engine& engine) {
@@ -94,7 +103,7 @@ void drawCensus(const script::Engine& engine) {
 void draw(const script::Engine& engine, const runtime::Installed& installed, const std::filesystem::path& save_file, bool* open) {
     if (!*open) return;
     ImGui::SetNextWindowSize(ImVec2(640.0f, 400.0f), ImGuiCond_FirstUseEver);
-    if (ImGui::Begin("Lua script console", open)) {
+    if (ImGui::Begin("Lua Script Console", open)) {
         const size_t census = engine.census().entries().size();
         if (ImGui::BeginTabBar("##tabs")) {
             if (ImGui::BeginTabItem("Messages")) {
@@ -105,7 +114,7 @@ void draw(const script::Engine& engine, const runtime::Installed& installed, con
                 drawWatches(engine);
                 ImGui::EndTabItem();
             }
-            if (ImGui::BeginTabItem("Frame time")) {
+            if (ImGui::BeginTabItem("Frame Time")) {
                 drawTimes(engine, installed);
                 ImGui::EndTabItem();
             }

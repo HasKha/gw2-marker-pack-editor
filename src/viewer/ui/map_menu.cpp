@@ -2,6 +2,8 @@
 
 #include <imgui.h>
 
+#include "viewer/ui/style.h"
+
 namespace viewer::ui::map_menu {
 
 namespace {
@@ -55,13 +57,13 @@ bool draw(const Context& context) {
     if (ImGui::BeginPopup(kMenuId)) {
         if (menu_node < context.tree->nodes.size()) {
             const registry::Category& category = context.tree->nodes[menu_node];
-            ImGui::TextDisabled("%s", category.label.c_str());
-            if (ImGui::MenuItem("Hide parent category")) {
+            ImGui::TextColored(viewer::ui::style::muted(), "%s", category.label.c_str());
+            if (ImGui::MenuItem("Hide Parent Category")) {
                 context.states->set(category.id, false, category.default_toggle);
                 hid = true;
             }
             // Pathing offers the namespace only with Shift held; it is the id packs write.
-            if (io.KeyShift && ImGui::MenuItem("Copy parent category namespace") && context.copy) context.copy(category.id);
+            if (io.KeyShift && ImGui::MenuItem("Copy Parent Category Namespace") && context.copy) context.copy(category.id);
         }
         ImGui::EndPopup();
     }

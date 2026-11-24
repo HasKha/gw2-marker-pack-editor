@@ -1,5 +1,6 @@
 #include "editor/ui/property_panel.h"
 
+#include <IconsFontAwesome7.h>
 #include <imgui.h>
 
 #include <algorithm>
@@ -11,6 +12,8 @@
 
 #include "editor/pathable_edit.h"
 #include "editor/undo.h"
+#include "viewer/ui/fonts.h"
+#include "viewer/ui/style.h"
 
 namespace ui::property_panel {
 
@@ -159,7 +162,7 @@ std::string edit_started_value;
 // A category takes its whole subtree with it, which is more than a single click should do
 // without saying so. Ctrl+Z takes it back — the delete is one undo step, subtree included.
 void drawDeletePopup(editor::State& state, editor::NodeRef node) {
-    constexpr const char* kTitle = "Delete category?";
+    constexpr const char* kTitle = "Delete Category?";
 
     if (open_delete_popup) {
         ImGui::OpenPopup(kTitle);
@@ -175,12 +178,14 @@ void drawDeletePopup(editor::State& state, editor::NodeRef node) {
     ImGui::TextDisabled("Removes %zu categories and %zu markers.", removal.categories, removal.pathables);
     ImGui::Separator();
 
-    if (ImGui::Button("Delete", ImVec2(110, 0))) {
+    const std::string remove = viewer::ui::fonts::label(ICON_FA_TRASH, "Delete");
+    const float width = viewer::ui::style::buttonWidth({remove.c_str(), "Cancel"});
+    if (ImGui::Button(remove.c_str(), ImVec2(width, 0))) {
         pathable_edit::remove(state, node);
         ImGui::CloseCurrentPopup();
     }
     ImGui::SameLine();
-    if (ImGui::Button("Cancel", ImVec2(110, 0))) ImGui::CloseCurrentPopup();
+    if (ImGui::Button("Cancel", ImVec2(width, 0))) ImGui::CloseCurrentPopup();
 
     ImGui::EndPopup();
 }
@@ -188,10 +193,9 @@ void drawDeletePopup(editor::State& state, editor::NodeRef node) {
 // Right-aligned on the header's first row. Deleting a marker goes through immediately;
 // deleting a category takes its whole subtree with it, which is worth asking about first.
 void drawDeleteButton(editor::State& state, editor::NodeRef node, bool* out_confirm) {
-    constexpr float kWidth = 60.0f;
-
-    ImGui::SameLine(ImGui::GetWindowContentRegionMax().x - kWidth);
-    if (!ImGui::Button("Delete", ImVec2(kWidth, 0))) return;
+    const std::string label = viewer::ui::fonts::label(ICON_FA_TRASH, "Delete");
+    ImGui::SameLine(ImGui::GetWindowContentRegionMax().x - viewer::ui::style::buttonWidth({label.c_str()}));
+    if (!ImGui::Button(label.c_str())) return;
 
     if (node.kind == editor::NodeKind::Category) {
         *out_confirm = true;
@@ -320,7 +324,8 @@ void drawExplicit(editor::State& state, editor::NodeRef node) {
 
             ImGui::TableNextColumn();
             ImGui::PushID(attribute.key.c_str());
-            if (ImGui::SmallButton("x")) remove_key = attribute.key;
+            // The icon alone, or an x before the font is built.
+            if (ImGui::SmallButton(viewer::ui::fonts::ready() ? ICON_FA_XMARK : "x")) remove_key = attribute.key;
             if (ImGui::IsItemHovered()) ImGui::SetTooltip("Remove this attribute");
             ImGui::PopID();
         }
@@ -401,7 +406,7 @@ void drawInherited(editor::State& state, editor::NodeRef node) {
 
             ImGui::TableNextColumn();
             ImGui::PushID(row.key.c_str());
-            if (ImGui::SmallButton("override")) {
+            if (ImGui::SmallButton("Override")) {
                 if (pack::AttributeCollection* target = attributesOf(state, node)) {
                     undo::Step step(state, "Override " + row.name);
                     undo::attributes(state, node);

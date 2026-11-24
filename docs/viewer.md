@@ -53,7 +53,8 @@ src/viewer/
   store.*        category toggles, script Storage
   utc.*          the wall clock, and the date format timers and the catalog share
   ui/            main_menu, options, pack_catalog, import_window, script_console, interaction,
-                 map_menu, fonts (Font Awesome merged into Nexus's font), achievement_tooltip
+                 map_menu, fonts (Font Awesome merged into Nexus's font), achievement_tooltip,
+                 style (the palette and shared widgets, the editor's too)
 ```
 
 `viewer/` never includes `editor/`. Where it has to reach the editor (the Edit button, the overlays) it calls
@@ -213,7 +214,7 @@ a bind, Toggle Markers, turns it on and off. **Smart categories** (default on) h
 on the current map (`runtime::nodesOnMap`) behind an "N Categories Are Hidden" row.
 
 It is shown in Nexus's right-click menu, the menu of our icon in Nexus's bar (the default), or both. Nexus opens an icon's context
-menu on right click and presses its keybind ("Open Markus menu") on left click, so the left click opens a
+menu on right click and presses its keybind ("Open Markus Menu") on left click, so the left click opens a
 popup of ours under the icon (`placeMenu`). Both are added and removed from the options page, which is safe
 since Nexus locks its quick access only while drawing the bar.
 

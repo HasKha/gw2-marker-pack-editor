@@ -2,8 +2,6 @@
 
 #include <IconsFontAwesome7.h>
 #include <imgui.h>
-// For ImGuiItemFlags_Disabled: imgui 1.80 has no BeginDisabled.
-#include <imgui_internal.h>
 
 #include <string>
 #include <vector>
@@ -11,6 +9,7 @@
 #include "viewer/runtime.h"
 #include "viewer/ui/achievement_tooltip.h"
 #include "viewer/ui/fonts.h"
+#include "viewer/ui/style.h"
 
 namespace viewer::ui::main_menu {
 
@@ -29,15 +28,9 @@ bool row(const char* name, const bool* checked, bool has_children, bool* open, b
     *hovered = ImGui::IsWindowHovered() && ImGui::IsMouseHoveringRect(row_min, row_max);
     if (checked) {
         bool value = *checked;
-        if (locked) {
-            ImGui::PushItemFlag(ImGuiItemFlags_Disabled, true);
-            ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f);
-        }
+        style::beginDisabled(locked);
         clicked = ImGui::Checkbox("##on", &value);
-        if (locked) {
-            ImGui::PopStyleVar();
-            ImGui::PopItemFlag();
-        }
+        style::endDisabled();
         ImGui::SameLine();
     }
     if (!has_children) {
@@ -142,7 +135,7 @@ bool drawChildren(const registry::CategoryTree& tree, const std::vector<size_t>&
         const std::string label = fonts::label(
             ICON_FA_EYE_SLASH,
             (std::to_string(skipped) + (skipped == 1 ? " Category Is Hidden" : " Categories Are Hidden")).c_str());
-        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
+        ImGui::PushStyleColor(ImGuiCol_Text, style::muted());
         if (ImGui::Selectable(label.c_str(), false, ImGuiSelectableFlags_DontClosePopups) && context.show_all) {
             context.show_all->insert(parent);
         }

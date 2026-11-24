@@ -22,14 +22,15 @@ full map open, do its markers draw over the map and under an open window? With a
 still draw, over everything? Through a loading screen, entered by a waypoint and by a portal, is nothing
 drawn?
 
-### 2. Marker Packs in two tabs
+### 2. Marker Pack Library in two tabs
 
 Built: one row for every pack, the same in either tab; Installed shows those on disk, Library the rest. Only
 the pull is left.
 
 Pull: does a pack dropped in by hand show under Installed? Downloading from Library, does it stay there, with
 Delete, until the tab is switched, then show under Installed? Deleting one under Installed, does it stay there
-with Download until then?
+with Download until then? Does a row's name read as its title, larger and in the accent colour, with the
+details under it quieter but legible on Nexus's theme?
 
 ### 3. The repo
 

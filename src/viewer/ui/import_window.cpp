@@ -7,32 +7,21 @@
 
 #include "util/path_text.h"
 #include "viewer/ui/fonts.h"
+#include "viewer/ui/style.h"
 
 namespace viewer::ui::import_window {
-
-namespace {
-
-// imgui 1.80 predates BeginDisabled: a disabled button is drawn dim and its press ignored.
-bool button(const char* label, bool enabled) {
-    if (!enabled) ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.4f);
-    const bool pressed = ImGui::Button(label);
-    if (!enabled) ImGui::PopStyleVar();
-    return pressed && enabled;
-}
-
-} // namespace
 
 Answer draw(const blish_import::Found& found, Choices* choices, const std::string& status, bool busy, bool* open) {
     Answer answer = Answer::None;
     if (!*open) return answer;
     choices->packs.resize(found.packs.size(), 1);
 
-    ImGui::SetNextWindowSize(ImVec2(ImGui::GetFontSize() * 26.0f, 0.0f), ImGuiCond_FirstUseEver);
-    if (ImGui::Begin("Import from BlishHUD", open, ImGuiWindowFlags_AlwaysAutoResize)) {
+    // No close button while importing, as Close is locked then: the import would go on unseen.
+    if (ImGui::Begin("Import from Blish HUD", busy ? nullptr : open, ImGuiWindowFlags_AlwaysAutoResize)) {
         if (found.packs.empty()) {
-            ImGui::TextWrapped("No marker packs found in BlishHUD.");
+            ImGui::TextWrapped("No marker packs found in Blish HUD.");
         } else {
-            ImGui::TextWrapped("Do you wish to import your marker packs from BlishHUD?");
+            ImGui::TextWrapped("Do you wish to import your marker packs from Blish HUD?");
             const float height =
                 ImGui::GetTextLineHeightWithSpacing() * std::min<float>(8.0f, static_cast<float>(found.packs.size()) + 0.5f);
             if (ImGui::BeginChild("##packs", ImVec2(ImGui::GetFontSize() * 24.0f, height), true)) {
@@ -47,23 +36,23 @@ Answer draw(const blish_import::Found& found, Choices* choices, const std::strin
         }
 
         if (!status.empty()) ImGui::TextWrapped("%s", status.c_str());
-        ImGui::TextDisabled("You can open this window anytime from the addon options.");
+        ImGui::TextColored(style::muted(), "You can open this window anytime from the addon options.");
 
-        // Right-aligned by the buttons' width last frame: the first frame they stand at the left.
-        static float buttons_width = 0.0f;
-        const float right = ImGui::GetWindowContentRegionMax().x;
-        if (buttons_width > 0.0f) ImGui::SetCursorPosX(std::max(ImGui::GetCursorPosX(), right - buttons_width));
-        const float left = ImGui::GetCursorScreenPos().x;
+        // Right-aligned, both as wide as the wider, so the pair keeps its place as Import's label
+        // changes. The window sizes itself to its contents, so its width is last frame's.
+        const std::string import = fonts::label(ICON_FA_FILE_IMPORT, busy ? "Importing..." : "Import");
+        const std::string close = fonts::label(ICON_FA_XMARK, "Close");
+        const float width = style::buttonWidth({fonts::label(ICON_FA_FILE_IMPORT, "Importing...").c_str(), close.c_str()});
+        const float buttons = width * 2.0f + ImGui::GetStyle().ItemSpacing.x;
+        ImGui::SetCursorPosX(std::max(ImGui::GetCursorPosX(), ImGui::GetWindowContentRegionMax().x - buttons));
         const bool any_chosen = std::find(choices->packs.begin(), choices->packs.end(), 1) != choices->packs.end();
-        if (button(fonts::label(ICON_FA_FILE_IMPORT, busy ? "Importing..." : "Import").c_str(), !busy && any_chosen)) {
-            answer = Answer::Import;
-        }
+        if (style::button(import.c_str(), !busy && any_chosen, width)) answer = Answer::Import;
+        if (!busy && !any_chosen && ImGui::IsItemHovered()) ImGui::SetTooltip("Tick a pack to import first.");
         ImGui::SameLine();
-        if (button(fonts::label(ICON_FA_XMARK, "Close").c_str(), !busy)) {
+        if (style::button(close.c_str(), !busy, width)) {
             answer = Answer::Close;
             *open = false;
         }
-        buttons_width = ImGui::GetItemRectMax().x - left;
     }
     ImGui::End();
     return answer;

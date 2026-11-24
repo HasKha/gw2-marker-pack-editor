@@ -1,6 +1,4 @@
 #include "viewer/ui/pack_catalog.h"
-#include "util/path_text.h"
-#include "viewer/ui/fonts.h"
 
 #include <IconsFontAwesome7.h>
 #include <imgui.h>
@@ -10,13 +8,13 @@
 #include <cstdio>
 #include <unordered_set>
 
+#include "util/path_text.h"
+#include "viewer/ui/fonts.h"
+#include "viewer/ui/style.h"
+
 namespace viewer::ui::pack_catalog {
 
 namespace {
-
-// Pathing's Chardonnay, for when a pack was last updated, and its red for an error.
-const ImVec4 kDateColour(1.0f, 205.0f / 255.0f, 130.0f / 255.0f, 1.0f);
-const ImVec4 kErrorColour(1.0f, 0.4f, 0.4f, 1.0f);
 
 bool containsIgnoringCase(const std::string& text, const char* needle) {
     const std::string_view wanted(needle);
@@ -54,34 +52,51 @@ bool matchesFilter(const Row& row, const char* filter) {
 bool drawRow(const Row& row, Action* action) {
     bool acted = false;
 
-    // What it is: the catalog's name, author, date, categories and description, or for a pack
-    // the catalog does not list, its file name alone.
+    // What it is: its name as the row's title and who made it, then what is said about it, quieter,
+    // then its description. A pack the catalog does not list has its file name alone.
     if (const catalog::Package* package = row.package) {
-        ImGui::TextUnformatted(package->name.c_str());
+        // How far each font's baseline is below the top of its line, drawn at the current size.
+        const auto ascent = [] { return ImGui::GetFont()->Ascent * ImGui::GetFontSize() / ImGui::GetFont()->FontSize; };
+        fonts::pushHeading();
+        const float name_ascent = ascent();
+        ImGui::TextColored(style::ACCENT, "%s", package->name.c_str());
+        fonts::pop();
         if (!package->author.empty()) {
+            // On the name's baseline: SameLine puts it at the top of the taller line.
             ImGui::SameLine();
-            ImGui::TextDisabled("by %s", package->author.c_str());
+            ImGui::SetCursorPosY(ImGui::GetCursorPosY() + name_ascent - ascent());
+            ImGui::TextColored(style::muted(), "by %s", package->author.c_str());
         }
-        if (package->total_downloads > 0 && ImGui::IsItemHovered()) {
-            ImGui::SetTooltip("About %d downloads a day", package->total_downloads);
+
+        // Joined by a middle dot, U+00B7, which every font we build from has.
+        std::string details = ago(package->last_update);
+        const auto add = [&details](const std::string& part) {
+            if (part.empty()) return;
+            if (!details.empty()) details += "  \xC2\xB7  ";
+            details += part;
+        };
+        if (package->size_mb > 0.0f) {
+            char size[32];
+            std::snprintf(size, sizeof(size), "%.1f MB", package->size_mb);
+            add(size);
         }
-        if (const std::string updated = ago(package->last_update); !updated.empty()) {
-            ImGui::SameLine();
-            ImGui::TextColored(kDateColour, "%s", updated.c_str());
-        }
-        if (!package->categories.empty()) ImGui::TextDisabled("%s", package->categories.c_str());
+        if (package->total_downloads > 0) add("About " + std::to_string(package->total_downloads) + " downloads a day");
+        if (!details.empty()) ImGui::TextColored(style::muted(), "%s", details.c_str());
+        if (!package->categories.empty()) ImGui::TextColored(style::muted(), "%s", package->categories.c_str());
         if (!package->description.empty()) {
             ImGui::PushTextWrapPos(0.0f);
             ImGui::TextUnformatted(package->description.c_str());
             ImGui::PopTextWrapPos();
         }
     } else {
-        ImGui::TextUnformatted(util::pathText(row.local->path.filename()).c_str());
-        if (ImGui::IsItemHovered()) ImGui::SetTooltip("Not in the public catalog.");
+        fonts::pushHeading();
+        ImGui::TextColored(style::ACCENT, "%s", util::pathText(row.local->path.filename()).c_str());
+        fonts::pop();
+        ImGui::TextColored(style::muted(), "Not in the public catalog");
     }
 
     // Download, Update or Up to date, Pathing's words, or the bar of a download under way; then
-    // Keep updated and the pack's page. All for a pack the catalog lists.
+    // Keep updated, for a pack on disk, and the pack's page. All for a pack the catalog lists.
     const bool running = row.download && row.download->running;
     if (const catalog::Package* package = row.package) {
         if (running) {
@@ -94,22 +109,24 @@ bool drawRow(const Row& row, Action* action) {
                 static_cast<int>(std::min(progress, 0.99f) * 100.0f));
             ImGui::ProgressBar(progress < 0.0f ? 0.0f : progress, ImVec2(ImGui::GetFontSize() * 10.0f, 0.0f), label);
         } else if (row.state == catalog::State::Current) {
-            ImGui::TextDisabled("Up to date");
+            ImGui::AlignTextToFramePadding();
+            ImGui::TextColored(style::muted(), "%s", fonts::label(ICON_FA_CHECK, "Up to date").c_str());
         } else {
             if (ImGui::Button(fonts::label(ICON_FA_DOWNLOAD, row.state == catalog::State::Stale ? "Update" : "Download").c_str())) {
                 *action = Action{Action::Kind::Download, &row};
                 acted = true;
             }
-            if (ImGui::IsItemHovered() && package->size_mb > 0.0f) ImGui::SetTooltip("%.1f MB", package->size_mb);
         }
 
-        ImGui::SameLine();
-        bool keep = row.keep_updated;
-        if (ImGui::Checkbox("Keep updated", &keep)) {
-            *action = Action{Action::Kind::KeepUpdated, &row, keep};
-            acted = true;
+        if (row.local) {
+            ImGui::SameLine();
+            bool keep = row.keep_updated;
+            if (ImGui::Checkbox("Keep updated", &keep)) {
+                *action = Action{Action::Kind::KeepUpdated, &row, keep};
+                acted = true;
+            }
+            if (ImGui::IsItemHovered()) ImGui::SetTooltip("New versions download when the addon loads.");
         }
-        if (ImGui::IsItemHovered()) ImGui::SetTooltip("New versions download when the addon loads.");
 
         if (!package->info.empty()) {
             ImGui::SameLine();
@@ -127,19 +144,21 @@ bool drawRow(const Row& row, Action* action) {
         if (ImGui::Button(fonts::label(ICON_FA_TRASH, "Delete").c_str())) ImGui::OpenPopup("##delete");
         if (ImGui::BeginPopup("##delete")) {
             ImGui::Text("Delete %s from disk?", util::pathText(row.local->path.filename()).c_str());
-            if (ImGui::Button("Delete")) {
+            const std::string remove = fonts::label(ICON_FA_TRASH, "Delete");
+            const float width = style::buttonWidth({remove.c_str(), "Cancel"});
+            if (ImGui::Button(remove.c_str(), ImVec2(width, 0.0f))) {
                 *action = Action{Action::Kind::Delete, &row};
                 acted = true;
                 ImGui::CloseCurrentPopup();
             }
             ImGui::SameLine();
-            if (ImGui::Button("Cancel")) ImGui::CloseCurrentPopup();
+            if (ImGui::Button("Cancel", ImVec2(width, 0.0f))) ImGui::CloseCurrentPopup();
             ImGui::EndPopup();
         }
     }
 
     if (row.download && !running && !row.download->error.empty()) {
-        ImGui::TextColored(kErrorColour, "Error: %s", row.download->error.c_str());
+        ImGui::TextColored(style::ERROR_TEXT, "Error: %s", row.download->error.c_str());
     }
     return acted;
 }
@@ -159,6 +178,7 @@ void drawTab(Tab tab, const std::vector<Row>& rows, const char* filter, std::vec
     if (shown_tab != tab) shown.clear();
     shown_tab = tab;
     if (ImGui::BeginChild("##packages")) {
+        size_t drawn = 0;
         for (size_t i = 0; i < rows.size(); ++i) {
             const Row& row = rows[i];
             const std::string key = row.package ? row.package->file_name : util::pathText(row.local->path.filename());
@@ -167,10 +187,14 @@ void drawTab(Tab tab, const std::vector<Row>& rows, const char* filter, std::vec
                 ImGui::PushID(static_cast<int>(i));
                 Action action;
                 if (drawRow(row, &action)) actions->push_back(action);
+                ImGui::Spacing();
                 ImGui::Separator();
+                ImGui::Spacing();
                 ImGui::PopID();
+                ++drawn;
             }
         }
+        if (drawn == 0 && filter[0] != '\0') ImGui::Text("No pack matches \"%s\".", filter);
     }
     ImGui::EndChild();
 }
@@ -210,7 +234,7 @@ std::vector<Action> draw(const std::vector<Row>& rows, const std::string& librar
                 ImGui::TextUnformatted(library_status.c_str());
                 if (can_retry) {
                     ImGui::SameLine();
-                    if (ImGui::SmallButton("Retry")) *retry = true;
+                    if (ImGui::SmallButton(fonts::label(ICON_FA_ROTATE_RIGHT, "Retry").c_str())) *retry = true;
                 }
                 drawTab(Tab::Library, rows, filter, &actions);
                 ImGui::EndTabItem();

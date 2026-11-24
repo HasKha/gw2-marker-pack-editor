@@ -3,6 +3,7 @@
 #include <imgui.h>
 
 #include "viewer/ui/achievement_tooltip.h"
+#include "viewer/ui/style.h"
 
 namespace viewer::ui::interaction {
 
@@ -15,10 +16,6 @@ constexpr ImGuiWindowFlags kOverlayFlags = ImGuiWindowFlags_NoDecoration | ImGui
 // SmallInteract's place on screen: AdvancedDefaults' InteractGearXOffset and YOffset.
 constexpr float kPromptX = 0.62f;
 constexpr float kPromptY = 0.58f;
-
-// SmallInteract's tints: orange for what a marker will do, light blue for a hidden marker.
-const ImVec4 kPromptColour(1.0f, 142.0f / 255.0f, 50.0f / 255.0f, 1.0f);
-const ImVec4 kUnhideColour(173.0f / 255.0f, 216.0f / 255.0f, 230.0f / 255.0f, 1.0f);
 
 } // namespace
 
@@ -57,7 +54,7 @@ bool draw(
             ImGui::Separator();
         }
         const std::string text = behaviors::formatMessage(screen.prompt->text, "[" + key_name + "]");
-        ImGui::PushStyleColor(ImGuiCol_Text, screen.prompt->unhides ? kUnhideColour : kPromptColour);
+        ImGui::PushStyleColor(ImGuiCol_Text, screen.prompt->unhides ? style::UNHIDE : style::PROMPT);
         clicked = ImGui::Selectable(text.c_str());
         ImGui::PopStyleColor();
     }

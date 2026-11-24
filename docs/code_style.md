@@ -55,7 +55,14 @@ Each step is a short block under a comment saying what it does.
 - **No text drawn in the game smaller than 20 px**, the floor for the least important line. This is for what
   is drawn into or over the world, not our windows, which use Nexus's font.
 - **UI text is `ImGui::Text`.** `TextDisabled` only for what is really off (a control that cannot be used, a
-  pack not loaded), never to quieten a heading. `TextWrapped` only for long or variable text.
+  pack not loaded), never to quieten a heading; quieter text is `style::muted()`. `TextWrapped` only for long
+  or variable text.
+- **Colours and shared widgets come from `viewer/ui/style.h`**, the editor's windows too: the palette,
+  `beginDisabled` for greying out a block, buttons of one width for a group, one field width for a form, a
+  link. A colour new to the UI is added there, never as a literal where it is drawn.
+- **Title Case** for window titles, section headers, tabs, buttons and menu entries ("Import from Blish HUD...",
+  "Manage Packs"); **sentence case** for checkbox, slider and dropdown labels, dropdown choices, tooltips and
+  messages ("Show markers on maps"). A label ends in "..." when its action asks for more before it acts.
 - **An icon in a window is Font Awesome**, as text: `viewer::ui::fonts::label(ICON_FA_TRASH, "Delete")`,
   inside a `fonts::push()`. An icon new to `src/` draws only once `scripts/convert_fonts.py` is run again; its
   docstring says how. Where the icon is the whole control and the font may not be built, draw it with

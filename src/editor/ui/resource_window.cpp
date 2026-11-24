@@ -1,5 +1,6 @@
 #include "editor/ui/resource_window.h"
 
+#include <IconsFontAwesome7.h>
 #include <imgui.h>
 
 #include <algorithm>
@@ -16,6 +17,8 @@
 #include "pack/attributes.h"
 #include "pack/source.h"
 #include "util/path_text.h"
+#include "viewer/ui/fonts.h"
+#include "viewer/ui/style.h"
 
 namespace ui::resource_window {
 
@@ -293,7 +296,7 @@ void removeSelected(editor::State& state) {
 }
 
 void drawRemovePopup(editor::State& state) {
-    constexpr const char* kTitle = "Remove image?";
+    constexpr const char* kTitle = "Remove Image?";
 
     if (open_remove_popup) {
         ImGui::OpenPopup(kTitle);
@@ -302,16 +305,19 @@ void drawRemovePopup(editor::State& state) {
 
     if (!ImGui::BeginPopupModal(kTitle, nullptr, ImGuiWindowFlags_AlwaysAutoResize)) return;
 
-    ImGui::Text("%zu marker(s) still point at this image.", referenceCount(selected));
+    const size_t references = referenceCount(selected);
+    ImGui::Text(references == 1 ? "%zu marker still points at this image." : "%zu markers still point at this image.", references);
     ImGui::TextDisabled("They will fall back to a plain dot until they point somewhere else.");
     ImGui::Separator();
 
-    if (ImGui::Button("Remove", ImVec2(110, 0))) {
+    const std::string remove = viewer::ui::fonts::label(ICON_FA_TRASH, "Remove");
+    const float width = viewer::ui::style::buttonWidth({remove.c_str(), "Cancel"});
+    if (ImGui::Button(remove.c_str(), ImVec2(width, 0))) {
         removeSelected(state);
         ImGui::CloseCurrentPopup();
     }
     ImGui::SameLine();
-    if (ImGui::Button("Cancel", ImVec2(110, 0))) ImGui::CloseCurrentPopup();
+    if (ImGui::Button("Cancel", ImVec2(width, 0))) ImGui::CloseCurrentPopup();
 
     ImGui::EndPopup();
 }
@@ -378,17 +384,17 @@ void drawSelected(editor::State& state) {
     drawPreview();
 
     if (pending_add) {
-        if (ImGui::Button("Discard")) removeSelected(state);
+        if (ImGui::Button(viewer::ui::fonts::label(ICON_FA_XMARK, "Discard").c_str())) removeSelected(state);
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("Drops the file again. It was never written to the pack.");
     } else if (removed) {
-        if (ImGui::Button("Restore")) {
+        if (ImGui::Button(viewer::ui::fonts::label(ICON_FA_ROTATE_LEFT, "Restore").c_str())) {
             undo::Step step(state, "Restore image");
             undo::asset(state, selected);
             state.pack.restoreAsset(selected);
             resources::forget(selected);
             state.touch();
         }
-    } else if (ImGui::Button("Remove")) {
+    } else if (ImGui::Button(viewer::ui::fonts::label(ICON_FA_TRASH, "Remove").c_str())) {
         // Removing something nothing points at needs no ceremony.
         if (referenceCount(selected) == 0) {
             removeSelected(state);
@@ -413,7 +419,7 @@ bool draw(editor::State& state) {
 
     ensureIndex(state);
 
-    bool wants_add = ImGui::Button("Add image...");
+    bool wants_add = ImGui::Button(viewer::ui::fonts::label(ICON_FA_IMAGE, "Add Image...").c_str());
     ImGui::SameLine();
     ImGui::TextDisabled("%zu images, %zu unused", index.assets.size(), index.unreferenced);
 
@@ -422,11 +428,8 @@ bool draw(editor::State& state) {
     ImGui::TextUnformatted(target_folder.empty() ? "(pack root)" : target_folder.c_str());
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("Click a folder to change this.");
 
-    ImGui::TextDisabled("Filter");
-    ImGui::SameLine();
-    ImGui::PushItemWidth(-1.0f);
-    ImGui::InputText("##filter", filter, sizeof(filter));
-    ImGui::PopItemWidth();
+    ImGui::SetNextItemWidth(-1.0f);
+    ImGui::InputTextWithHint("##filter", "Filter by file name", filter, sizeof(filter));
 
     ImGui::Separator();
 
