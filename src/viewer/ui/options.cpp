@@ -72,15 +72,6 @@ bool drawPack(settings::Settings* settings, bool* show_hidden) {
 
 namespace {
 
-void sharedTooltip(const char* also = nullptr) {
-    if (!ImGui::IsItemHovered()) return;
-    if (also) {
-        ImGui::SetTooltip("%s\nApplies to both the minimap and the full map.", also);
-    } else {
-        ImGui::SetTooltip("Applies to both the minimap and the full map.");
-    }
-}
-
 // The maps' DPI scale, settings::DpiScaling, with Custom's factor under it when chosen.
 bool dpiScalingCombo(settings::Settings* settings) {
     static constexpr const char* kNames[] = {"None", "Nexus", "System", "Custom"};
@@ -102,53 +93,85 @@ bool dpiScalingCombo(settings::Settings* settings) {
         }
         ImGui::EndCombo();
     }
-    sharedTooltip("Must match how the game scales its maps, or markers are cut off at the minimap's edge\nand drift as the map pans.");
+    if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("Must match how the game scales its maps, or markers are cut off at the minimap's edge\nand drift as the map pans.");
+    }
     if (*mode == static_cast<int>(settings::DpiScaling::Custom)) {
         if (ImGui::InputFloat("Custom scale", &settings->map_dpi_custom, 0.05f, 0.25f, "%.2f")) {
             settings->map_dpi_custom = std::clamp(settings->map_dpi_custom, 0.5f, 4.0f);
             changed = true;
         }
-        sharedTooltip("1.25 for Windows' 125%.");
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("1.25 for Windows' 125%%.");
     }
     return changed;
 }
 
-// One map's section: its own settings, then those both maps share, which the other section shows too.
-bool drawMap(const char* id, settings::Settings* settings, int* markers, int* trails, float* opacity) {
-    // TODO: can we not share all those settings? and have minimap and map settings be independent.
-    ImGui::PushID(id);
-    bool changed = ImGui::Checkbox("Show markers on maps", &settings->map_pathables);
-    sharedTooltip();
-    changed |= visibilityCombo("Markers", markers);
+// The settings one map has of its own, under its name.
+bool drawOneMap(const char* name, int* markers, int* trails, float* opacity) {
+    ImGui::PushID(name);
+    ImGui::TextDisabled("%s", name);
+    ImGui::Indent();
+    bool changed = visibilityCombo("Markers", markers);
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("Default lets each pack decide; Always and Never override it.");
     changed |= visibilityCombo("Trails", trails);
     changed |= slider("Opacity", opacity, 0.0f, 1.0f, "%.2f");
-    changed |= slider("Trail width", &settings->map_trail_width, 0.5f, 4.5f, "%.1f");
-    sharedTooltip();
-    changed |= ImGui::Checkbox("Show above/below indicators", &settings->map_above_below);
-    sharedTooltip();
-    changed |= ImGui::Checkbox("Fade trail segments high above or below", &settings->map_fade_far_trails);
-    sharedTooltip();
-    changed |= ImGui::Checkbox("Show tooltips", &settings->map_tooltips);
-    sharedTooltip("Hold Shift to see a marker's categories instead; right-click to hide one.");
-    changed |= dpiScalingCombo(settings);
+    ImGui::Unindent();
     ImGui::PopID();
+    return changed;
+}
+
+// The above/below checkbox, its label showing the two images the maps draw, which a click
+// toggles as a checkbox's own label does. Without an image its word stands alone.
+bool aboveBelowCheckbox(bool* value, ImTextureID above, ImTextureID below) {
+    bool changed = ImGui::Checkbox("##above_below", value);
+    bool hovered = ImGui::IsItemHovered();
+    bool clicked = false;
+    const ImGuiStyle& style = ImGui::GetStyle();
+    const float size = ImGui::GetFontSize();
+    const auto item = [&] {
+        hovered |= ImGui::IsItemHovered();
+        clicked |= ImGui::IsItemClicked();
+    };
+    const auto text = [&](const char* part, float spacing) {
+        ImGui::SameLine(0.0f, spacing);
+        ImGui::TextUnformatted(part);
+        item();
+    };
+    const auto image = [&](ImTextureID texture) {
+        if (!texture) return;
+        ImGui::SameLine(0.0f, style.ItemInnerSpacing.x * 0.5f);
+        // Down to where the text of a frame-high line starts, as the words beside it are.
+        ImGui::SetCursorPosY(ImGui::GetCursorPosY() + style.FramePadding.y);
+        ImGui::Image(texture, ImVec2(size, size));
+        item();
+    };
+    text("Show above", style.ItemInnerSpacing.x);
+    image(above);
+    text("/below", above ? style.ItemInnerSpacing.x * 0.5f : 0.0f);
+    image(below);
+    text("indicators", style.ItemInnerSpacing.x);
+    if (clicked) {
+        *value = !*value;
+        changed = true;
+    }
+    if (hovered) ImGui::SetTooltip("Marks a map icon well above or below you.");
     return changed;
 }
 
 } // namespace
 
-bool drawMinimap(settings::Settings* settings) {
-    return drawMap(
-        "minimap",
-        settings,
-        &settings->minimap_marker_visibility,
-        &settings->minimap_trail_visibility,
-        &settings->minimap_opacity);
-}
-
-bool drawFullMap(settings::Settings* settings) {
-    return drawMap("full_map", settings, &settings->map_marker_visibility, &settings->map_trail_visibility, &settings->map_opacity);
+bool drawMaps(settings::Settings* settings, ImTextureID above, ImTextureID below) {
+    // TODO: can we not share all those settings? and have minimap and map settings be independent.
+    bool changed = ImGui::Checkbox("Show markers on maps", &settings->map_pathables);
+    changed |= drawOneMap("Minimap", &settings->minimap_marker_visibility, &settings->minimap_trail_visibility, &settings->minimap_opacity);
+    changed |= drawOneMap("Full map", &settings->map_marker_visibility, &settings->map_trail_visibility, &settings->map_opacity);
+    changed |= slider("Trail width", &settings->map_trail_width, 0.5f, 4.5f, "%.1f");
+    changed |= aboveBelowCheckbox(&settings->map_above_below, above, below);
+    changed |= ImGui::Checkbox("Fade trail segments high above or below", &settings->map_fade_far_trails);
+    changed |= ImGui::Checkbox("Show tooltips", &settings->map_tooltips);
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Hold Shift to see a marker's categories instead; right-click to hide one.");
+    changed |= dpiScalingCombo(settings);
+    return changed;
 }
 
 KeyAction drawApiKey(const std::string& registered, char* field, size_t field_size, bool checking, const std::string& status) {

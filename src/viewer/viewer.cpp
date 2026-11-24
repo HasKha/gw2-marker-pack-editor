@@ -824,6 +824,17 @@ map_scene::Options mapOptions() {
     return options;
 }
 
+// The above or below image the maps draw on an icon's corner, which the options page shows too.
+// Nexus returns the texture it already made for an identifier, so asking every frame decodes
+// each once; null until it is ready.
+ImTextureID aboveBelowImage(bool above) {
+    const char* id = above ? "TEX_MarkerPackEditor_Above" : "TEX_MarkerPackEditor_Below";
+    const unsigned char* bytes = above ? ui::map_icon_data::kAbove : ui::map_icon_data::kBelow;
+    const size_t size = above ? sizeof(ui::map_icon_data::kAbove) : sizeof(ui::map_icon_data::kBelow);
+    const Texture* texture = api->Textures.GetOrCreateFromMemory(id, const_cast<unsigned char*>(bytes), size);
+    return texture ? static_cast<ImTextureID>(texture->Resource) : nullptr;
+}
+
 // What the minimap or the full map shows this frame. Nothing on a map the API has not
 // described, as in Pathing, nor on a loading screen.
 void buildMapScene(const TextureLookup& texture) {
@@ -833,15 +844,8 @@ void buildMapScene(const TextureLookup& texture) {
         std::vector<map_scene::Layer> layers{map_scene::Layer{&live, &visible, texture, &map_trails}};
         if (edited_live) layers.push_back(map_scene::Layer{edited_live, &kNoNodes, edited_texture, &edited_map_trails});
         map_scene::build(layers, *details, mumble_state, mapOptions(), fade, uiScale(), next.get());
-
-        // The above and below images. Nexus returns the texture it already made for an
-        // identifier, so asking every frame decodes each once; null until it is ready.
-        const auto embedded = [](const char* id, const unsigned char* bytes, size_t size) -> ImTextureID {
-            const Texture* texture = api->Textures.GetOrCreateFromMemory(id, const_cast<unsigned char*>(bytes), size);
-            return texture ? static_cast<ImTextureID>(texture->Resource) : nullptr;
-        };
-        next->above = embedded("TEX_MarkerPackEditor_Above", ui::map_icon_data::kAbove, sizeof(ui::map_icon_data::kAbove));
-        next->below = embedded("TEX_MarkerPackEditor_Below", ui::map_icon_data::kBelow, sizeof(ui::map_icon_data::kBelow));
+        next->above = aboveBelowImage(true);
+        next->below = aboveBelowImage(false);
     } else {
         *next = map_scene::MapScene{};
     }
@@ -1060,8 +1064,9 @@ void drawOptionsPage() {
     if (ImGui::CollapsingHeader("Markers")) {
         if (ui::options::drawPack(&persisted, &show_hidden)) settings::save(folder, persisted);
     }
-    if (ImGui::CollapsingHeader("Minimap") && ui::options::drawMinimap(&persisted)) settings::save(folder, persisted);
-    if (ImGui::CollapsingHeader("Full map") && ui::options::drawFullMap(&persisted)) settings::save(folder, persisted);
+    if (ImGui::CollapsingHeader("Map and Minimap") && ui::options::drawMaps(&persisted, aboveBelowImage(true), aboveBelowImage(false))) {
+        settings::save(folder, persisted);
+    }
     if (ImGui::CollapsingHeader("GW2 API key")) {
         switch (ui::options::drawApiKey(persisted.api_key, key_field, sizeof(key_field), key_check != nullptr, key_status)) {
         case ui::options::KeyAction::None: break;

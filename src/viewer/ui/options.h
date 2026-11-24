@@ -3,6 +3,8 @@
 #include <cstddef>
 #include <string>
 
+#include <imgui.h>
+
 #include "viewer/settings.h"
 
 // The parts of the options page that are Pathing's settings, by its own names. Each returns
@@ -14,9 +16,10 @@ namespace viewer::ui::options {
 // never saved.
 bool drawPack(settings::Settings* settings, bool* show_hidden);
 
-// Pathing's map settings, a section for each map. Those both maps share are in both.
-bool drawMinimap(settings::Settings* settings);
-bool drawFullMap(settings::Settings* settings);
+// Pathing's map settings: those both maps share, and what each shows under its own name.
+// `above` and `below` are the images the maps mark a far icon with, shown in their checkbox's
+// label; either may be null.
+bool drawMaps(settings::Settings* settings, ImTextureID above, ImTextureID below);
 
 // What the player asked of the API key section.
 enum class KeyAction { None, OpenApplications, Register, Remove, ClearCache };
