@@ -1,11 +1,11 @@
 # Architecture
 
 How the editor is built and why. For the pack format itself see [format.md](format.md);
-for what is done and what is next see [plan.md](plan.md); for how code is written,
+for what is left on the editor see [editor_plan.md](editor_plan.md); for how code is written,
 [code_style.md](code_style.md).
 
-The addon is becoming two halves in one DLL: a viewer that every player runs, and this
-editor behind a setting. The viewer, and the `viewer/` library that sits between `pack/` and
+The addon is two halves in one DLL: a viewer that every player runs, and this editor, started
+on demand from the menu. The viewer, and the `viewer/` library that sits between `pack/` and
 `editor/` with the dependency running one way, are [viewer.md](viewer.md). The editor reaches
 into `viewer/` for the camera, textures and the draw-list quad path; nothing in `viewer/`
 reaches back. What follows describes the editor.
@@ -14,6 +14,9 @@ reaches back. What follows describes the editor.
 
 The invariants every change keeps. The sections below are why.
 
+- **Nothing may be specific to one pack.** The editor's main use is editing
+  [`gw2-markers`](https://github.com/HasKha/gw2-markers), and it has to work as well on any
+  other.
 - **`markus_pack` knows nothing of Nexus, imgui or the game.** `src/pack/` links only `markus_util`,
   pugixml, miniz and glm, which is what lets the whole format be tested offline. Never add an
   addon header to it.
@@ -21,8 +24,8 @@ The invariants every change keeps. The sections below are why.
   property form and the resources window's reference counts are all generated from it; an
   attribute named anywhere else is a second definition. See
   [The attribute table](#the-attribute-table-is-the-core-abstraction).
-- **Never block the render thread.** Anything modal or slow — native file dialogs today, pack
-  loading later — runs on a worker and is polled from `render()`.
+- **Never block the render thread.** Anything modal or slow, such as the native file dialogs,
+  runs on a worker and is polled from `render()`.
 - **One pack open at a time.** The loaded pack is the single source of truth in memory; the
   zip on disk is touched only on open and on save.
 - **The parsed XML document is the storage.** `Pack` owns a `pugi::xml_document` per file for
@@ -71,25 +74,27 @@ The invariants every change keeps. The sections below are why.
 
 ## Dependencies
 
-Carried over from the templates: `imgui` (RaidcoreGG fork), `mumble`, `nexus`,
-`nlohmann_json`. (`gw2relib` came with them too and was dropped before 1.0 — nothing here
-reads the game, so it was a compiled dependency nothing included.)
-
-New for this project:
+Each is a `cmake/<dep>.cmake`, whose comments say why it is fetched as it is.
 
 | Dep | Purpose |
 |---|---|
+| `imgui` | the RaidcoreGG fork Nexus draws with, 1.80 (see [code_style.md](code_style.md#ui)) |
+| `nexus`, `mumble` | the addon API and MumbleLink's layout |
+| `nlohmann_json` | the small JSON files kept between sessions |
 | `pugixml` | XML read/write; keeps comments and attribute order as real nodes |
 | `miniz` | zip read/write |
 | `nativefiledialog-extended` | native open/save dialogs |
 | `ImGuizmo` | 3D translate/rotate/scale gizmo |
 | `glm` | vec3/mat4 for the projection and the matrices ImGuizmo consumes |
 | `stb` | `stb_image`, to decode a trail's texture for its colour on the map, which Nexus decodes without handing the pixels back |
+| `lua`, `sol2` | Lua 5.4 and its C++ bindings, for packs' scripts ([viewer.md](viewer.md#lua)) |
+| `good_render` | GoodRender's header, the whole of its contract; nothing of it is linked |
+| `iconfontcppheaders` | Font Awesome's icon names |
 | `Catch2` | test framework. **Test-only** — nothing in `src/` links it |
 
 ## Build targets
 
-Thirteen, because the code worth testing outside the game is most of it:
+Several, because the code worth testing outside the game is most of it:
 
 | Target | Kind | Contents |
 |---|---|---|
@@ -131,7 +136,7 @@ Why there are two test targets, and what they are pointed at, is [testing.md](te
 ```
 src/
   addon/entry.cpp      — Markus.dll
-                       Nexus entry, AddonDefinition, loads the viewer and, when enabled, the editor
+                       Nexus entry, AddonDefinition, loads the viewer and connects the editor
   util/                — markus_util: path_text.h (paths as UTF-8 text), json_file.* (lenient
                        reads, all-or-nothing writes of small JSON files)
   http/                — markus_http: http.* (GETs and downloads that cancel), background.h
@@ -143,7 +148,7 @@ src/
     xml_reader.*       pugixml -> model; the document is kept and owned by the Pack
     writer.*           serializes the document back out, rebuilds the zip (format.md)
     trl.*              .trl read/write, byte-exact
-  viewer/              — markus_viewer; see viewer.md for what it grows into
+  viewer/              — markus_viewer; see viewer.md
   editor/              — markus_editor
     marker_editor.*    lifecycle, the windows and the shared menu bar, save/open, WndProc,
                        drawing the open pack
@@ -187,7 +192,7 @@ the flags themselves.
 **`resources` decodes at most a few assets per frame.** Arriving on a map with hundreds of
 unseen markers would otherwise decode them all in one frame and hitch. A miss is only
 cached when the file is genuinely absent — caching a "Nexus could not make a texture yet"
-result is what once made every marker fall back to a dot until the pack was reloaded.
+result would leave every marker a dot until the pack was reloaded.
 
 **Zip saving is two calls, `buildZip` then `commitZip`.** The usual save target *is* the
 pack still open for reading, and Windows will not rename over a live handle, so the caller
@@ -196,15 +201,15 @@ working pack with a half-written one; the previous file is kept as `.bak`.
 
 ## The UI is windows
 
-One window holding both the tree and the details forced the gizmo into whatever screen
-that window was not covering. The editor is instead five independent windows, each
-closable, each remembering its own place:
+One window holding both the tree and the details would force the gizmo into whatever screen
+that window was not covering. The editor is five independent windows, each closable, each
+remembering its own place:
 
 | Window | Contents |
 |---|---|
 | Tree | pack header, category hierarchy, selection, visibility toggles |
 | Details | the attribute form for the selection |
-| Toolbar | gizmo mode, Add POI, and the create/place controls as they arrive |
+| Toolbar | gizmo mode, Add POI, Trail and Category |
 | Trail editor | the open trail's map id and points, with drag fields for the selected one |
 | Resources | the pack's images: folder tree, references, preview, add / remove |
 
@@ -235,7 +240,7 @@ vectors every window has just drawn from, and a menu click happens partway throu
 The property panel identifies each field by its attribute name, which is the same name on
 every node — so to imgui one node's `xpos` box and the next node's are one widget, and an
 edit still active when the selection changes commits onto whatever is now selected. Typing
-a new `traildata` on one trail and clicking the other left the second pointing at the
+a new `traildata` on one trail and clicking another would leave the second pointing at the
 first's file.
 
 `ui::property_panel::draw` pushes the primary selection's kind and index around everything
@@ -261,9 +266,7 @@ Two live examples, one of each:
 
 - **Which trail is open** fails the lifetime test: the world overlay draws its handles and
   the gizmo targets its points, and neither is the trail editor. So `followSelection` lives
-  in `trail_edit` and runs from `render()`. It used to run from the window body, and a
-  collapsed trail editor would then keep an unselected trail open — handles still in the
-  world, gizmo still on its points.
+  in `trail_edit` and runs from `render()`.
 - **The pending reveal** passes it: `reveal_active` and the ancestor chain are the tree's
   alone. So `ui::tree_window::update` takes the request off `State` and works out what to
   open, whether or not the tree draws afterwards. Consuming and dropping it when the tree is
@@ -314,8 +317,8 @@ them. All three go through the one model.
   selected point index as one that exists.
 - **A trail that cannot be opened closes whatever was.** `resources::trail` caches a failed
   read as a miss, so a `traildata` naming a file the pack does not have never comes good.
-  Leaving the previous trail open over that showed one trail's points under another trail's
-  name — two differently named trails looking like they shared a point list. `open` therefore
+  Leaving the previous trail open over that would show one trail's points under another
+  trail's name — two differently named trails looking like they shared a point list. `open` therefore
   tells "over budget, ask next frame" from "tried and failed" and closes on the second.
   Nothing records *why*: a trail selected with nothing open is a trail whose data is missing,
   which is what the window says.
@@ -486,14 +489,13 @@ what was clicked, not by a mode:
 | Filled by | the tree, the resources window, a world pick on a marker | the trail editor's list, a world pick on a handle |
 | Read by | details, the tree, delete, add, the gizmo | the trail editor, the handles, the gizmo |
 
-They were one list once, with `NodeKind::TrailPoint` and a `sub` field on every `NodeRef`.
-Folding them together looked cheaper — multi-select and the gizmo anchor came for free —
-but a trail point is not a sibling of a marker in the tree, it is a sub-selection *inside* a
-trail that is itself selected, and one list could not say that. Clicking a point evicted its
-trail from the details window; deleting a point had to clear the list and so read as
-deselecting the trail; a viewport miss needed a special case to put the trail back; and
-every consumer filtered the mixture apart by kind and bounds-checked the point index itself.
-Splitting them deleted all four, and `NodeRef` lost `sub` with them.
+One list, with a point kind of `NodeRef`, looks cheaper — multi-select and the gizmo anchor
+for free — but a trail point is not a sibling of a marker in the tree, it is a sub-selection
+*inside* a trail that is itself selected, and one list cannot say that. Clicking a point
+would evict its trail from the details window; deleting a point would clear the list and so
+read as deselecting the trail; a viewport miss would need a special case to put the trail
+back; and every consumer would filter the mixture apart by kind and bounds-check the point
+index itself.
 
 What holds it together:
 
@@ -512,7 +514,7 @@ What holds it together:
 - **`editor::prune` is the only thing that checks for stale nodes**, and it runs after every
   structural edit. Points are pruned by `trail_edit` instead, for the reason above.
 
-All of this is covered by `test/selection_test.cpp` rather than by hand.
+All of this is covered by `test/editor/selection_test.cpp` rather than by hand.
 
 ## The gizmo anchor
 
@@ -563,9 +565,9 @@ to the Pathing file that reads it. `pack::settableOn` answers the second, and it
 `applies_to` plus categories whenever the attribute inherits, because a `markercategory` is
 precisely where an author sets `iconSize` for a whole subtree without consuming one itself.
 
-Asking `applies_to` where the answer is `settableOn` was a real bug: the "add attribute"
-picker offered a category only its own five structural attributes, so there was no way to
-give a category an icon size at all. Anything filtering the attribute table by node kind
+Asking `applies_to` where the answer is `settableOn` is an easy mistake: the "add attribute"
+picker would offer a category only its own five structural attributes, so there would be no
+way to give a category an icon size at all. Anything filtering the attribute table by node kind
 wants `settableOn`; `applies_to` is for deciding whether a value has an effect where it sits,
 which is what the property panel's "does nothing here" warning and `markus_probe`'s matching
 lint are for. The reasoning behind each classification is in [format.md](format.md).
@@ -598,19 +600,17 @@ The directory reader skips dot-directories. Without that, opening a pack repo wo
 
 ## Saving serializes, it does not diff
 
-An earlier version of the writer spliced replacement start tags into the original bytes,
-so an unedited file came back byte-identical. It was replaced with a plain serializer.
+The writer is a plain serializer, not a splice of replacement start tags into the original
+bytes. A splice would keep more — an unedited file byte-identical, and intra-tag whitespace,
+which pugixml cannot represent — but it can only ever *rewrite tags that already exist*.
+Adding a marker, deleting one, or creating a pack from scratch all need node insertion,
+which a splice cannot express without also inventing the surrounding indentation, and they
+fall out of a serializer for free.
 
-The splice preserved more — it kept intra-tag whitespace, which pugixml cannot represent —
-but it could only ever *rewrite tags that already existed*. Adding a marker, deleting one,
-or creating a pack from scratch all need node insertion, which a splice cannot express
-without also inventing the surrounding indentation. Those are the features that matter
-next, and they fall out of a serializer for free.
+The trade is deliberate: a pack reformats **once**, on its first save, and is stable from
+then on.
 
-The trade was made deliberately: a pack reformats **once**, on its first save, and is
-stable from then on.
-
-So the parsed `pugi::xml_document` is now kept alive for the pack's lifetime — it *is* the
+So the parsed `pugi::xml_document` is kept alive for the pack's lifetime — it *is* the
 storage. The model indexes into it with `SourceNode` handles, saving pushes the model's
 attributes back onto those nodes and serializes, and adding or removing a marker becomes a
 node insert or erase. `Pack` is therefore move-only: copying it would leave two packs
@@ -627,7 +627,7 @@ The XML files a pack is split across are an authoring convenience. Every loader 
 them into one category tree and one pathable list, so the split has no meaning to the
 game — which is exactly how pack authors treat it.
 
-That was the open question, and the data settled it. Across all 9 test packs:
+The data says so. Across all 9 test packs:
 
 | | |
 |---|---|
@@ -645,8 +645,8 @@ still tracked and still matter — just as metadata rather than hierarchy:
 - Every pathable records the file it came from; the property panel shows it, and the
   writer needs it.
 - A category records **all** of its declarations, since one may legitimately span files.
-- New markers will need a target file; the sensible default is the file its siblings are
-  already in.
+- A new marker goes in the file its siblings are in (see
+  [A new marker is appended](#a-new-marker-is-appended-not-inserted)).
 
 Pathables whose `type` resolves to no category appear under an "Unresolved" node rather
 than being dropped, so a broken `type` is visible instead of silent.
@@ -668,16 +668,15 @@ custom DX11 pipeline is needed:
    the identity JSON. The **viewport is ImGui's `io.DisplaySize`**, not
    `NexusLinkData::Width/Height` — see below.
 2. Build view and projection with glm. Positions are metres; `fadeNear`/`fadeFar` are
-   inches, so divide distances by 0.0254 before comparing. Verify against a known marker
-   position early.
+   inches, so divide distances by 0.0254 before comparing.
 3. Cull by `MapID` against `Context.MapID`, then by `fadeNear`/`fadeFar`.
 4. Project each marker centre to screen, size the quad from `iconSize * 2`, clamp its
    on-screen height to what `StandardMarker.World.cs` ends up with — `minSize * 2` and
    `maxSize * 2` **real** pixels, because the quantity Blish clamps is twice the pixel
    height; see [format.md](format.md) — and push a textured quad into the draw list,
    sorted back-to-front. Billboard unless `rotate*` is set.
-5. Trails: project each `.trl` point, emit a triangle strip of quads along the polyline,
-   breaking into separate ribbons at each `(0,0,0)` segment terminator.
+5. Trails: Pathing's strip along each `.trl` run (`viewer/ribbon.*`), broken into separate
+   ribbons at each `(0,0,0)` segment terminator.
 
 **The viewport is whatever ImGui says it is.** `NexusLinkData` carries a `Width`/`Height`
 and it is the obvious thing to reach for, but those come from the DXGI swap chain and Nexus
@@ -686,7 +685,7 @@ resolution (`Present_Internal` notices the new pointer and updates only the wind
 leaves them behind. The draw list is rasterized against `io.DisplaySize`, so projecting with
 one shape and drawing into another stretches the whole world along one axis: markers come
 out squashed and the gizmo's rings come out as ellipses. TaimiHUD takes the same view and
-uses `io.DisplaySize` too. Nothing here reads `DL_NEXUS_LINK` any more.
+uses `io.DisplaySize` too. Nothing here reads `DL_NEXUS_LINK`'s size.
 
 **Nothing is culled on a marker's centre.** A marker large enough to be worth scaling up is
 one you can stand inside, and its centre goes behind the camera long before the marker
@@ -708,8 +707,7 @@ saddle, and on a trail as the pattern sliding rather than compressing into the d
 every textured quad is split in **world** space and each vertex projected on its own; the
 corners are coplanar, so a bilinear blend of them stays on the real surface.
 `viewer::affineQuadSubdivisions` sizes the grid from the error it is removing and returns 1 —
-one `AddImageQuad`, exactly as before — whenever there is nothing to correct, which is the
-common case. Blish gets all of this from the GPU for free.
+one `AddImageQuad` — whenever there is nothing to correct, which is the common case. Blish gets all of this from the GPU for free.
 
 The grid covers the whole quad rather than its visible part, so that its cells tile. Cells
 wholly behind the near plane are dropped and the few it cuts are clipped again at cell
@@ -733,25 +731,23 @@ world geometry. Through GoodRender those behind the terrain are: `world_quad` hi
 behind what the game drew in front of it (see [viewer.md](viewer.md#drawing)). The editor's outlines and handles stay on the draw list, over
 everything, which is what they are for.
 
-ImGuizmo takes the same view/projection matrices plus a model matrix per selected
-object, so it drops straight in once step 2 is correct.
+ImGuizmo takes the view and projection matrices of step 2, plus a model matrix per selected
+object.
 
 **The gizmo resolves a marker's placement through the bake, not its own copy.**
 `viewer::markerTransform` is what both use: position with `heightOffset` applied, and
 rotation, resolved through the category chain. The handles are supposed to sit on the drawn
-icon, so a second implementation is a second chance to disagree with the picture — and the
-two did, once. One took `rotate="90"` the lenient way Blish does, filling the rest with
-zero; the other required all three components and read it as no rotation at all, so the
-gizmo drew unrotated handles on a rotated marker and a drag then wrote the wrong angle
-back.
+icon, so a second implementation is a second chance to disagree with the picture. `rotate="90"`
+is the easy case to get wrong: Blish reads it leniently, filling the rest with zero, and a
+copy that required all three components would draw unrotated handles on a rotated marker and
+then write the wrong angle back on a drag.
 
 ## Threading
 
 Everything runs on the Nexus render callback (render thread). Three exceptions:
 
 - The native file dialog runs on a worker thread; `render()` polls `takeResult()`.
-- **`onWndProc` runs on the game's message thread.** A world click cannot reach ImGui (see
-  CLAUDE.md), so the marker under the cursor is read there and handed to the render thread
+- **`onWndProc` runs on the game's message thread.** A world click cannot reach ImGui, so the marker under the cursor is read there and handed to the render thread
   through atomics — `pending_select`, `pending_select_point`, and the overlay's
   `hovered_pathable`. The handoff *out* is atomic; the reads *in* (`state.loaded`,
   `state.settings.select_in_viewport`, `io.WantCaptureMouse`) are plain and are a data race
@@ -759,8 +755,8 @@ Everything runs on the Nexus render callback (render thread). Three exceptions:
   during one, and the worst outcome is a click landing one frame late or being ignored, so
   they are left alone deliberately rather than by oversight. Anything read there in future
   needs the same look.
-- Pack loading (unzip + parse) should move to a worker once packs get big enough to
-  stutter. Not yet needed.
+- Opening a pack (unzip + parse) runs on the render thread; see
+  [editor_plan.md](editor_plan.md).
 
 `file_dialog::shutdown` joins the worker with the mutex **released** — the worker takes that
 same mutex to store its result on the way out, so joining under it deadlocks, and unload

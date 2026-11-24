@@ -1,8 +1,7 @@
 # gw2-markus
-A Nexus addon for GW2 marker packs, the `.zip`/`.taco` packs Blish HUD's Pathing module reads. Today it is an
-editor: open a pack, edit it in the world where it is drawn, save it back. It is becoming a viewer as well,
-doing Pathing's job through GoodRender, with the editor behind a setting in the same DLL; that half is
-planned, not built.
+A Nexus addon for GW2 marker packs, the `.zip`/`.taco` packs Blish HUD's Pathing module reads. It is a
+viewer, doing Pathing's job through GoodRender, and an editor in the same DLL, started on demand from the
+menu: open a pack, edit it in the world where it is drawn, save it back.
 
 ## Rules for every session
 - **Never write to Claude's memory directory** — nothing under `~/.claude/.../memory/`, nothing outside
@@ -35,5 +34,6 @@ planned, not built.
 | [viewer.md](docs/viewer.md) | working on the viewer, or on splitting `src/` into the viewer and the editor |
 | [format.md](docs/format.md) | writing any parsing, serialization or rendering code; what an attribute does |
 | [plan.md](docs/plan.md) | choosing what to work on next; finishing something on it |
+| [editor_plan.md](docs/editor_plan.md) | picking up editor work; finishing something on it |
 | [testing.md](docs/testing.md) | running the tests, adding one, pointing them at other packs; `markus_probe` |
 | [references.md](docs/references.md) | dependencies; where a format fact was read, and which source wins when they disagree |

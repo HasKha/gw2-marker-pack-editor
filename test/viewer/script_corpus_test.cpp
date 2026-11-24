@@ -24,7 +24,7 @@ namespace {
 constexpr int kTicks = 3;
 constexpr double kTickSeconds = 1.0;
 
-// The packs the census has to be empty for, which is milestone 2's bar (docs/plan.md).
+// The packs the census has to be empty for, the bar docs/viewer.md#testing sets.
 bool censusMustBeEmpty(const std::string& file) {
     return file == "hero.blish.pack.zip" || file == "TehsTrails.taco";
 }

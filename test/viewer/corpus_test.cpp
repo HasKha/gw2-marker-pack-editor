@@ -1,8 +1,7 @@
 // Invariants that must hold for every real pack in the corpus.
 //
-// These are the claims docs/plan.md makes about the reader and the writer, turned into
-// assertions. They ran as printf output from markus_probe before, which meant reading nine
-// blocks of numbers and remembering what they were last time.
+// What the reader and the writer promise, as assertions: markus_probe prints the same numbers,
+// and a printout has to be read and remembered to catch a change.
 //
 // The format's sweep, in markus_viewer_test rather than markus_pack_test because the same pass
 // checks the viewer's bake of every pack it loads.

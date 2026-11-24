@@ -455,4 +455,4 @@ it. It:
 That is the right behaviour for a distribution re-packer and exactly wrong for an
 editor operating on a hand-authored pack. Our writer keeps the original file split,
 comment placement, attribute order and original attribute casing, and only rewrites
-what actually changed. This is why `docs/plan.md` open question 2 matters.
+what actually changed.

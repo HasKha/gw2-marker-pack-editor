@@ -1,7 +1,7 @@
 # The viewer
 
-How the viewer half of the addon is built, and why. Most of it is still planned; what exists
-so far, and the order the rest is built in, is [plan.md](plan.md#the-viewer); the editor half is
+How the viewer half of the addon is built, and why. What is left is [plan.md](plan.md); the
+editor half is
 [architecture.md](architecture.md); what attributes mean is [format.md](format.md).
 
 ## What it is
@@ -26,25 +26,25 @@ renderer natively anyway, while keeping Blish HUD and a fork of an 18k-line modu
 
 | Decision | Choice | Why |
 |---|---|---|
-| Addon shape | **one DLL**: the viewer always, the editor behind a setting | one release stream; "Edit" is a function call, not a protocol; the editor draws through the viewer's renderer |
+| Addon shape | **one DLL**: the viewer always, the editor on demand | one release stream; "Edit" is a function call, not a protocol; the editor draws through the viewer's renderer |
 | Signature | the existing `AddonDef.Signature` stays | an editor install updates in place through Nexus; there is never a second addon drawing the same packs |
 | Separation | three static libraries, linked one way | see [Layout](#layout); the build enforces what a convention would only ask |
-| GoodRender | **optional**: used when `served()`, a draw-list fallback otherwise | the addon still works without the service; the fallback is the quad path the editor's renderer was built on |
+| GoodRender | **optional**: used when `served()`, a draw-list fallback otherwise | the addon still works without the service; the fallback is the draw-list quad path, `render/overlay.*` |
 | Frame split | everything is decided at Present; a moment callback only draws | the moment runs inside the game's frame, so anything slow there stalls the game |
 | Packs in memory | parsed once, a few packs at a time on workers of their own; a map change only switches which part is live | faster than Pathing's reread per map, and 55k markers baked is a few megabytes |
 | Category tree | **merged across packs** by namespace | Pathing's `SharedPackCollection` does it, and packs that extend another pack's categories rely on it |
 | Lua | Lua 5.4 through sol2 | 5.4's integer subtype is what NeoLua imitates; sol2 is header-only and fetched like the rest |
 | Lua state | **one for all packs, reset on every map change** | what Pathing does (`ScriptEngine.Reset()` at the top of `LoadMapFromEachPack`), and scripts are written against it |
-| Textures | Nexus's, as the editor does today | already written and in-game tested; revisit if memory with every pack loaded says otherwise |
+| Textures | Nexus's | no device code of our own; revisit if memory with every pack loaded says otherwise ([plan.md](plan.md#open-questions)) |
 
 ## Layout
 
-What `src/` becomes; [plan.md](plan.md#the-viewer) says which parts exist.
-[architecture.md](architecture.md#module-layout)'s layout goes on describing `editor/`.
+What `src/` holds; [architecture.md](architecture.md#module-layout)'s layout describes
+`editor/`.
 
 ```
 src/
-  addon/entry.cpp  AddonDefinition; loads the viewer, and the editor when the setting is on
+  addon/entry.cpp  AddonDefinition; loads the viewer and connects the editor's hooks
   util/            markus_util: paths as UTF-8 text, small JSON files (architecture.md#build-targets)
   http/            markus_http: HTTPS GETs and downloads on a worker, through WinHTTP, that cancel;
                    Background, one job on a thread of its own, its answer read from frames
@@ -94,14 +94,14 @@ src/
 includes `editor/`, and two things hold it: `markus_viewer_test` links `markus_viewer` without
 `markus_editor`, and the ctest case `viewer_layering` fails on any `editor/` include under
 `src/viewer/`. Where the viewer has to reach the editor — the Edit button, the editor's
-overlays — it calls a hook `entry.cpp` connects, null while editing is off. So the viewer
-builds and tests without the editor, and an editor change cannot reach a player who never
-turned editing on.
+overlays — it calls a hook `entry.cpp` connects, which does nothing while the editor is not running. So
+the viewer builds and tests without the editor, and an editor change cannot reach a player who
+never opens it.
 
-The editor's renderer was split along the same line, and is gone. Its quad path —
-world-space subdivision and near-plane clipping, the reason a draw-list quad is
-perspective-correct at all — is `render/overlay.*`. What to draw and how it fades is the
-scene's: the viewer draws the edited pack as it draws every other. What only an editor draws
+Drawing follows the same line. The draw-list quad path — world-space subdivision and
+near-plane clipping, the reason a draw-list quad is perspective-correct at all — is
+`render/overlay.*`. What to draw and how it fades is the scene's: the viewer draws the edited
+pack as it draws every other. What only an editor draws
 stays in `editor/world/`: the selection outline, the picking, the open trail's point handles,
 a dot where an icon is missing, the gizmo.
 
@@ -171,7 +171,7 @@ Pathing's `GetOpacity()` multiplies them before its shader sees them. What its s
   up to `fadeFar` however far its middle is.
 - **Not drawn at all**: markers fading between the character and the camera, trails fading
   around the character, and their two settings. Both need a shader of our own bound in the
-  moment, which is the one thing that would take us off `world_quad` ([plan.md](plan.md#9-later)).
+  moment, which is the one thing that would take us off `world_quad` ([plan.md](plan.md#later)).
 
 The distance a fade is measured by is from where a marker is drawn, `heightOffset` included,
 where Pathing's per-marker fade measures from where it stands. That one is kept.
@@ -259,7 +259,7 @@ with pack, file, line and member, and returns nil. Run over the corpus offline, 
 the list of what is left to implement, measured from what packs actually call rather than
 guessed from Pathing's source.
 
-The scripts in the installed packs, as a starting point:
+What the corpus's scripts call most:
 
 | Pack | Lua files | Most used |
 |---|---|---|
@@ -433,8 +433,8 @@ one between addons already.
 - **The viewer drives it, and that is all.** `marker_editor::load` registers nothing with Nexus:
   the viewer's render and `WndProc` call the editor's through `EditorHooks::render` and
   `wnd_proc`, which do nothing while it does not run. Nexus holds its render mutex across every
-  callback, so a render callback of the editor's own could only be registered at load, which is
-  why editing was once a setting applied at the next load. The one other thing that passes
+  callback, so a render callback of the editor's own could only be registered at load, and
+  stopping it would mean unloading with unsaved edits. The one other thing that passes
   between them is the open pack's live map, `EditorHooks::edited_live`, which the viewer draws.
 - **Undo and redo are bound only while it runs**, so Ctrl+Z and Ctrl+Y are the game's otherwise.
   Registering a bind from inside a render callback is safe: Nexus's binds have a lock of their
@@ -461,9 +461,8 @@ one between addons already.
   every two seconds), and the new copy replaces the old when it arrives. A folder pack counts
   as written when any `.xml` directly in it is.
 
-A gizmo drag is a revision every frame, and each is a bake of the whole pack, as the editor's
-own renderer did before. If a 55k-marker pack hitches under a drag, the bake narrows to the
-current map; the undo records already name what each edit touched.
+A gizmo drag is a revision every frame, and each is a bake of the whole pack
+([editor_plan.md](editor_plan.md) has what to do if that hitches).
 
 ## Testing
 

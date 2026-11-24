@@ -62,7 +62,7 @@ that tested nothing is the one outcome worse than a red one.
 
 ### The packs worth having
 
-Whatever is in the folder gets swept, but two shapes matter, and the claims in [plan.md](plan.md) were
+Whatever is in the folder gets swept, but two shapes matter, and the reader's and the writer's claims are
 measured against them:
 
 | Pack | Shape | Why |
