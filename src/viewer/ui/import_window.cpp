@@ -28,11 +28,11 @@ Answer draw(const blish_import::Found& found, Choices* choices, const std::strin
     choices->packs.resize(found.packs.size(), 1);
 
     ImGui::SetNextWindowSize(ImVec2(ImGui::GetFontSize() * 26.0f, 0.0f), ImGuiCond_FirstUseEver);
-    if (ImGui::Begin("Import from Blish HUD", open, ImGuiWindowFlags_AlwaysAutoResize)) {
+    if (ImGui::Begin("Import from BlishHUD", open, ImGuiWindowFlags_AlwaysAutoResize)) {
         if (found.packs.empty()) {
-            ImGui::TextWrapped("No marker packs found in Blish HUD.");
+            ImGui::TextWrapped("No marker packs found in BlishHUD.");
         } else {
-            ImGui::TextWrapped("Import your marker packs from Blish HUD, with the categories you turned on or off.");
+            ImGui::TextWrapped("Do you wish to import your marker packs from BlishHUD?");
             const float height =
                 ImGui::GetTextLineHeightWithSpacing() * std::min<float>(8.0f, static_cast<float>(found.packs.size()) + 0.5f);
             if (ImGui::BeginChild("##packs", ImVec2(ImGui::GetFontSize() * 24.0f, height), true)) {

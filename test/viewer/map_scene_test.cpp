@@ -400,6 +400,61 @@ TEST_CASE("map scene: the tooltip is the tip, its description and how far away")
     CHECK(map_scene::tooltip(live, tree, player, false).title.empty());
 }
 
+TEST_CASE("map scene: the tooltip says which categories the marker sits in, each cut short") {
+    registry::CategoryTree tree;
+    tree.nodes.resize(4);
+    tree.nodes[0].label = "Haskha's Markers";
+    tree.nodes[1].label = "w8";
+    tree.nodes[1].parent = 0;
+    tree.nodes[2].label = "Chest";
+    tree.nodes[2].parent = 1;
+    tree.nodes[3].label = "H\xC3\xA9ro\xC3\xAFquesmentlong"; //"Héroïquesmentlong", in UTF-8
+    tree.nodes[3].parent = 1;
+
+    runtime::LiveMarker live = marker({500, 0, 600});
+    live.marker.tip_name = "Chest";
+    live.node = 2;
+    const glm::vec3 player(500.0f, 500.0f, 0.0f);
+    CHECK(map_scene::tooltip(live, tree, player, false).description == "Haskha's.../w8\n3,937 away");
+
+    // A title that is not the category's name leaves the category in.
+    live.marker.tip_name = "Big chest";
+    CHECK(map_scene::tooltip(live, tree, player, false).description == "Haskha's.../w8/Chest\n3,937 away");
+
+    // No space to cut at: cut mid-word, never inside a character.
+    live.node = 3;
+    CHECK(map_scene::tooltip(live, tree, player, false).description == "Haskha's.../w8/H\xC3\xA9ro\xC3\xAFques...\n3,937 away");
+
+    // A marker of the root category, under its name, has no path.
+    live.marker.tip_name = "Haskha's Markers";
+    live.node = 0;
+    CHECK(map_scene::tooltip(live, tree, player, false).description == "3,937 away");
+}
+
+TEST_CASE("map scene: the tooltip sits above and right of the cursor's tip, else left of it") {
+    const glm::vec2 size(200.0f, 50.0f);
+    const glm::vec2 display(1920.0f, 1080.0f);
+
+    // Room above and right: its bottom left corner a gap off the tip.
+    glm::vec2 at = map_scene::tooltipPosition(glm::vec2(500.0f, 500.0f), size, display);
+    CHECK(at.x > 500.0f);
+    CHECK(at.y + size.y < 500.0f);
+
+    // Against the right edge: left of the tip, still above it.
+    at = map_scene::tooltipPosition(glm::vec2(1800.0f, 500.0f), size, display);
+    CHECK(at.x + size.x < 1800.0f);
+    CHECK(at.y + size.y < 500.0f);
+
+    // Against the top: left of the tip, kept on the screen, where the cursor never hangs.
+    at = map_scene::tooltipPosition(glm::vec2(500.0f, 20.0f), size, display);
+    CHECK(at.x + size.x < 500.0f);
+    CHECK(at.y == 0.0f);
+
+    // In the top left corner nothing fits beside the tip; it stays on the screen.
+    at = map_scene::tooltipPosition(glm::vec2(10.0f, 10.0f), size, display);
+    CHECK(at == glm::vec2(0.0f, 0.0f));
+}
+
 TEST_CASE("map scene: with Shift, the tooltip is the category path") {
     registry::CategoryTree tree;
     tree.nodes.resize(2);

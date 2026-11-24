@@ -8,7 +8,9 @@
 #include <cmath>
 #include <limits>
 #include <string>
+#include <string_view>
 #include <utility>
+#include <vector>
 
 #include "viewer/bake.h"
 
@@ -148,6 +150,41 @@ std::string groupedInteger(double value) {
 
 bool isBlank(const std::string& text) {
     return std::all_of(text.begin(), text.end(), [](unsigned char c) { return std::isspace(c); });
+}
+
+// The labels from the root category down to `node`. `node` must be in the tree.
+std::vector<std::string> categoryChain(const registry::CategoryTree& tree, size_t node) {
+    std::vector<std::string> chain;
+    for (; node != pack::kNoIndex; node = tree.nodes[node].parent) chain.push_back(tree.nodes[node].label);
+    std::reverse(chain.begin(), chain.end());
+    return chain;
+}
+
+// A category label cut short for the tooltip's path, "Haskha's..." for "Haskha's Markers": at
+// a space when one leaves at least half of what is kept, else mid-word. Counted in code points,
+// so a cut never splits a UTF-8 character.
+std::string shortLabel(const std::string& label) {
+    // A typical name stays whole while a deep path still fits on a line or two.
+    constexpr size_t kMaxChars = 12;
+    constexpr std::string_view kEllipsis = "...";
+    constexpr size_t kKeptChars = kMaxChars - kEllipsis.size();
+
+    std::vector<size_t> starts; // the byte each code point starts at
+    for (size_t i = 0; i < label.size(); ++i) {
+        if ((static_cast<unsigned char>(label[i]) & 0xC0) != 0x80) starts.push_back(i);
+    }
+    if (starts.size() <= kMaxChars) return label;
+
+    size_t cut = starts[kKeptChars];
+    for (size_t n = kKeptChars; n > kKeptChars / 2; --n) {
+        if (label[starts[n]] == ' ') {
+            cut = starts[n];
+            break;
+        }
+    }
+    std::string kept = label.substr(0, cut);
+    while (!kept.empty() && kept.back() == ' ') kept.pop_back();
+    return kept.append(kEllipsis);
 }
 
 } // namespace
@@ -360,11 +397,9 @@ Tooltip tooltip(const runtime::LiveMarker& marker, const registry::CategoryTree&
             tip.title = "Unassigned Category";
             return tip;
         }
-        std::vector<std::string> chain;
-        for (size_t node = marker.node; node != pack::kNoIndex; node = tree.nodes[node].parent) chain.push_back(tree.nodes[node].label);
-        for (auto it = chain.rbegin(); it != chain.rend(); ++it) {
+        for (const std::string& label : categoryChain(tree, marker.node)) {
             if (!tip.title.empty()) tip.title += "\n > ";
-            tip.title += *it;
+            tip.title += label;
         }
         return tip;
     }
@@ -372,9 +407,35 @@ Tooltip tooltip(const runtime::LiveMarker& marker, const registry::CategoryTree&
     tip.title = marker.marker.tip_name;
     if (tip.title.empty()) return tip;
     if (!isBlank(marker.marker.tip_description)) tip.description = marker.marker.tip_description + "\n\n";
+
+    // Where the marker sits, each category cut short. The title is usually the marker's own
+    // category's name, which is not said twice.
+    if (marker.node < tree.nodes.size()) {
+        std::vector<std::string> chain = categoryChain(tree, marker.node);
+        if (chain.back() == tip.title) chain.pop_back();
+        std::string path;
+        for (const std::string& label : chain) {
+            if (!path.empty()) path += "/";
+            path += shortLabel(label);
+        }
+        if (!path.empty()) tip.description += path + "\n";
+    }
+
     const float metres = glm::distance(markerPosition(marker.marker), player);
     tip.description += groupedInteger(metres * kInchesPerMetre) + " away";
     return tip;
+}
+
+glm::vec2 tooltipPosition(glm::vec2 mouse, glm::vec2 size, glm::vec2 display) {
+    // Between the cursor's tip and the tooltip, enough that they never touch.
+    constexpr float kGap = 6.0f;
+
+    glm::vec2 position(mouse.x + kGap, mouse.y - kGap - size.y);
+    if (position.x + size.x > display.x || position.y < 0.0f) {
+        position.x = std::max(0.0f, mouse.x - kGap - size.x);
+        position.y = std::clamp(position.y, 0.0f, std::max(0.0f, display.y - size.y));
+    }
+    return position;
 }
 
 void publish(std::shared_ptr<const MapScene> scene) {

@@ -177,9 +177,15 @@ struct Tooltip {
     std::string description;
 };
 
-// The tip name and description and how far away it is; with `category_path`, the category
-// chain instead, as Pathing shows with Shift held.
+// The tip name and description, the categories it sits in, short, and how far away it is; with
+// `category_path`, the whole category chain instead, as Pathing shows with Shift held.
 Tooltip tooltip(const runtime::LiveMarker& marker, const registry::CategoryTree& tree, const glm::vec3& player, bool category_path);
+
+// The top left corner of a tooltip `size` big for the mouse at `mouse`, on a `display` that
+// size. The game's cursor hangs down and right of its tip, by a size nothing reports and many
+// players make large, so the tooltip keeps to where no cursor reaches: above and right of the
+// tip, else left of it, never under it.
+glm::vec2 tooltipPosition(glm::vec2 mouse, glm::vec2 size, glm::vec2 display);
 
 // The scene the sinks draw, one atomic swap of a finished one, as the world's is.
 void publish(std::shared_ptr<const MapScene> scene);
