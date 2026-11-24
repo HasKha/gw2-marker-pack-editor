@@ -31,6 +31,7 @@
 #include "viewer/camera.h"
 #include "viewer/edited.h"
 #include "viewer/registry.h"
+#include "viewer/rtapi.h"
 #include "viewer/scene.h"
 #include "viewer/ui/fonts.h"
 #include "viewer/ui/style.h"
@@ -1044,10 +1045,10 @@ void render() {
         trail_edit::close(state);
     }
 
-    // ImGui's display size, not NexusLinkData's — see fromMumble. The gizmo draws into an ImGui
+    // ImGui's display size, not NexusLinkData's — see gameCamera. The gizmo draws into an ImGui
     // draw list, so that is the space the projection has to land in.
     const ImVec2 display = ImGui::GetIO().DisplaySize;
-    const viewer::Camera camera = viewer::fromMumble(mumble_link, glm::vec2(display.x, display.y));
+    const viewer::Camera camera = viewer::gameCamera(mumble_link, viewer::rtapi::data(), glm::vec2(display.x, display.y));
     frame_camera = camera;
     // The pack, and the overlay over it, only while the world is on screen; otherwise nothing
     // may stay hovered for a click to pick.

@@ -6,9 +6,14 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <cmath>
+#include <cwchar>
+#include <memory>
 
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtc/matrix_transform.hpp>
+
+#include <Mumble.h>
+#include <RTAPI.hpp>
 
 #include "test_camera.h"
 #include "viewer/camera.h"
@@ -370,4 +375,88 @@ TEST_CASE("project reports the depth it divided by", "[camera]") {
     // Written even when the point is behind the camera, where it comes out negative.
     CHECK_FALSE(camera.project(glm::vec3(0.0f, 0.0f, -10.0f), &screen, &depth));
     CHECK(depth == Approx(-10.0f));
+}
+
+namespace {
+
+// A frame of MumbleLink's, in the game, at `camera` looking along `front`.
+std::unique_ptr<Mumble::Data> mumbleAt(const glm::vec3& camera, const glm::vec3& front) {
+    auto mumble = std::make_unique<Mumble::Data>();
+    mumble->UITick = 1;
+    mumble->CameraPosition = Vector3{camera.x, camera.y, camera.z};
+    mumble->CameraFront = Vector3{front.x, front.y, front.z};
+    mumble->CameraTop = Vector3{0.0f, 1.0f, 0.0f};
+    mumble->AvatarPosition = Vector3{camera.x, camera.y - 2.0f, camera.z + 5.0f};
+    mumble->Context.MapID = 15;
+    std::wcscpy(mumble->Identity, L"{\"fov\":0.9}");
+    return mumble;
+}
+
+// RTAPI's block somewhere else, as it is a frame behind MumbleLink.
+RTAPI::RealTimeData realtimeAt(const glm::vec3& camera, const glm::vec3& front) {
+    RTAPI::RealTimeData realtime{};
+    realtime.GameBuild = 1;
+    realtime.GameState = RTAPI::EGameState::Gameplay;
+    realtime.MapID = 15;
+    for (int i = 0; i < 3; ++i) {
+        realtime.CameraPosition[i] = camera[i];
+        realtime.CameraFacing[i] = front[i];
+    }
+    realtime.CharacterPosition[0] = camera.x + 1.0f;
+    realtime.CharacterPosition[1] = camera.y - 2.0f;
+    realtime.CharacterPosition[2] = camera.z + 4.0f;
+    realtime.CameraFOV = 1.1f;
+    return realtime;
+}
+
+} // namespace
+
+TEST_CASE("the camera is RTAPI's while it is loaded, the map MumbleLink's", "[camera]") {
+    const auto mumble = mumbleAt(glm::vec3(10.0f, 20.0f, 30.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+    const RTAPI::RealTimeData realtime = realtimeAt(glm::vec3(11.0f, 20.0f, 30.0f), glm::vec3(1.0f, 0.0f, 1.0f));
+
+    const viewer::Camera camera = viewer::gameCamera(mumble.get(), &realtime, glm::vec2(kWidth, kHeight));
+    REQUIRE(camera.valid);
+    CHECK(camera.position == glm::vec3(11.0f, 20.0f, 30.0f));
+    CHECK(camera.front.x == Approx(std::sqrt(0.5f)));
+    CHECK(camera.front.z == Approx(std::sqrt(0.5f)));
+    CHECK(camera.up == glm::vec3(0.0f, 1.0f, 0.0f)); // RTAPI has none
+    CHECK(camera.player == glm::vec3(12.0f, 18.0f, 34.0f));
+    CHECK(camera.fov == Approx(1.1f));
+    CHECK(camera.map_id == 15);
+
+    // A point straight ahead of RTAPI's camera is in the middle of the screen.
+    glm::vec2 screen(0.0f);
+    REQUIRE(camera.project(glm::vec3(21.0f, 20.0f, 40.0f), &screen));
+    CHECK(screen.x == Approx(kWidth * 0.5f).margin(0.01f));
+    CHECK(screen.y == Approx(kHeight * 0.5f).margin(0.01f));
+}
+
+TEST_CASE("the camera is MumbleLink's without RTAPI, or where RTAPI's makes no view", "[camera]") {
+    const auto mumble = mumbleAt(glm::vec3(10.0f, 20.0f, 30.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+    const glm::vec2 viewport(kWidth, kHeight);
+
+    SECTION("not loaded") {
+        const viewer::Camera camera = viewer::gameCamera(mumble.get(), nullptr, viewport);
+        REQUIRE(camera.valid);
+        CHECK(camera.position == glm::vec3(10.0f, 20.0f, 30.0f));
+        CHECK(camera.player == glm::vec3(10.0f, 18.0f, 35.0f));
+        CHECK(camera.fov == Approx(0.9f));
+    }
+
+    SECTION("no facing, as before RTAPI has written a frame") {
+        RTAPI::RealTimeData realtime = realtimeAt(glm::vec3(11.0f, 20.0f, 30.0f), glm::vec3(0.0f));
+        const viewer::Camera camera = viewer::gameCamera(mumble.get(), &realtime, viewport);
+        REQUIRE(camera.valid);
+        CHECK(camera.position == glm::vec3(10.0f, 20.0f, 30.0f));
+    }
+
+    SECTION("no fov keeps the camera and takes MumbleLink's fov") {
+        RTAPI::RealTimeData realtime = realtimeAt(glm::vec3(11.0f, 20.0f, 30.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+        realtime.CameraFOV = 0.0f;
+        const viewer::Camera camera = viewer::gameCamera(mumble.get(), &realtime, viewport);
+        REQUIRE(camera.valid);
+        CHECK(camera.position == glm::vec3(11.0f, 20.0f, 30.0f));
+        CHECK(camera.fov == Approx(0.9f));
+    }
 }

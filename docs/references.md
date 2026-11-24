@@ -57,6 +57,7 @@ Pathing's Lua API has no documentation (`gw2pathing.com/docs/` is 404); the sour
 |---|---|
 | Nexus | `github.com/RaidcoreGG/Nexus` — the loader's source, for what Nexus does with what we hand it |
 | GoodRender | `github.com/HasKha/gw2-good-render` — `include/good_render.h` is the contract; `README.md` and `docs/how_it_works.md` for how a subscriber should behave |
+| RTAPI | `github.com/gwdevcommunity/GW2-RealTime-API-Releases` — `RTAPI.hpp` is the contract, `README.md` for unloading and timing. Closed source, and silent on units: `github.com/RaidcoreGG/GW2-RangeIndicators`, by the same author, is where its camera is read as MumbleLink's |
 | A hand-authored pack | `github.com/HasKha/gw2-markers` — `scripts/trltools.py` corroborates the TRL layout, `scripts/shared.py` specs the shape tools |
 | GW2TacO | `github.com/BoyC/GW2TacO`, `gw2tactical.h` — where the defaults trace back to |
 

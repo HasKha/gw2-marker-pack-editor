@@ -6,6 +6,9 @@
 
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
+
+#include <RTAPI.hpp>
 
 #include "viewer/identity.h"
 
@@ -289,38 +292,63 @@ int clipQuadRegion(const float corner_depth[4], glm::vec2 low, glm::vec2 high, g
     return count;
 }
 
-Camera fromMumble(const Mumble::Data* mumble, const glm::vec2& viewport) {
+namespace {
+
+// Builds the view and projection from `camera`'s position, front, up and fov, and marks it valid;
+// false, and untouched, where those make no view.
+bool finishView(Camera* camera) {
+    if (!isFinite(camera->position) || !isFinite(camera->front)) return false;
+    if (glm::length(camera->front) < 0.0001f) return false;
+
+    camera->front = glm::normalize(camera->front);
+    // MumbleLink's CameraTop is occasionally degenerate, and RTAPI has none; world up is a safe
+    // substitute since the game camera does not roll.
+    camera->up = glm::length(camera->up) > 0.0001f ? glm::normalize(camera->up) : glm::vec3(0.0f, 1.0f, 0.0f);
+
+    // Left-handed to match Mumble's coordinate system.
+    camera->view = glm::lookAtLH(camera->position, camera->position + camera->front, camera->up);
+    camera->projection = glm::perspectiveLH(camera->fov, camera->aspect, camera->near_plane, 10000.0f);
+    camera->view_projection = camera->projection * camera->view;
+
+    camera->valid = true;
+    return true;
+}
+
+} // namespace
+
+Camera gameCamera(const Mumble::Data* mumble, const RTAPI::RealTimeData* realtime, const glm::vec2& viewport) {
     Camera camera;
 
     if (!mumble) return camera;
     if (mumble->UITick == 0) return camera; // game has not written anything yet
     if (viewport.x < 1.0f || viewport.y < 1.0f) return camera;
 
-    camera.position = toGlm(mumble->CameraPosition);
-    camera.front = toGlm(mumble->CameraFront);
-    camera.up = toGlm(mumble->CameraTop);
-    camera.player = toGlm(mumble->AvatarPosition);
+    // MumbleLink's map whichever camera is used, since behaviors, scripts and the live map all
+    // go by MumbleLink's.
     camera.map_id = mumble->Context.MapID;
     camera.map_open = mumble->Context.IsMapOpen != 0;
-
-    if (!isFinite(camera.position) || !isFinite(camera.front)) return camera;
-    if (glm::length(camera.front) < 0.0001f) return camera;
-
-    camera.front = glm::normalize(camera.front);
-    // CameraTop is occasionally degenerate; world up is a safe substitute since the game
-    // camera does not roll.
-    camera.up = glm::length(camera.up) > 0.0001f ? glm::normalize(camera.up) : glm::vec3(0.0f, 1.0f, 0.0f);
-
     camera.viewport = viewport;
     camera.aspect = camera.viewport.x / camera.viewport.y;
     if (const float fov = parseIdentity(mumble->Identity).fov; fov > 0.0f) camera.fov = fov;
 
-    // Left-handed to match Mumble's coordinate system.
-    camera.view = glm::lookAtLH(camera.position, camera.position + camera.front, camera.up);
-    camera.projection = glm::perspectiveLH(camera.fov, camera.aspect, camera.near_plane, 10000.0f);
-    camera.view_projection = camera.projection * camera.view;
+    // RTAPI's camera is the one the frame on screen was drawn with, where MumbleLink's is the
+    // game thread's, a frame ahead of it. Same space and the same vertical fov in radians:
+    // RTAPI's own author swaps one for the other in RaidcoreGG/GW2-RangeIndicators. It has no up.
+    if (realtime) {
+        Camera from_realtime = camera;
+        from_realtime.position = glm::make_vec3(realtime->CameraPosition);
+        from_realtime.front = glm::make_vec3(realtime->CameraFacing);
+        from_realtime.up = glm::vec3(0.0f);
+        from_realtime.player = glm::make_vec3(realtime->CharacterPosition);
+        if (std::isfinite(realtime->CameraFOV) && realtime->CameraFOV > 0.0f) from_realtime.fov = realtime->CameraFOV;
+        if (finishView(&from_realtime)) return from_realtime;
+    }
 
-    camera.valid = true;
+    camera.position = toGlm(mumble->CameraPosition);
+    camera.front = toGlm(mumble->CameraFront);
+    camera.up = toGlm(mumble->CameraTop);
+    camera.player = toGlm(mumble->AvatarPosition);
+    finishView(&camera);
     return camera;
 }
 

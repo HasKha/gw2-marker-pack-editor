@@ -5,6 +5,10 @@
 #include <glm/vec2.hpp>
 #include <glm/vec3.hpp>
 
+namespace RTAPI {
+struct RealTimeData;
+}
+
 namespace viewer {
 
 // Metres per inch. Marker positions are in metres; fadeNear, fadeFar, triggerRange and
@@ -50,8 +54,8 @@ inline float bilinearValue(const float corner[4], glm::vec2 at) {
 // cut.
 int clipQuadRegion(const float corner_depth[4], glm::vec2 low, glm::vec2 high, glm::vec2 out_corners[5]);
 
-// The game camera for this frame, from MumbleLink: left-handed, X right, Y up, Z forward, metres,
-// the same space as xpos/ypos/zpos.
+// The game camera for this frame, from RTAPI or MumbleLink, or GoodRender's in a moment: left-handed,
+// X right, Y up, Z forward, metres, the same space as xpos/ypos/zpos.
 struct Camera {
     bool valid = false;
 
@@ -127,9 +131,10 @@ QuadGrid perspectiveGrid(const Camera& camera, const glm::vec3 world[4], glm::ve
 // step running past the camera is off screen beside it.
 bool visibleRegion(const Camera& camera, const glm::vec3 world[4], glm::vec2* low, glm::vec2* high);
 
-// The camera for this frame; invalid while MumbleLink has no data. `viewport` is ImGui's display
-// size, never NexusLinkData's Width/Height: Nexus updates those only from its ResizeBuffers hook,
-// so a recreated swap chain leaves them stale and the world comes out stretched.
-Camera fromMumble(const Mumble::Data* mumble, const glm::vec2& viewport);
+// The camera for this frame: RTAPI's while `realtime` is there and holds one, MumbleLink's otherwise;
+// invalid while MumbleLink has no data. The map is MumbleLink's either way. `viewport` is ImGui's
+// display size, never NexusLinkData's Width/Height: Nexus updates those only from its ResizeBuffers
+// hook, so a recreated swap chain leaves them stale and the world comes out stretched.
+Camera gameCamera(const Mumble::Data* mumble, const RTAPI::RealTimeData* realtime, const glm::vec2& viewport);
 
 } // namespace viewer

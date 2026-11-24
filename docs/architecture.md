@@ -44,7 +44,7 @@ editor uses `viewer/` for the camera, textures and drawing; nothing in `viewer/`
 | `markus_util` | static lib | `src/util/` — paths as UTF-8 text, small JSON files kept between sessions |
 | `markus_http` | static lib | `src/http/` — WinHTTP requests on a worker that cancel; `Background`, a one-job thread |
 | `markus_pack` | static lib | `src/pack/` — the format. pugixml, miniz, glm |
-| `markus_viewer` | static lib | `src/viewer/` — imgui, Nexus, Mumble, GoodRender, sol2 |
+| `markus_viewer` | static lib | `src/viewer/` — imgui, Nexus, Mumble, GoodRender, RTAPI, sol2 |
 | `markus_editor` | static lib | `src/editor/` — ImGuizmo, NFD |
 | `Markus` | DLL | `src/addon/entry.cpp` |
 | `markus_corpus` | static lib | `test/corpus/` — where the real packs are, shared so the tests cannot disagree about it |

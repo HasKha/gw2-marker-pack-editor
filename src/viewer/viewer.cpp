@@ -35,6 +35,7 @@
 #include "viewer/registry.h"
 #include "viewer/render/good_render.h"
 #include "viewer/render/overlay.h"
+#include "viewer/rtapi.h"
 #include "viewer/runtime.h"
 #include "viewer/scene.h"
 #include "viewer/script/engine.h"
@@ -60,7 +61,7 @@ namespace {
 
 AddonAPI* api = nullptr;
 Mumble::Data* mumble_link = nullptr;
-// Read for its Scaling and IsGameplay only: its Width and Height go stale (see fromMumble).
+// Read for its Scaling and IsGameplay only: its Width and Height go stale (see gameCamera).
 const NexusLinkData* nexus_link = nullptr;
 
 std::filesystem::path folder;
@@ -888,7 +889,7 @@ void preRender() {
     achievement_details.update(std::chrono::steady_clock::now());
 
     const ImVec2 display = ImGui::GetIO().DisplaySize;
-    const Camera camera = fromMumble(mumble_link, glm::vec2(display.x, display.y));
+    const Camera camera = gameCamera(mumble_link, rtapi::data(), glm::vec2(display.x, display.y));
 
     refreshLiveMap(camera.valid ? static_cast<int>(camera.map_id) : live.map_id);
     mumble_state = mumbleState(mumble_link);
@@ -937,7 +938,7 @@ void drawOptionsWindow();
 // screen or the full map. Behind our own windows and the editor's, but over the game.
 void drawWorld() {
     const ImVec2 display = ImGui::GetIO().DisplaySize;
-    const Camera camera = fromMumble(mumble_link, glm::vec2(display.x, display.y));
+    const Camera camera = gameCamera(mumble_link, rtapi::data(), glm::vec2(display.x, display.y));
     const std::shared_ptr<const Scene> scene = published();
 
     const good_render_sink::Drawn drawn = good_render_sink::takeDrawn();
@@ -954,7 +955,7 @@ void drawWorld() {
 // Our windows and ImGui's: what is drawn with our font pushed.
 void drawFrame() {
     const ImVec2 display = ImGui::GetIO().DisplaySize;
-    const Camera camera = fromMumble(mumble_link, glm::vec2(display.x, display.y));
+    const Camera camera = gameCamera(mumble_link, rtapi::data(), glm::vec2(display.x, display.y));
 
     drawMapMenu();
 
@@ -1190,6 +1191,7 @@ void load(AddonAPI* aApi, Mumble::Data* aMumbleLink) {
         if (!import_window) persisted.import_offered = true;
     }
     good_render_sink::load(mumble_link);
+    rtapi::load(api);
 
     api->Renderer.Register(ERenderType_PreRender, preRender);
     api->Renderer.Register(ERenderType_Render, render);
@@ -1213,6 +1215,7 @@ void load(AddonAPI* aApi, Mumble::Data* aMumbleLink) {
 void unload() {
     // The service first: once unsubscribe returns no moment can be reading the scene.
     good_render_sink::unload();
+    rtapi::unload();
 
     api->Renderer.Deregister(preRender);
     api->Renderer.Deregister(render);

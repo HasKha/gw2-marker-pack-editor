@@ -16,6 +16,7 @@ target_link_libraries(markus_viewer PUBLIC
     nexus
     nlohmann_json::nlohmann_json
     good_render
+    rtapi
     iconfontcppheaders
     stb
     sol2

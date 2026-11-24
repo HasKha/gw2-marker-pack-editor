@@ -16,6 +16,7 @@ goal.
 | Addon shape | one DLL, the editor on demand | one release; the editor draws through the viewer |
 | Signature | the original `AddonDef.Signature` | an editor install updates in place through Nexus |
 | GoodRender | optional: used when `served()`, a draw list otherwise | the addon works without the service |
+| Camera | GoodRender's in a moment; outside one RTAPI's while it is loaded, MumbleLink's otherwise | each is the frame on screen where the next is a frame ahead |
 | Frame split | everything decided at Present; a moment only draws | a moment runs inside the game's frame |
 | Packs in memory | parsed once, up to four on workers; a map change switches what is live | faster than Pathing's reread per map |
 | Category tree | merged across packs by namespace | Pathing's `SharedPackCollection` does it, and packs extending another's rely on it |
@@ -44,7 +45,8 @@ src/viewer/
   map.*          where the world lands on the minimap and full map
   map_scene.*    what the maps show, drawn into any draw list
   render/        the sinks: good_render.* (moments) and overlay.* (Nexus render, draw list)
-  camera.*       MumbleLink -> view/projection
+  camera.*       RTAPI or MumbleLink -> view/projection
+  rtapi.*        the RealTime API addon's data block, followed as Nexus loads and unloads it
   mumble.*       MumbleLink as Blish HUD names it, for scripts and behaviors
   textures.*     budgeted texture decoding
   catalog.*      the public pack catalog; downloads.* its downloads

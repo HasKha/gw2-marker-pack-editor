@@ -47,7 +47,7 @@ void AddonLoad(AddonAPI* aApi) {
 
     // No DL_NEXUS_LINK: its Width/Height are the swap chain's and can go stale, and the
     // world is drawn into an ImGui draw list, whose size ImGui itself reports. See
-    // viewer::fromMumble.
+    // viewer::gameCamera.
     Mumble::Data* mumble_link = (Mumble::Data*)aApi->DataLink.Get("DL_MUMBLE_LINK");
 
     // The editor registers nothing: the viewer drives it, from Open Editor on. Connected
