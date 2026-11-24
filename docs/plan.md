@@ -11,18 +11,24 @@ Roughly in order. Each ends in a single pull in game, its questions decided befo
 
 ### 1. The full map through GoodRender
 
-The full map is not a window at `BEFORE_WINDOWS`: markers drawn there land over it. But
-GoodRender stops calling its moments while the full map is open, so the overlay sink draws the
-full map's markers at Nexus's render instead, over everything, the game's windows included.
+The full map is not a window at `BEFORE_WINDOWS`: markers drawn there land over it. A
+GoodRender that drops the camera with the map up leaves the full map's markers to the overlay
+sink, at Nexus's render, over everything, the game's windows included.
 
-- **In [GoodRender](https://github.com/HasKha/gw2-good-render)**: keep calling the moments
-  while the full map is open. A change in that repo, and a release of it.
-- **Here**: bump `cmake/good_render.cmake` to it. The sink then draws the full map at
-  `BEFORE_WINDOWS`, over the map and under the windows, as the minimap is; the overlay goes on
-  drawing it whenever no moment did, an older GoodRender included. The world scene is still
-  skipped while the map is open.
+- **In [GoodRender](https://github.com/HasKha/gw2-good-render)**: the camera is kept with the
+  map up, unreleased. Whether its moments fire once the map is fully open, with the camera's
+  rise done, is not known: the frame may then have no world for `game_frame` to recognise.
+- **Here**: the world scene is built and drawn through GoodRender with the map up, under it;
+  the overlay skips it then. Once GoodRender is released, bump `cmake/good_render.cmake` to it.
+  The sink draws the full map at `BEFORE_WINDOWS`, over the map and under the windows, as the
+  minimap is; the overlay goes on drawing it whenever no moment did, an older GoodRender
+  included.
+- **Fading the full map's markers in and out** with the map's own fade, about 600 ms, rather
+  than all at once. The map's zoom out from the character as it opens is not known, so the
+  markers sit where the map ends up, not where it is mid-zoom.
 
-Pull: with the full map open, do its markers draw over the map and under an open window? With
+Pull: opening and closing the map, do the world's markers stay put under it as the camera
+rises? With the full map open, do its markers draw over the map and under an open window? With
 an older GoodRender, do they still draw, over everything?
 
 ### 2. Marker Packs in two tabs

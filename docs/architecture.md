@@ -720,11 +720,13 @@ expressed in projected pixel height, and a quad straddling the near plane has no
 measure, so it is drawn at its true size — Blish's own screen bounds are meaningless there
 too, and inventing a height would resize a marker for the crime of being walked into.
 
-Nothing is drawn into the world while the **full map is open** (`Context.IsMapOpen` from
-MumbleLink, carried on `Camera`). The camera keeps updating behind the map, so without the
-check the markers would sit at positions that mean nothing over it. The viewer does not call
-the overlay then, and the editor clears its hover state, so a click on the map cannot select
-whatever the mouse was last over in the world either.
+Nothing is drawn **over** the world while the **full map is open** (`Context.IsMapOpen` from
+MumbleLink, carried on `Camera`). The world stays on screen as the map fades in and out over
+it, and GoodRender draws the scene under the map, which is the game's UI; but the overlay and
+the editor's overlay draw over that UI, so over the map. The viewer does not call the overlay
+then, and the editor clears its hover state, so a click on the map cannot select whatever the
+mouse was last over in the world either. What `IsMapOpen` does as the map toggles is in
+[viewer.md](viewer.md#drawing).
 
 A draw list has no depth buffer, so through the overlay sink markers are not occluded by
 world geometry. Through GoodRender those behind the terrain are: `world_quad` hides each pixel

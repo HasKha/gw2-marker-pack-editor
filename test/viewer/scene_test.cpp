@@ -547,7 +547,7 @@ TEST_CASE("a pathable fades in over 800 ms once in view, and again when its cate
     CHECK(alphaAt(22.2f) == Approx(64).margin(1));
 }
 
-TEST_CASE("nothing is in the scene while the map is open", "[scene]") {
+TEST_CASE("the scene is built while the map is open, for GoodRender to draw under it", "[scene]") {
     Built built;
     viewer::BakedPathables pathables;
     pathables.markers = {marker({0, 0, 5}, 0)};
@@ -556,7 +556,7 @@ TEST_CASE("nothing is in the scene while the map is open", "[scene]") {
     viewer::Camera camera = test_camera::axisCamera();
     camera.map_open = true;
     built.build(camera);
-    CHECK(built.scene.items.empty());
+    CHECK(built.scene.items.size() == 1);
 }
 
 TEST_CASE("a trail is in the scene as its ribbon's quads", "[scene]") {
@@ -792,6 +792,51 @@ TEST_CASE("the whole world is drawn at WORLD_FINISHED, under the game's HUD", "[
     CHECK(drawn.terrain);
     CHECK(drawn.over);
 
+    viewer::publish(nullptr);
+}
+
+TEST_CASE("the world is drawn at WORLD_FINISHED with the map open, under it", "[good_render]") {
+    // GoodRender hands a camera with the map open, and the world is still on screen while the
+    // map opens and closes.
+    auto scene = std::make_shared<viewer::Scene>();
+    viewer::SceneItem behind;
+    behind.texture = fakeTexture();
+    behind.behind_terrain = true;
+    behind.corners[0] = {0, 0, 1};
+    behind.corners[1] = {1, 0, 1};
+    behind.corners[2] = {1, 1, 1};
+    behind.corners[3] = {0, 1, 1};
+    scene->items.push_back(behind);
+    viewer::SceneItem over = behind;
+    over.behind_terrain = false;
+    scene->items.push_back(over);
+    viewer::publish(scene);
+
+    Mumble::Data mumble{};
+    mumble.Context.IsMapOpen = 1;
+    viewer::good_render_sink::load(&mumble);
+    viewer::good_render_sink::takeDrawn();
+
+    const good_render::Camera moment_camera = momentCamera(test_camera::axisCamera());
+    viewer::test::DrawListFixture fixture;
+    good_render::Moment moment{};
+    moment.moment = good_render::MOMENT_WORLD_FINISHED;
+    moment.width = static_cast<uint32_t>(test_camera::kWidth);
+    moment.height = static_cast<uint32_t>(test_camera::kHeight);
+    moment.pixels_per_window_pixel = 1.0f;
+    moment.camera = &moment_camera;
+    moment.draw_list = &fixture.list();
+    moment.world_quad = recordQuad;
+
+    submitted.clear();
+    viewer::good_render_sink::onMoment(&moment);
+    CHECK(submitted.size() == 1);
+    CHECK(fixture.list().VtxBuffer.Size == 4);
+    const viewer::good_render_sink::Drawn drawn = viewer::good_render_sink::takeDrawn();
+    CHECK(drawn.terrain);
+    CHECK(drawn.over);
+
+    viewer::good_render_sink::unload();
     viewer::publish(nullptr);
 }
 

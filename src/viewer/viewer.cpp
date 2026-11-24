@@ -894,7 +894,9 @@ void drawWorld() {
     const std::shared_ptr<const Scene> scene = published();
 
     const good_render_sink::Drawn drawn = good_render_sink::takeDrawn();
-    if (scene && camera.valid && !(drawn.terrain && drawn.over)) {
+    // Not with the map up: this is over the game's UI, so over the map. The scene is still built
+    // then, for GoodRender, which draws it under the map.
+    if (scene && camera.valid && !camera.map_open && !(drawn.terrain && drawn.over)) {
         overlay::drawScene(ImGui::GetBackgroundDrawList(), camera, *scene, !drawn.terrain, !drawn.over);
     }
     if (!drawn.map) {

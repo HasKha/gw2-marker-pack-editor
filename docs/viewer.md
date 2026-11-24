@@ -192,8 +192,12 @@ those markers show through. Behind the terrain, the game's own walls hide them a
 `ERenderType_Render`, projected with `camera.*`, over everything.
 Only what no moment drew: every moment of a frame comes before its Present, so each moment
 sets a flag for what it drew — behind the terrain, over it, the map — and the Nexus render
-takes them (`good_render_sink::takeDrawn`) and draws the rest. A loading screen, the full map,
-or no service at all, and the overlay draws.
+takes them (`good_render_sink::takeDrawn`) and draws the rest. A loading screen, or no service
+at all, and the overlay draws. **The world is drawn with the full map up**: it stays on screen
+while the map fades in and out over it, GoodRender keeps the camera, and the map is the game's
+UI, over `WORLD_FINISHED`. MumbleLink's `IsMapOpen` comes on at once and goes off late, about
+three quarters of the way through closing, so the scene does not read it. The overlay does: it
+draws over the game's UI, so over the map, and with the map up draws no world at all.
 
 **A marker without its icon is not drawn**, as Pathing draws nothing without a texture —
 including while the icon waits for its turn in the load budget. The edited pack's are kept in

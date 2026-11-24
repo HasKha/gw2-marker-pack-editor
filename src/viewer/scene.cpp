@@ -230,9 +230,10 @@ void appendLayer(
 void buildScene(const std::vector<SceneLayer>& layers, const Camera& camera, float seconds, const WorldOptions& options, Scene* out) {
     out->items.clear();
 
-    // With the map up the world is not on screen, and anything drawn would sit at positions
-    // that mean nothing over it.
-    if (!camera.valid || camera.map_open || !options.enabled) return;
+    // Built with the map up too. The world stays on screen while the map opens and closes, and
+    // GoodRender draws it under the game's UI, which the map is part of; the overlay, over that UI,
+    // skips it itself (drawWorld).
+    if (!camera.valid || !options.enabled) return;
 
     const float settings_opacity = options.max_opacity * (options.combat_fade && options.in_combat ? 0.5f : 1.0f);
     for (const SceneLayer& layer : layers) appendLayer(layer, camera, seconds, options, settings_opacity, out);

@@ -42,6 +42,8 @@ void onMoment(const good_render::Moment* moment) {
     // what is behind the terrain through world_quad, the rest into the draw list, which the
     // service draws after the quads. No camera means no world to draw into this frame — leave it
     // to the fallback.
+    // Over the full map too: GoodRender keeps the camera there, and the map is the game's UI,
+    // drawn over this.
     if (moment->moment != good_render::MOMENT_WORLD_FINISHED || !moment->camera) return;
 
     const std::shared_ptr<const Scene> scene = published();
