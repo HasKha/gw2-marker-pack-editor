@@ -91,7 +91,7 @@ const std::vector<AttributeDef>& table() {
         // `StandardTrail` populate written for them, but nothing calls it: `StandardTrail`'s
         // `Populate` lists neither `Populate_TacOMisc` nor `Populate_Triggers`, so on a trail
         // both are dead attributes.
-        {"behavior", "behavior", kInt, kAppliesPoi, true, "0", "TacO behavior id controlling when the marker hides."},
+        {"behavior", "behavior", kInt, kAppliesPoi, true, "0", "Controls when the marker hides once used."},
         {"invertbehavior", "invertBehavior", kBool, kAppliesPoi, true, "0", "Invert the behavior's show/hide sense."},
         {"triggerrange", "triggerRange", kFloat, kAppliesPoi, true, "2", "Range (metres) at which the marker triggers."},
         {"autotrigger", "autoTrigger", kBool, kAppliesPoi, true, "0", "Trigger on approach rather than on interact."},

@@ -39,7 +39,7 @@ void drawMessages(const script::Engine& engine) {
 
 void drawWatches(const script::Engine& engine) {
     if (engine.watches().empty()) {
-        ImGui::TextDisabled("Nothing watched. Debug:Watch(name, value) adds a line here.");
+        ImGui::TextDisabled("Nothing watched yet. A script adds a line here with Debug:Watch(name, value).");
         return;
     }
     ImGui::Columns(2, "##watches");
@@ -62,7 +62,7 @@ void drawTimes(const script::Engine& engine, const runtime::Installed& installed
 
 void drawCensus(const script::Engine& engine) {
     if (engine.census().entries().empty()) {
-        ImGui::TextDisabled("Every member scripts asked for exists.");
+        ImGui::TextDisabled("No script has used anything missing.");
         return;
     }
     for (const script::CensusEntry& entry : engine.census().entries()) {

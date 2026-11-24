@@ -32,7 +32,7 @@ extern "C" __declspec(dllexport) AddonDefinition* GetAddonDef() {
     AddonDef.Version.Build = VERSION_BUILD;
     AddonDef.Version.Revision = 0;
     AddonDef.Author = "Haskha";
-    AddonDef.Description = "Create and edit marker packs in-game.";
+    AddonDef.Description = "Yet another marker pack addon.";
     AddonDef.Load = AddonLoad;
     AddonDef.Unload = AddonUnload;
     AddonDef.Flags = EAddonFlags_None;

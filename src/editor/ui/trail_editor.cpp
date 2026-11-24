@@ -64,7 +64,7 @@ void drawHeader(editor::State& state, const viewer::Camera& camera) {
     ImGui::SameLine();
     if (ImGui::Button("Set to current map")) trail_edit::setMapId(state, static_cast<int32_t>(camera.map_id));
     if (ImGui::IsItemHovered()) {
-        ImGui::SetTooltip(camera.valid ? "Current map: %u" : "No map: MumbleLink has no data yet", camera.map_id);
+        ImGui::SetTooltip(camera.valid ? "Current map: %u" : "The game has not reported a map yet", camera.map_id);
     }
 }
 
@@ -238,7 +238,6 @@ void draw(editor::State& state, const viewer::Camera& camera) {
         }
 
         ImGui::TextDisabled("Select a trail to edit it.");
-        ImGui::TextWrapped("A trail's points live in its .trl file, which is loaded on demand - give it a frame after selecting.");
         return;
     }
 

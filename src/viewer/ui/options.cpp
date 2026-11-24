@@ -33,31 +33,33 @@ bool drawPack(settings::Settings* settings, bool* show_hidden) {
     changed |= ImGui::Checkbox("Hide markers behind terrain", &settings->behind_terrain);
     if (ImGui::IsItemHovered()) {
         ImGui::SetTooltip(
-            "Requires Good Render.\n"
-            "A pack can choose for its own markers.");
+            "Needs the GoodRender addon.\n"
+            "Some packs decide this for their own markers.");
     }
     // TODO: ^ describe the tag for marker creators.
 
     changed |= ImGui::Checkbox("Allow markers to hide themselves", &settings->allow_auto_hide);
-    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Off shows every marker, including ones hidden by time (festivals), or interaction.");
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("When off, every marker shows, including those hidden by festivals, schedules or after you used them.");
     changed |= ImGui::Checkbox("Allow markers to animate", &settings->allow_animation);
     changed |= ImGui::Checkbox("Smart categories", &settings->smart_categories);
-    if (ImGui::IsItemHovered()) ImGui::SetTooltip("The menu leaves out categories with nothing on the current map.");
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Leaves categories with nothing on the current map out of the menu.");
     changed |= ImGui::Checkbox("Show what interacting does", &settings->show_interact_prompt);
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("A prompt near a marker you can interact with, saying what your Interact key will do.");
     changed |= ImGui::Checkbox("Show tooltips for achievements", &settings->achievement_tooltips);
-    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Over a category in the menu that is tied to an achievement.");
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Shows the achievement when you point at a category in the menu that is tied to one.");
 
     static constexpr const char* kInfoDisplays[] = {"Default", "Without background", "Never"};
     ImGui::SetNextItemWidth(ImGui::GetFontSize() * 12.0f);
     changed |= ImGui::Combo("Marker info", &settings->info_display, kInfoDisplays, IM_ARRAYSIZE(kInfoDisplays));
-    if (ImGui::IsItemHovered()) ImGui::SetTooltip("What some markers say when you are near them.");
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Text some markers show when you are near them.");
 
     static constexpr const char* kConsents[] = {"Always", "Only when I interact", "Never"};
     ImGui::SetNextItemWidth(ImGui::GetFontSize() * 12.0f);
     changed |= ImGui::Combo("Markers may copy to the clipboard", &settings->clipboard_consent, kConsents, IM_ARRAYSIZE(kConsents));
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Some markers copy text, such as a waypoint code, for you to paste in chat.");
 
     ImGui::Checkbox("Show hidden markers faded, to unhide them", show_hidden);
-    if (ImGui::IsItemHovered()) ImGui::SetTooltip("For this session only.");
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Interact with a faded marker to bring it back. Turns itself off when the game restarts.");
     return changed;
 }
 
@@ -66,9 +68,9 @@ namespace {
 void sharedTooltip(const char* also = nullptr) {
     if (!ImGui::IsItemHovered()) return;
     if (also) {
-        ImGui::SetTooltip("%s\nShared by the minimap and the full map.", also);
+        ImGui::SetTooltip("%s\nApplies to both the minimap and the full map.", also);
     } else {
-        ImGui::SetTooltip("Shared by the minimap and the full map.");
+        ImGui::SetTooltip("Applies to both the minimap and the full map.");
     }
 }
 
@@ -79,7 +81,7 @@ bool drawMap(const char* id, settings::Settings* settings, int* markers, int* tr
     bool changed = ImGui::Checkbox("Show markers on maps", &settings->map_pathables);
     sharedTooltip();
     changed |= visibilityCombo("Markers", markers);
-    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Default follows each marker's own choice; Always and Never override it.");
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Default lets each pack decide; Always and Never override it.");
     changed |= visibilityCombo("Trails", trails);
     changed |= slider("Opacity", opacity, 0.0f, 1.0f, "%.2f");
     changed |= slider("Trail width", &settings->map_trail_width, 0.5f, 4.5f, "%.1f");
@@ -178,8 +180,8 @@ KeyAction drawApiKey(const std::string& registered, char* field, size_t field_si
     if (ImGui::Button("Clear cached API data")) action = KeyAction::ClearCache;
     if (ImGui::IsItemHovered()) {
         ImGui::SetTooltip(
-            "Forgets the account's progress and the achievements' details kept from the API,\n"
-            "and asks for them again.");
+            "Forgets your saved account progress and achievement details,\n"
+            "and downloads them again.");
     }
     return action;
 }

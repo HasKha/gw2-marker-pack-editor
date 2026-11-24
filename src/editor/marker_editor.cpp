@@ -526,7 +526,7 @@ void drawMenuBar(ui::windows::Id owner) {
                 open_pack_path.empty() ? std::string("markers.zip") : open_pack_path.filename().replace_extension(".zip").string();
             file_dialog::requestSaveFile(packFolder(), suggested, {{"Marker pack", "zip,taco"}});
         }
-        if (ImGui::IsItemHovered()) ImGui::SetTooltip("Always writes a zip — the only form Blish HUD loads reliably.");
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("Always saves as a .zip.");
 
         ImGui::EndMenu();
     }
@@ -656,7 +656,7 @@ void drawNewPackPopup(ui::windows::Id owner) {
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("The root category's id. Everything in the pack sits under it. No dots.");
 
     ImGui::InputText("Display name", new_pack_display, sizeof(new_pack_display));
-    if (ImGui::IsItemHovered()) ImGui::SetTooltip("What Blish HUD shows in the marker list.");
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("The name shown in the markers menu.");
 
     ImGui::InputText("File", new_pack_file, sizeof(new_pack_file));
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("The .xml inside the zip. More files can be added later by hand.");
@@ -748,7 +748,7 @@ bool canCreate(bool needs_character) {
         return false;
     }
     if (needs_character && !frame_camera.valid) {
-        status_message = "No character position: MumbleLink has no data yet.";
+        status_message = "The game has not reported your character's position yet.";
         return false;
     }
     return true;

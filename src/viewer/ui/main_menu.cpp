@@ -147,7 +147,7 @@ bool drawChildren(const registry::CategoryTree& tree, const std::vector<size_t>&
             context.show_all->insert(parent);
         }
         ImGui::PopStyleColor();
-        if (ImGui::IsItemHovered()) ImGui::SetTooltip("Hidden because they are for markers on a different map. Click to show them.");
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("Hidden because they have nothing on this map. Click to show them.");
     }
     return changed;
 }

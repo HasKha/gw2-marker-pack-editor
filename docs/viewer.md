@@ -414,8 +414,8 @@ a row "N Categories Are Hidden" that shows that menu's whole until the map chang
 It is shown in up to two places, chosen at the top of the options page: Nexus's own menu, and the
 menu of an icon of ours in Nexus's bar. Nexus opens an icon's context menu on a right click, at the
 mouse, and presses its keybind on a left one, so the left click opens the same items in a popup
-of ours. That bind is the one Nexus lists as "Marker pack icon (left click)": Nexus has no other
-way to say the icon was clicked. The popup opens under the icon, whose rectangle ImGui keeps as
+of ours. That bind is the one Nexus lists as "Open Markus menu": Nexus has no other
+way to say the icon was clicked, and a key set on it opens the menu too. The popup opens under the icon, whose rectangle ImGui keeps as
 the button last clicked (`placeMenu` in `viewer.cpp`). Both places are added and removed from the
 options page, which is safe: Nexus holds its quick access lock only while it draws the bar, and
 the options page, Nexus's or our window's, is not drawn from there. In Nexus's menu our separator is left out: Nexus draws

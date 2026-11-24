@@ -534,14 +534,14 @@ void finishKeyCheck() {
         account_progress.setKey(persisted.api_key, utcNow());
         std::fill(std::begin(key_field), std::end(key_field), char{});
         key_status = settings::save(folder, persisted)
-                         ? "Key added successfully."
-                         : "Key added for this session, but it could not be saved: it will be needed again next time.";
+                         ? "Key added."
+                         : "Key added, but it could not be saved: you will need to add it again next time.";
         break;
     case api_key::Outcome::MissingPermissions:
-        key_status = "This key cannot read " + done.check.missing + ". Make a new one with \"account\" and \"progression\" selected.";
+        key_status = "This key is missing permissions: " + done.check.missing + ". Make a new one with \"account\" and \"progression\" selected.";
         break;
-    case api_key::Outcome::Rejected: key_status = "The API does not know this key. Check that all of it was copied."; break;
-    case api_key::Outcome::NoAnswer: key_status = "The API could not be reached to check the key. Try again in a moment."; break;
+    case api_key::Outcome::Rejected: key_status = "This key was not accepted. Check that you copied all of it."; break;
+    case api_key::Outcome::NoAnswer: key_status = "Could not reach the GW2 API to check the key. Try again in a moment."; break;
     }
 }
 
@@ -565,11 +565,11 @@ void drawCatalog() {
         }
     }
 
-    std::string status = "Asking the catalog...";
+    std::string status = "Loading the list of packs...";
     const bool failed = !packages && catalog_request && catalog_request->finished();
-    if (failed) status = "Could not reach the catalog.";
+    if (failed) status = "Could not load the list of packs.";
     if (packages) {
-        status = std::to_string(packages->size()) + " packs in the catalog";
+        status = std::to_string(packages->size()) + " packs available";
         if (stale > 0) status += ", " + std::to_string(stale) + " with an update";
     }
 
@@ -983,7 +983,7 @@ void removeMenuPlaces() {
 void drawOptionsPage() {
     bool places = ImGui::Checkbox("Show the menu in Nexus's menu", &persisted.menu_in_nexus);
     places |= ImGui::Checkbox("Show an icon in Nexus's bar", &persisted.menu_icon);
-    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Left or right click it for the menu.");
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Click it to open the Markus menu.");
     if (places) {
         applyMenuPlaces();
         settings::save(folder, persisted);
@@ -991,9 +991,11 @@ void drawOptionsPage() {
     ImGui::Separator();
 
     if (ImGui::Button(ui::fonts::label(ICON_FA_FILE_IMPORT, "Import from Blish HUD...").c_str())) openImport();
-    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Copies Blish HUD's marker packs into this addon, with what Pathing remembers.");
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Copies your marker packs from Blish HUD, with the categories you turned on or off\nand the markers you hid.");
 
-    if (ImGui::Checkbox("Run pack scripts", &persisted.run_scripts)) {
+    const bool scripts_changed = ImGui::Checkbox("Run pack scripts", &persisted.run_scripts);
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Some packs come with scripts that add menus or change their markers as you play.");
+    if (scripts_changed) {
         settings::save(folder, persisted);
         // Off throws every handler away, and what scripts did to the map with them; on starts
         // them again from pack.lua.
@@ -1032,7 +1034,7 @@ void drawOptionsPage() {
         case ui::options::KeyAction::ClearCache:
             account_progress.clearCache();
             achievement_details.clear();
-            key_status = "Cached API data cleared.";
+            key_status = "Saved API data cleared.";
             break;
         }
     }
@@ -1042,6 +1044,7 @@ void drawOptionsPage() {
     ImGui::Text("%s", loadingStatus().c_str());
 
     ImGui::Checkbox("Script console", &console_window);
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Messages and errors from pack scripts, for pack authors.");
     ImGui::SameLine();
     ImGui::Checkbox("Marker Packs", &catalog_window);
 }
@@ -1130,7 +1133,7 @@ void load(AddonAPI* aApi, Mumble::Data* aMumbleLink) {
     // Nexus presses a shortcut's bind for a left click on it and has no other way to say so, so
     // the menu has a bind: unset, and named for what it is there for.
     api->InputBinds.RegisterWithString(KEYBIND_MENU_ID, onMenuKeybind, "(null)");
-    api->Localization.Set(KEYBIND_MENU_ID, "en", "Markus icon (left click)");
+    api->Localization.Set(KEYBIND_MENU_ID, "en", "Open Markus menu");
     api->InputBinds.RegisterWithString(KEYBIND_ALL_MARKERS_ID, onAllMarkersKeybind, "(null)");
     api->Localization.Set(KEYBIND_ALL_MARKERS_ID, "en", "Toggle Markers"); // Pathing's name for it
     api->Textures.GetOrCreateFromMemory(ICON_TEXTURE_ID, const_cast<unsigned char*>(ui::icon_data::kIcon), sizeof(ui::icon_data::kIcon));
