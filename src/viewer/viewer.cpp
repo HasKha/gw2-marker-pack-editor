@@ -46,6 +46,7 @@
 #include "viewer/ui/import_window.h"
 #include "viewer/ui/interaction.h"
 #include "viewer/ui/main_menu.h"
+#include "viewer/ui/map_icon_data.h"
 #include "viewer/ui/map_menu.h"
 #include "viewer/ui/options.h"
 #include "viewer/ui/pack_catalog.h"
@@ -832,6 +833,15 @@ void buildMapScene(const TextureLookup& texture) {
         std::vector<map_scene::Layer> layers{map_scene::Layer{&live, &visible, texture, &map_trails}};
         if (edited_live) layers.push_back(map_scene::Layer{edited_live, &kNoNodes, edited_texture, &edited_map_trails});
         map_scene::build(layers, *details, mumble_state, mapOptions(), fade, uiScale(), next.get());
+
+        // The above and below images. Nexus returns the texture it already made for an
+        // identifier, so asking every frame decodes each once; null until it is ready.
+        const auto embedded = [](const char* id, const unsigned char* bytes, size_t size) -> ImTextureID {
+            const Texture* texture = api->Textures.GetOrCreateFromMemory(id, const_cast<unsigned char*>(bytes), size);
+            return texture ? static_cast<ImTextureID>(texture->Resource) : nullptr;
+        };
+        next->above = embedded("TEX_MarkerPackEditor_Above", ui::map_icon_data::kAbove, sizeof(ui::map_icon_data::kAbove));
+        next->below = embedded("TEX_MarkerPackEditor_Below", ui::map_icon_data::kBelow, sizeof(ui::map_icon_data::kBelow));
     } else {
         *next = map_scene::MapScene{};
     }

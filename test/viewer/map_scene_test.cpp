@@ -202,16 +202,53 @@ TEST_CASE("map scene: an icon says when it is more than 30 m above or below the 
     live.markers.push_back(marker({500, 40, 500}));
     live.markers.back().marker.height_offset = 20.0f;
 
-    const map_scene::MapScene scene = build(live);
+    map_scene::Options on;
+    on.above_below = true;
+    const map_scene::MapScene scene = build(live, mumble(), on);
     REQUIRE(scene.icons.size() == 4);
     for (const map_scene::Icon& icon : scene.icons) {
         const int expected[] = {1, -1, 0, 0};
         CHECK(icon.above_below == expected[icon.marker]);
     }
 
-    map_scene::Options off;
-    off.above_below = false;
-    for (const map_scene::Icon& icon : build(live, mumble(), off).icons) CHECK(icon.above_below == 0);
+    // Off by default.
+    for (const map_scene::Icon& icon : build(live).icons) CHECK(icon.above_below == 0);
+}
+
+TEST_CASE("map scene: an icon well above wears the game's above image, as opaque as the map whatever its own alpha") {
+    runtime::LiveMap live;
+    live.markers.push_back(marker({500, 31, 520}));
+    live.markers.back().marker.alpha = 0.5f;
+    map_scene::Options options;
+    options.above_below = true;
+    map_scene::MapScene scene = build(live, mumble(), options, 0.8f);
+    int above = 0;
+    int below = 0;
+    scene.above = &above;
+    scene.below = &below;
+
+    test::DrawListFixture fixture;
+    map_scene::draw(&fixture.list(), scene, *map::view(mumble(), kDisplay, 1.0f), 0.0f);
+    const ImDrawList& list = fixture.list();
+    bool drew_above = false;
+    bool drew_below = false;
+    for (const ImDrawCmd& cmd : list.CmdBuffer) {
+        drew_above |= cmd.ElemCount > 0 && cmd.TextureId == &above;
+        drew_below |= cmd.ElemCount > 0 && cmd.TextureId == &below;
+    }
+    CHECK(drew_above);
+    CHECK_FALSE(drew_below);
+
+    // The icon at its alpha under the map's, 0.5 × 0.8; the image, drawn last, at the map's alone.
+    const auto alpha = [](const ImDrawVert& vertex) { return static_cast<int>((vertex.col >> IM_COL32_A_SHIFT) & 0xFF); };
+    CHECK(alpha(list.VtxBuffer.front()) == Approx(102).margin(1));
+    CHECK(alpha(list.VtxBuffer.back()) == Approx(204).margin(1));
+
+    // Nothing to draw it with, nothing drawn.
+    scene.above = nullptr;
+    test::DrawListFixture without;
+    map_scene::draw(&without.list(), scene, *map::view(mumble(), kDisplay, 1.0f), 0.0f);
+    CHECK(without.list().VtxBuffer.Size == 4); // the icon's one quad
 }
 
 TEST_CASE("map scene: a trail is a line per stretch, faded by how far above or below it is") {
@@ -398,6 +435,19 @@ TEST_CASE("map scene: the tooltip is the tip, its description and how far away")
 
     live.marker.tip_name.clear();
     CHECK(map_scene::tooltip(live, tree, player, false).title.empty());
+}
+
+TEST_CASE("map scene: the tooltip says how far above or below the player the marker is") {
+    runtime::LiveMarker live = marker({500, 10, 600}); // 10 m up, in MumbleLink's y
+    live.marker.tip_name = "Chest";
+    registry::CategoryTree tree;
+
+    CHECK(map_scene::tooltip(live, tree, glm::vec3(500.0f, 500.0f, 0.0f), false).description == "3,957 away, 394 above");
+    CHECK(map_scene::tooltip(live, tree, glm::vec3(500.0f, 500.0f, 20.0f), false).description == "3,957 away, 394 below");
+    // heightOffset only lifts the icon in the world: it is measured from where it stands.
+    live.marker.height_offset = 10.0f;
+    live.marker.position.y += 10.0f;
+    CHECK(map_scene::tooltip(live, tree, glm::vec3(500.0f, 500.0f, 0.0f), false).description == "3,957 away, 394 above");
 }
 
 TEST_CASE("map scene: the tooltip says which categories the marker sits in, each cut short") {

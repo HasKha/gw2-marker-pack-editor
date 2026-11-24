@@ -31,11 +31,9 @@ constexpr double kFadeSeconds = 0.65;
 // the map is zoomed in further than this.
 constexpr float kAboveBelowMetres = 30.0f;
 constexpr double kAboveBelowMostScale = 2.0;
-// The size of Pathing's above and below icons, in Blish HUD's pixels at MapScale 1.
+// The size of the above and below images, which Pathing draws at their own pixel size, in Blish
+// HUD's pixels at MapScale 1.
 constexpr float kAboveBelowSize = 16.0f;
-// The colour of those icons, which point up or down.
-constexpr ImU32 kAboveBelowColour = IM_COL32(93, 215, 216, 255);
-constexpr ImU32 kAboveBelowOutline = IM_COL32(0, 0, 0, 200);
 
 // StandardTrail.MiniMap.DrawSegment: a stretch of trail fades by half a percent per metre
 // between its height and the player's, to no less than this.
@@ -126,17 +124,6 @@ void drawClippedImage(ImDrawList* list, ImTextureID texture, glm::vec2 min, glm:
         ImVec2(uv_min.x, uv_min.y),
         ImVec2(uv_max.x, uv_max.y),
         colour);
-}
-
-// Pathing's above or below icon, drawn as an arrow, where it fits inside the bounds whole.
-void drawAboveBelow(ImDrawList* list, int direction, glm::vec2 min, glm::vec2 max, float opacity, const map::View& view) {
-    if (min.x < view.min.x || min.y < view.min.y || max.x > view.max.x || max.y > view.max.y) return;
-    const float middle = (min.x + max.x) * 0.5f;
-    const ImVec2 tip(middle, direction > 0 ? min.y : max.y);
-    const ImVec2 left(min.x, direction > 0 ? max.y : min.y);
-    const ImVec2 right(max.x, direction > 0 ? max.y : min.y);
-    list->AddTriangleFilled(tip, left, right, applyOpacity(kAboveBelowColour, opacity));
-    list->AddTriangle(tip, left, right, applyOpacity(kAboveBelowOutline, opacity));
 }
 
 // "##,###": thousands grouped, no decimals, and nothing at all for zero.
@@ -371,11 +358,13 @@ void draw(ImDrawList* list, const MapScene& scene, const map::View& view, float 
         drawClippedImage(list, icon.texture, min, max, icon.colour, view);
 
         const double zoom = zoomScale(view, icon.scale_with_zoom);
-        if (icon.above_below == 0 || zoom >= kAboveBelowMostScale) continue;
-        // In the icon's top right corner, at the icon's own scale.
+        const ImTextureID indicator = icon.above_below > 0 ? scene.above : scene.below;
+        if (icon.above_below == 0 || !indicator || zoom >= kAboveBelowMostScale) continue;
+        // In the icon's top right corner, at the icon's own scale; as opaque as the map, whatever
+        // the marker's alpha or tint, as Pathing draws it.
         const float size = static_cast<float>(kAboveBelowSize * blish_pixel / zoom);
-        const float opacity = ((icon.colour >> IM_COL32_A_SHIFT) & 0xFF) / 255.0f;
-        drawAboveBelow(list, icon.above_below, glm::vec2(max.x - size, min.y), glm::vec2(max.x, min.y + size), opacity, view);
+        const glm::vec2 corner(max.x - size, min.y);
+        drawClippedImage(list, indicator, corner, corner + glm::vec2(size), applyOpacity(IM_COL32_WHITE, scene.opacity), view);
     }
 }
 
@@ -421,8 +410,12 @@ Tooltip tooltip(const runtime::LiveMarker& marker, const registry::CategoryTree&
         if (!path.empty()) tip.description += path + "\n";
     }
 
-    const float metres = glm::distance(markerPosition(marker.marker), player);
-    tip.description += groupedInteger(metres * kInchesPerMetre) + " away";
+    const glm::vec3 position = markerPosition(marker.marker);
+    tip.description += groupedInteger(glm::distance(position, player) * kInchesPerMetre) + " away";
+    // How far up or down, in the same units; nothing when level, as groupedInteger says.
+    const float rise = position.z - player.z;
+    const std::string height = groupedInteger(std::abs(rise) * kInchesPerMetre);
+    if (!height.empty()) tip.description += ", " + height + (rise > 0.0f ? " above" : " below");
     return tip;
 }
 

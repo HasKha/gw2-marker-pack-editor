@@ -39,7 +39,7 @@ struct Options {
     Visibility minimap_trails = Visibility::Default;
     float map_opacity = 1.0f;
     float minimap_opacity = 1.0f;
-    bool above_below = true;
+    bool above_below = false;
     bool fade_far_trails = true;
     float trail_width = 2.0f; // Blish HUD's pixels
     bool show_hidden = false; // what behaviors filter is drawn too
@@ -104,6 +104,9 @@ struct MapScene {
     std::vector<std::shared_ptr<const TrailLines>> trails; // each layer's
     std::vector<Path> paths; // the trails that show, drawn first, under every icon
     std::vector<Icon> icons; // farthest from the camera first, as FlatMap sorts them
+    // The game's above and below images, drawn on an icon's corner; none drawn while null.
+    ImTextureID above = nullptr;
+    ImTextureID below = nullptr;
 };
 
 // Pathing's fade after the map opens or closes, or the interface is resized: 0.65 s from
@@ -177,7 +180,7 @@ struct Tooltip {
     std::string description;
 };
 
-// The tip name and description, the categories it sits in, short, and how far away it is; with
+// The tip name and description, the categories it sits in, short, and how far away, above or below it is; with
 // `category_path`, the whole category chain instead, as Pathing shows with Shift held.
 Tooltip tooltip(const runtime::LiveMarker& marker, const registry::CategoryTree& tree, const glm::vec3& player, bool category_path);
 

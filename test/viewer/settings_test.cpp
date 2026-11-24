@@ -87,7 +87,7 @@ TEST_CASE("map and world settings start at Pathing's defaults and are kept", "[v
     CHECK(defaults.minimap_trail_visibility == 0);
     CHECK(defaults.map_opacity == 1.0f);
     CHECK(defaults.minimap_opacity == 1.0f);
-    CHECK(defaults.map_above_below);
+    CHECK_FALSE(defaults.map_above_below); // off, unlike Pathing
     CHECK(defaults.map_fade_far_trails);
     CHECK(defaults.map_tooltips);
     CHECK(defaults.map_trail_width == 2.0f);

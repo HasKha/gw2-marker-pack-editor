@@ -34,8 +34,8 @@ editor uses `viewer/` for the camera, textures and drawing; nothing in `viewer/`
   `EAddonFlags_IsVolatile`**: Nexus disables a volatile addon once the game build moves more than 350 past
   the one it recorded (`IsVolatileDisabled` in Nexus's `Host/Addons/Addon.cpp`).
 - **Every dependency comes in through FetchContent**, one `cmake/<dep>.cmake` each, pinned, whose comments
-  say why it is fetched as it is. Nothing is vendored into `src/`; the one font compiled in is generated
-  from `assets/fonts/`.
+  say why it is fetched as it is. Nothing is vendored into `src/`; the font and the game's icons compiled
+  in are generated from `assets/`, each folder's `NOTICES.md` saying where they came from.
 
 ## Build targets
 

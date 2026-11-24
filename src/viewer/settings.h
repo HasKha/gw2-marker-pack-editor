@@ -53,7 +53,7 @@ struct Settings {
     int minimap_marker_visibility = 0;
     int minimap_trail_visibility = 0;
     float minimap_opacity = 1.0f;
-    bool map_above_below = true; // "Show Above/Below Indicators"
+    bool map_above_below = false; // "Show Above/Below Indicators"; on in Pathing, off here as the tooltip says the height
     bool map_fade_far_trails = true; // "Fade Trail Segments Which Are High Above or Below"
     bool map_tooltips = true;
     float map_trail_width = 2.0f; // Blish HUD's pixels, 0.5 to 4.5
