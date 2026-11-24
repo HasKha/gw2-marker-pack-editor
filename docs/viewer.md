@@ -85,7 +85,7 @@ src/
                    the script console,
                    interaction.* (info and prompt),
                    map_menu.* (the maps' tooltip and menu), options.* (Pathing's settings),
-                   pack_catalog.* (Marker Packs, the catalog's window), import_window.*
+                   pack_catalog.* (Marker Packs: Installed and Library), import_window.*
                    (the Blish HUD import)
   editor/          markus_editor, links markus_pack and markus_viewer
 ```

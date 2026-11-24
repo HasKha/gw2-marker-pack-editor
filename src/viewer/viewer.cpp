@@ -549,10 +549,10 @@ void drawCatalog() {
     if (!catalog_window) return;
     const std::vector<catalog::Package>* packages = catalog_request ? catalog_request->get() : nullptr;
 
+    // Every package in the catalog, with its copy on disk if any.
     std::vector<ui::pack_catalog::Row> rows;
-    size_t stale = 0;
+    size_t absent = 0;
     if (packages) {
-        rows.reserve(packages->size());
         for (const catalog::Package& package : *packages) {
             ui::pack_catalog::Row row;
             row.package = &package;
@@ -560,7 +560,18 @@ void drawCatalog() {
             row.state = catalog::state(package, row.local);
             row.download = downloads.status(package.file_name);
             row.keep_updated = auto_update.enabled(package.name);
-            if (row.state == catalog::State::Stale) ++stale;
+            if (row.state == catalog::State::Absent) ++absent;
+            rows.push_back(row);
+        }
+    }
+
+    // Then every archive in our folder the catalog does not list — all of them while its list is
+    // not in. The loose-XML pack is the folder itself, which is not ours to delete, so it is
+    // left out.
+    for (const catalog::LocalPack& local : local_packs) {
+        if (!packages || !catalog::findPackage(local, *packages)) {
+            ui::pack_catalog::Row row;
+            row.local = &local;
             rows.push_back(row);
         }
     }
@@ -568,14 +579,11 @@ void drawCatalog() {
     std::string status = "Loading the list of packs...";
     const bool failed = !packages && catalog_request && catalog_request->finished();
     if (failed) status = "Could not load the list of packs.";
-    if (packages) {
-        status = std::to_string(packages->size()) + " packs available";
-        if (stale > 0) status += ", " + std::to_string(stale) + " with an update";
-    }
+    if (packages) status = std::to_string(absent) + " packs to download";
 
     bool retry = false;
     for (const ui::pack_catalog::Action& action : ui::pack_catalog::draw(rows, status, failed, &retry, &catalog_window)) {
-        const ui::pack_catalog::Row& row = rows[action.row];
+        const ui::pack_catalog::Row& row = *action.row;
         switch (action.kind) {
         case ui::pack_catalog::Action::Kind::Download: downloads.start(*row.package, packsFolder()); break;
         case ui::pack_catalog::Action::Kind::Delete:

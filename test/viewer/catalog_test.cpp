@@ -123,6 +123,14 @@ TEST_CASE("catalog: a package's local copy is the pack of its name") {
     CHECK(state(package("TehsTrails.taco", 1000), nullptr) == State::Absent);
 }
 
+TEST_CASE("catalog: a local pack's package is the one of its name") {
+    const std::vector<Package> packages = {package("TehsTrails-HeroPoints.taco"), package("TehsTrails.taco")};
+    const Package* teh = findPackage(LocalPack{"packs/tehstrails.zip", 0}, packages);
+    REQUIRE(teh);
+    CHECK(teh->file_name == "TehsTrails.taco"); // not the Hero Points pack
+    CHECK(findPackage(LocalPack{"packs/dropped-in-by-hand.zip", 0}, packages) == nullptr);
+}
+
 TEST_CASE("catalog: local packs know when they were written") {
     const corpus::TempDir temp("catalog_locals");
     corpus::writeFile(temp / "ours/a.zip", "a");

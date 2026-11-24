@@ -113,6 +113,14 @@ const LocalPack* findLocal(const Package& package, const std::vector<LocalPack>&
     return nullptr;
 }
 
+const Package* findPackage(const LocalPack& local, const std::vector<Package>& packages) {
+    const std::string stem = lowercase(util::pathText(local.path.stem()));
+    for (const Package& package : packages) {
+        if (lowercase(util::pathText(util::pathFromText(package.file_name).stem())) == stem) return &package;
+    }
+    return nullptr;
+}
+
 State state(const Package& package, const LocalPack* local) {
     if (!local) return State::Absent;
     return package.last_update > local->written ? State::Stale : State::Current;

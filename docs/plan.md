@@ -28,37 +28,31 @@ version 1, still draw its shapes?
 
 ### 1. The full map through GoodRender
 
-The full map is not a window at `BEFORE_WINDOWS`: markers drawn there land over it. A
-GoodRender that drops the camera with the map up leaves the full map's markers to the overlay
-sink, at Nexus's render, over everything, the game's windows included.
+The full map is not a window at `BEFORE_WINDOWS`: markers drawn there land over it. GoodRender
+keeps its moments and its camera with the map up, and the world's markers are drawn under the
+map ([viewer.md](viewer.md#drawing)); the sink draws the full map's at `BEFORE_WINDOWS`, over
+the map and under the windows, as the minimap is. Whether the moments fire once the map is
+fully open, with the camera's rise done, is not known: the frame may then have no world for
+GoodRender to recognise, and the overlay draws the full map's markers instead, at Nexus's
+render, over everything, the game's windows included. Nothing is drawn on a loading screen.
 
-- **In [GoodRender](https://github.com/HasKha/gw2-good-render)**: the camera is kept with the
-  map up, unreleased. Whether its moments fire once the map is fully open, with the camera's
-  rise done, is not known: the frame may then have no world for `game_frame` to recognise.
-- **Here**: the world scene is built and drawn through GoodRender with the map up, under it;
-  the overlay skips it then. Once GoodRender is released, bump `cmake/good_render.cmake` to it.
-  The sink draws the full map at `BEFORE_WINDOWS`, over the map and under the windows, as the
-  minimap is; the overlay goes on drawing it whenever no moment did, an older GoodRender
-  included.
 - **Fading the full map's markers in and out** with the map's own fade, about 600 ms, rather
   than all at once. The map's zoom out from the character as it opens is not known, so the
   markers sit where the map ends up, not where it is mid-zoom.
 
 Pull: opening and closing the map, do the world's markers stay put under it as the camera
 rises? With the full map open, do its markers draw over the map and under an open window? With
-an older GoodRender, do they still draw, over everything?
+an older GoodRender, do they still draw, over everything? Through a loading screen, entered by a
+waypoint on the map and by a portal, is nothing drawn?
 
 ### 2. Marker Packs in two tabs
 
-The Marker Packs window becomes two tabs:
-
-- **Installed**: the packs in our folder, wherever they came from — the catalog, the Blish HUD
-  import, or dropped in by hand — each with Delete, and Info, Update and Keep updated for
-  those the catalog has.
-- **Library**: the public catalog, filtered by name, author or category, each with Download.
+Built: one row for every pack, the same in either tab; Installed shows those on disk, Library
+the rest, under one filter. Only the pull is left.
 
 Pull: does a pack dropped in by hand show under Installed? Downloading from Library, does it
-move to Installed when it arrives?
+stay there, with Delete, until the tab is switched, then show under Installed? Deleting one
+under Installed, does it stay there with Download until then?
 
 ### 3. The repo
 

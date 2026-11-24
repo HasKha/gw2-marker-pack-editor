@@ -62,6 +62,10 @@ std::vector<LocalPack> localPacks(const std::vector<std::filesystem::path>& path
 // which finds TehsTrails in TehsTrails-HeroPoints.taco.
 const LocalPack* findLocal(const Package& package, const std::vector<LocalPack>& locals);
 
+// The catalog's entry for `local`, by the same match as findLocal: the first package whose
+// file name, less its extension, is the pack's. Nothing for a pack the catalog does not list.
+const Package* findPackage(const LocalPack& local, const std::vector<Package>& packages);
+
 enum class State {
     Absent, // not on disk
     Current,
