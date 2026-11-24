@@ -7,15 +7,6 @@ What is left and in what order. No history, nothing about how anything works; th
 
 Roughly in order. Each ends in a single pull in game, its questions decided before it.
 
-### 0. The world through GoodRender's `world_quad` alone
-
-Built against GoodRender's contract version 2, which gives `world_quad` a `hidden_behind`. Only the pull is
-left.
-
-Pull: does a trail running from the character past the camera stretch smoothly, as Pathing's does? With each
-of Marker occlusion's three settings, does a marker behind a wall and one behind a character hide as the
-setting says?
-
 ### 1. The full map through GoodRender
 
 The full map is not a window at `BEFORE_WINDOWS`: markers drawn there land over it. The world's markers are

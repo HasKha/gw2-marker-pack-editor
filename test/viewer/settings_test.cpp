@@ -136,6 +136,26 @@ TEST_CASE("a hand-edited setting out of its range is brought back into it", "[vi
     CHECK(loaded.map_tooltips); // not a boolean: the default stands
 }
 
+TEST_CASE("the maps' DPI scaling is Nexus's unless chosen otherwise, and is kept", "[viewer][settings]") {
+    const corpus::TempDir temp("settings_dpi");
+    const viewer::settings::Settings defaults = viewer::settings::load(temp.path());
+    CHECK(static_cast<viewer::settings::DpiScaling>(defaults.map_dpi_scaling) == viewer::settings::DpiScaling::Nexus);
+    CHECK(defaults.map_dpi_custom == 1.0f);
+
+    viewer::settings::Settings settings;
+    settings.map_dpi_scaling = static_cast<int>(viewer::settings::DpiScaling::Custom);
+    settings.map_dpi_custom = 1.25f;
+    REQUIRE(viewer::settings::save(temp.path(), settings));
+    const viewer::settings::Settings loaded = viewer::settings::load(temp.path());
+    CHECK(static_cast<viewer::settings::DpiScaling>(loaded.map_dpi_scaling) == viewer::settings::DpiScaling::Custom);
+    CHECK(loaded.map_dpi_custom == 1.25f);
+
+    std::ofstream(temp / viewer::settings::FILE_NAME) << R"({"map_dpi_scaling": 9, "map_dpi_custom": 0})";
+    const viewer::settings::Settings clamped = viewer::settings::load(temp.path());
+    CHECK(static_cast<viewer::settings::DpiScaling>(clamped.map_dpi_scaling) == viewer::settings::DpiScaling::Custom);
+    CHECK(clamped.map_dpi_custom == 0.5f);
+}
+
 TEST_CASE("no folder means nothing is read and nothing is written", "[viewer][settings]") {
     CHECK(viewer::settings::load({}).run_scripts);
     CHECK_FALSE(viewer::settings::save({}, viewer::settings::Settings{}));

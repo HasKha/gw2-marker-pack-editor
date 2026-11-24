@@ -53,9 +53,11 @@ std::string mapsToCache(const MapTable& maps);
 // MapStates.EventCoordsToMapCoords. Only x and z matter.
 glm::dvec2 continentPosition(const MapDetails& map, const glm::vec3& position);
 
-// UI pixels to screen pixels at MumbleLink's interface size, with no DPI scaling: Nexus's own
-// factors, which Blish HUD's GetScaleRatio over its Normal agrees with to under a percent.
-float uiScale(int ui_size);
+// UI pixels to screen pixels: Nexus's `Scaling`, computed with the DPI scale the game draws
+// with (`dpi_scale`, 1 with its DPI Scaling off) in place of Nexus's own option. The interface
+// size's factors are Nexus's, which Blish HUD's GetScaleRatio over its Normal agrees with to
+// under a percent, and a `display` smaller than 1024 × 768 shrinks it as Nexus does.
+float uiScale(int ui_size, float dpi_scale, glm::vec2 display);
 
 // How the map on screen is drawn this frame: the compass in its corner, or the full map over
 // the whole screen.

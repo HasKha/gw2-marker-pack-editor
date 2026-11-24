@@ -58,8 +58,9 @@ namespace {
 
 AddonAPI* api = nullptr;
 Mumble::Data* mumble_link = nullptr;
-// Read for its Scaling only: its Width and Height go stale (see fromMumble).
+// Read for its Scaling and IsGameplay only: its Width and Height go stale (see fromMumble).
 const NexusLinkData* nexus_link = nullptr;
+
 std::filesystem::path folder;
 
 // What the options page edits and saves, against what this session loaded with.
@@ -762,11 +763,27 @@ std::string loadingStatus() {
     return "Loading packs: " + std::to_string(installed.packs.size()) + " of " + std::to_string(discovered.size());
 }
 
-// Screen pixels per UI pixel: Nexus's own scaling, which follows the interface size and the
-// game's DPI scaling, or the interface size alone before Nexus says.
+// Windows' display scale. The system's, not the game window's monitor's as Nexus and Blish HUD
+// ask: the two differ only across monitors of different scales, which Custom is there for.
+float systemDpiScale() {
+    const UINT dpi = GetDpiForSystem();
+    return dpi > 0 ? static_cast<float>(dpi) / 96.0f : 1.0f;
+}
+
+// Screen pixels per UI pixel, as the game draws its minimap and map: the interface size, and
+// the DPI scale the options say to take.
 float uiScale() {
-    if (nexus_link && nexus_link->Scaling > 0.0f) return nexus_link->Scaling;
-    return map::uiScale(mumble_state.ui_size);
+    const ImVec2 display = ImGui::GetIO().DisplaySize;
+    float dpi_scale = 1.0f;
+    switch (static_cast<settings::DpiScaling>(persisted.map_dpi_scaling)) {
+    case settings::DpiScaling::None: break;
+    case settings::DpiScaling::Nexus:
+        if (nexus_link && nexus_link->Scaling > 0.0f) return nexus_link->Scaling;
+        break;
+    case settings::DpiScaling::System: dpi_scale = systemDpiScale(); break;
+    case settings::DpiScaling::Custom: dpi_scale = persisted.map_dpi_custom; break;
+    }
+    return map::uiScale(mumble_state.ui_size, dpi_scale, glm::vec2(display.x, display.y));
 }
 
 // Nexus's IsGameplay, which is off on a loading screen: MumbleLink is not written there, and

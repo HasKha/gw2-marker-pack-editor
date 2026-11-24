@@ -57,6 +57,10 @@ struct Settings {
     bool map_fade_far_trails = true; // "Fade Trail Segments Which Are High Above or Below"
     bool map_tooltips = true;
     float map_trail_width = 2.0f; // Blish HUD's pixels, 0.5 to 4.5
+    // Ours: what the maps take for the DPI scale the game draws them at (DpiScaling). Custom is
+    // `map_dpi_custom`, a factor.
+    int map_dpi_scaling = 1; // Nexus
+    float map_dpi_custom = 1.0f;
 
     // The player's GW2 API key, empty for none: written only once /v2/tokeninfo has said it is
     // a key with the permissions api_key.h names.
@@ -65,6 +69,17 @@ struct Settings {
 
 // Pathing's MarkerInfoDisplayMode.
 enum class InfoDisplay { Default, WithoutBackground, Never };
+
+// Where the maps' DPI scale comes from. The game scales its minimap and map by the system's
+// DPI when its own DPI Scaling option is on, which neither MumbleLink nor Nexus says: Nexus's
+// `Scaling` takes the DPI from an option of Nexus's own of that name, so it is right only when
+// the player has set the two alike. The others are for when they are not.
+enum class DpiScaling {
+    None, // 1
+    Nexus, // Nexus's Scaling, whole
+    System, // the system's, always
+    Custom, // map_dpi_custom
+};
 
 // Reads the settings in `folder`. Anything missing keeps its default.
 Settings load(const std::filesystem::path& folder);

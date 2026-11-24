@@ -130,10 +130,22 @@ TEST_CASE("maps: the compass sits in its corner, sized in UI pixels") {
 
     SECTION("the interface size scales it") {
         mumble.is_compass_top_right = true;
-        const std::optional<View> larger = view(mumble, kDisplay, uiScale(3));
+        const std::optional<View> larger = view(mumble, kDisplay, uiScale(3, 1.0f, kDisplay));
         REQUIRE(larger);
         CHECK(larger->max.x - larger->min.x == Approx(300.0f * 1.22f));
         CHECK(larger->pixels_per_unit == Approx(1.22 / 2.0));
+    }
+
+    SECTION("the game's DPI scaling scales it, and how far a step on the map goes") {
+        // Windows at 125% with the game's DPI Scaling on: the compass and every distance on it
+        // are a quarter larger. Taken as 1 — Nexus's Scaling with its own DPI option off —
+        // markers were clipped to a compass a quarter too small and slid as it panned.
+        mumble.is_compass_top_right = true;
+        const std::optional<View> scaled = view(mumble, kDisplay, uiScale(1, 1.25f, kDisplay));
+        REQUIRE(scaled);
+        CHECK(scaled->max.x - scaled->min.x == Approx(300.0f * 1.25f));
+        CHECK(scaled->max.y - scaled->min.y == Approx(250.0f * 1.25f));
+        CHECK(scaled->pixels_per_unit == Approx(1.25 / 2.0));
     }
 
     SECTION("the full map covers the screen") {
@@ -177,11 +189,21 @@ TEST_CASE("maps: the projection scales by MapScale and turns with the compass") 
 }
 
 TEST_CASE("maps: the interface sizes' scales, with Normal as one") {
-    CHECK(uiScale(0) == 0.90f);
-    CHECK(uiScale(1) == 1.0f);
-    CHECK(uiScale(2) == 1.11f);
-    CHECK(uiScale(3) == 1.22f);
-    CHECK(uiScale(9) == 1.0f);
+    CHECK(uiScale(0, 1.0f, kDisplay) == 0.90f);
+    CHECK(uiScale(1, 1.0f, kDisplay) == 1.0f);
+    CHECK(uiScale(2, 1.0f, kDisplay) == 1.11f);
+    CHECK(uiScale(3, 1.0f, kDisplay) == 1.22f);
+    CHECK(uiScale(9, 1.0f, kDisplay) == 1.0f);
+}
+
+TEST_CASE("maps: the DPI scale multiplies the interface size's, and a small window shrinks both") {
+    CHECK(uiScale(1, 1.25f, kDisplay) == Approx(1.25f));
+    CHECK(uiScale(3, 1.5f, kDisplay) == Approx(1.22f * 1.5f));
+    // Nexus's CScaling::UpdateResolution: the smaller of the two ratios to 1024 × 768.
+    CHECK(uiScale(1, 1.0f, glm::vec2(800.0f, 768.0f)) == Approx(800.0f / 1024.0f));
+    CHECK(uiScale(1, 1.25f, glm::vec2(1024.0f, 600.0f)) == Approx(1.25f * 600.0f / 768.0f));
+    // No DPI said is none.
+    CHECK(uiScale(1, 0.0f, kDisplay) == 1.0f);
 }
 
 TEST_CASE("maps: the catalog keeps the cache until the API answers, then caches the answer") {

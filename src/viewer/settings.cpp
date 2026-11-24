@@ -45,6 +45,7 @@ constexpr Field<int> kInts[] = {
     {"map_trail_visibility", &Settings::map_trail_visibility, 0, 2},
     {"minimap_marker_visibility", &Settings::minimap_marker_visibility, 0, 2},
     {"minimap_trail_visibility", &Settings::minimap_trail_visibility, 0, 2},
+    {"map_dpi_scaling", &Settings::map_dpi_scaling, 0, 3},
 };
 
 // Pathing's SetRange for each.
@@ -56,6 +57,7 @@ constexpr Field<float> kFloats[] = {
     {"map_opacity", &Settings::map_opacity, 0.0f, 1.0f},
     {"minimap_opacity", &Settings::minimap_opacity, 0.0f, 1.0f},
     {"map_trail_width", &Settings::map_trail_width, 0.5f, 4.5f},
+    {"map_dpi_custom", &Settings::map_dpi_custom, 0.5f, 4.0f},
 };
 
 } // namespace

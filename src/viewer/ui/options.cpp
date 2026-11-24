@@ -3,6 +3,7 @@
 #include <imgui.h>
 
 #include <algorithm>
+#include <iterator>
 
 namespace viewer::ui::options {
 
@@ -80,6 +81,38 @@ void sharedTooltip(const char* also = nullptr) {
     }
 }
 
+// The maps' DPI scale, settings::DpiScaling, with Custom's factor under it when chosen.
+bool dpiScalingCombo(settings::Settings* settings) {
+    static constexpr const char* kNames[] = {"None", "Nexus", "System", "Custom"};
+    static constexpr const char* kTips[] = {
+        "No DPI scaling: for the game's DPI Scaling option off.",
+        "Nexus's scale, which follows Nexus's own DPI Scaling option:\nright when that is set as the game's is.",
+        "Windows' display scale: for the game's DPI Scaling option on.",
+        "A scale of your own.",
+    };
+    bool changed = false;
+    int* mode = &settings->map_dpi_scaling;
+    if (ImGui::BeginCombo("DPI scaling", kNames[*mode])) {
+        for (int i = 0; i < static_cast<int>(std::size(kNames)); ++i) {
+            if (ImGui::Selectable(kNames[i], *mode == i) && *mode != i) {
+                *mode = i;
+                changed = true;
+            }
+            if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", kTips[i]);
+        }
+        ImGui::EndCombo();
+    }
+    sharedTooltip("Must match how the game scales its maps, or markers are cut off at the minimap's edge\nand drift as the map pans.");
+    if (*mode == static_cast<int>(settings::DpiScaling::Custom)) {
+        if (ImGui::InputFloat("Custom scale", &settings->map_dpi_custom, 0.05f, 0.25f, "%.2f")) {
+            settings->map_dpi_custom = std::clamp(settings->map_dpi_custom, 0.5f, 4.0f);
+            changed = true;
+        }
+        sharedTooltip("1.25 for Windows' 125%.");
+    }
+    return changed;
+}
+
 // One map's section: its own settings, then those both maps share, which the other section shows too.
 bool drawMap(const char* id, settings::Settings* settings, int* markers, int* trails, float* opacity) {
     // TODO: can we not share all those settings? and have minimap and map settings be independent.
@@ -98,6 +131,7 @@ bool drawMap(const char* id, settings::Settings* settings, int* markers, int* tr
     sharedTooltip();
     changed |= ImGui::Checkbox("Show tooltips", &settings->map_tooltips);
     sharedTooltip("Hold Shift to see a marker's categories instead; right-click to hide one.");
+    changed |= dpiScalingCombo(settings);
     ImGui::PopID();
     return changed;
 }

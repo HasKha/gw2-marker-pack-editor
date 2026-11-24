@@ -2,6 +2,7 @@
 
 #include <nlohmann/json.hpp>
 
+#include <algorithm>
 #include <cmath>
 #include <fstream>
 #include <iterator>
@@ -126,10 +127,13 @@ glm::dvec2 continentPosition(const MapDetails& map, const glm::vec3& position) {
         map.continent_top_left.y - (north - map.map_top_left.y) / map.map_size.y * map.continent_size.y);
 }
 
-float uiScale(int ui_size) {
+float uiScale(int ui_size, float dpi_scale, glm::vec2 display) {
     // Small, Normal, Large, Larger.
     static constexpr float kScales[] = {0.90f, 1.00f, 1.11f, 1.22f};
-    return ui_size >= 0 && ui_size < static_cast<int>(std::size(kScales)) ? kScales[ui_size] : 1.0f;
+    const float size = ui_size >= 0 && ui_size < static_cast<int>(std::size(kScales)) ? kScales[ui_size] : 1.0f;
+    // CScaling::UpdateResolution.
+    const float resolution = std::min(std::min(display.x, 1024.0f) / 1024.0f, std::min(display.y, 768.0f) / 768.0f);
+    return size * (dpi_scale > 0.0f ? dpi_scale : 1.0f) * (resolution > 0.0f ? resolution : 1.0f);
 }
 
 std::optional<View> view(const MumbleState& mumble, glm::vec2 display, float ui_scale) {

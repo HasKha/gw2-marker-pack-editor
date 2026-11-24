@@ -171,7 +171,10 @@ it, removing its filters as Pathing does.
 Pathing's FlatMap and `RenderToMiniMap`, in `map.*` and `map_scene.*`.
 
 - **Three spaces**: world metres; the continent, about two feet a unit, y down; the UI pixel, a screen pixel
-  at the Normal interface size (Nexus's `Scaling` converts). Pathing's two corrections for Blish HUD's own
+  at the Normal interface size. Converted as Nexus's `Scaling` is, with the DPI factor the maps' "DPI scaling"
+  option names (`settings::DpiScaling`), Nexus's own by default. The game's DPI Scaling option is its own and
+  not read: Nexus's option of that name set otherwise puts markers on a compass of the wrong size, and the
+  player picks System or None to match the game instead. Pathing's two corrections for Blish HUD's own
   pixels (MapScale × 0.897, 19–40 px on the compass) come out as UI pixels; sizes Pathing gives in its own
   pixels keep their 0.897.
 - **Map rectangles** come from `/v2/maps?ids=all` once a session, cached in `maps.json` in Pathing's fallback
