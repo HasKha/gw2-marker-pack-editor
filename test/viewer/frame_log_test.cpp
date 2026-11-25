@@ -18,6 +18,7 @@ TEST_CASE("a slow frame's line names our share, the steps that count, the frame,
     frame.slowest_scripts = "tehs_trails.taco";
     frame.map_id = 15;
     frame.quads = 3456;
+    frame.lua_bytes = size_t{3} * 1024 * 1024 / 2;
     frame.jobs = 2;
     frame.uploads = 1;
     frame.upload_pixels = int64_t{2048} * 2048;
@@ -26,19 +27,20 @@ TEST_CASE("a slow frame's line names our share, the steps that count, the frame,
     CHECK(
         viewer::frame_log::line(frame) ==
         "Slow frame: ours 6.0 ms (live map 4.8, scripts 0.9 (mostly tehs_trails.taco), render 0.3) of a 48.2 ms frame. "
-        "Map 15, 3456 quads, 2 jobs, 1 image to Nexus (16 MB), loading packs");
+        "Map 15, 3456 quads, Lua 1.5 MB, 2 jobs, 1 image to Nexus (16 MB), loading packs");
 }
 
 TEST_CASE("a line with nothing waiting says only the map, and how many it stands for", "[frame_log]") {
     viewer::frame_log::Frame frame;
     frame.interval = 19.2;
-    frame.steps.behaviors = 13.5;
+    frame.steps.behaviors = 13.4;
+    frame.steps.saves = 0.1;
     frame.map_id = viewer::kMapUnknown;
     frame.quads = 95;
     frame.skipped = 3;
     CHECK(
         viewer::frame_log::line(frame) ==
-        "Slow frame: ours 13.5 ms (behaviors 13.5) of a 19.2 ms frame. Map none, 95 quads. 3 more since the last line");
+        "Slow frame: ours 13.5 ms (behaviors 13.4, saves 0.1) of a 19.2 ms frame. Map none, 95 quads. 3 more since the last line");
 }
 
 TEST_CASE("frames of slow work of ours are logged at most once a second, counting those passed over", "[frame_log]") {

@@ -126,6 +126,9 @@ public:
     // averages its FrameExecutionTime — but per pack, so that a slow script is named.
     double frameSeconds(size_t pack) const;
 
+    // The Lua heap, garbage not yet collected included.
+    size_t heapBytes() const;
+
 private:
     struct State;
 

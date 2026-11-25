@@ -205,6 +205,17 @@ void Engine::reset() {
     setContext(lua.lua_state(), &ctx);
     lua_sethook(lua.lua_state(), budgetHook, LUA_MASKCOUNT, kHookInterval);
 
+    // The collector starts a cycle once the heap is kGcPause percent of what the last left. At
+    // Lua's 200 it never catches up with what scripts leave behind every frame: over a player's
+    // packs standing still, each cycle began at twice the heap of the last, 3 MB to 44 MB over
+    // eight minutes of frames, with a full collection leaving under 2 MB, and each cycle's
+    // atomic step a frame of its own that doubled with it, to 76 ms. At 180 the heap still
+    // reached 3 MB; at 150 it held under 1 MB, no frame of behaviors over 2 ms. The step
+    // multiplier, Lua's 100 to 400, changed neither.
+    constexpr int kGcPause = 150;
+    constexpr int kGcStepMultiplier = 200;
+    lua_gc(lua.lua_state(), LUA_GCINC, kGcPause, kGcStepMultiplier, 0);
+
     ctx.env = sol::environment(lua, sol::create);
     ctx.frame_seconds.assign(host_.installed ? host_.installed->packs.size() : 0, 0.0);
     bindValues(lua);
@@ -331,6 +342,11 @@ double Engine::frameSeconds(size_t pack) const {
     if (pack >= frame_history_.size() || frame_history_[pack].empty()) return 0.0;
     const std::vector<double>& history = frame_history_[pack];
     return std::accumulate(history.begin(), history.end(), 0.0) / static_cast<double>(history.size());
+}
+
+size_t Engine::heapBytes() const {
+    lua_State* L = state_->lua.lua_state();
+    return static_cast<size_t>(lua_gc(L, LUA_GCCOUNT)) * 1024 + static_cast<size_t>(lua_gc(L, LUA_GCCOUNTB));
 }
 
 } // namespace viewer::script

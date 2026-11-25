@@ -531,18 +531,6 @@ UINT onWndProc(HWND window, UINT message, WPARAM key, LPARAM flags) {
     return message;
 }
 
-// One frame of behaviors, after the scripts have ticked.
-void runBehaviors() {
-    const behaviors::Host host = behaviorHost();
-    const behaviors::Frame frame = behaviorFrame();
-    behaviors::update(&live, visible, host, frame);
-
-    // Not while typing — in chat, or in one of our own text fields.
-    const bool typing = mumble_state.is_text_input_focused || ImGui::GetIO().WantTextInput;
-    if (interact_pressed.exchange(false) && !typing) behaviors::interact(&live, host, frame);
-    // UiStates clears the info on Escape.
-    if (escape_released.exchange(false)) screen.info.clear();
-}
 
 // Takes what the loader has finished. A pack read again replaces its copy only now, so it is
 // drawn all the while.
@@ -1040,6 +1028,7 @@ void preRender() {
             }
             frame.map_id = live.map_id;
             if (const std::shared_ptr<const Scene> scene = published()) frame.quads = scene->items.size();
+            frame.lua_bytes = scripts->heapBytes();
             frame.jobs = jobs.unfinished();
             frame.uploads = texture_uploads.images();
             frame.upload_pixels = texture_uploads.pixels();
@@ -1079,11 +1068,26 @@ void preRender() {
         visible_tree = installed.revision;
     };
     updateVisible();
-    runBehaviors();
+    laps.lap(&frame_steps.visibility);
+
+    // One frame of behaviors, after the scripts have ticked.
+    const behaviors::Host host = behaviorHost();
+    const behaviors::Frame frame = behaviorFrame();
+    behaviors::update(&live, visible, host, frame);
+    laps.lap(&frame_steps.behaviors);
+
+    // Not while typing — in chat, or in one of our own text fields.
+    const bool typing = mumble_state.is_text_input_focused || ImGui::GetIO().WantTextInput;
+    if (interact_pressed.exchange(false) && !typing) behaviors::interact(&live, host, frame);
+    // UiStates clears the info on Escape.
+    if (escape_released.exchange(false)) screen.info.clear();
+    laps.lap(&frame_steps.interaction);
+
     updateVisible();
     runtime::startFadeIns(&live, visible, ImGui::GetTime());
+    laps.lap(&frame_steps.visibility);
     if (std::chrono::steady_clock::now() - last_save > kSaveInterval) saveStates();
-    laps.lap(&frame_steps.behaviors);
+    laps.lap(&frame_steps.saves);
     edited_live = editor.edited_live ? editor.edited_live(live.map_id, &edited_texture) : nullptr;
     if (edited_live) runtime::startFadeIns(edited_live, kNoNodes, ImGui::GetTime());
     laps.lap(&frame_steps.editor);
@@ -1331,6 +1335,7 @@ void drawOptionsPage() {
         figures.uploads_images = texture_uploads.images();
         figures.uploads_pixels = texture_uploads.pixels();
         figures.jobs = jobs.unfinished();
+        figures.lua_bytes = scripts->heapBytes();
         ui::diagnostics::draw(ui::diagnostics::describe(figures), [] {
             bool changed = ImGui::Checkbox("Log frames where Markus takes more than", &persisted.log_slow_frames);
             if (ImGui::IsItemHovered()) {

@@ -2,6 +2,8 @@
 // sandbox, errors staying inside Lua, and each part of the Pathing API scripts lean on.
 
 #include <catch2/catch_test_macros.hpp>
+
+#include <algorithm>
 #include <catch2/matchers/catch_matchers_string.hpp>
 
 #include <memory>
@@ -366,4 +368,34 @@ TEST_CASE("Debug, print and User reach the console and the host", "[viewer][scri
     CHECK(s.engine->watches().at("w") == "42");
     CHECK(s.clipboard == "text");
     CHECK(s.eval("copied") == "true");
+}
+
+TEST_CASE("the collector keeps up with scripts that leave garbage every frame", "[viewer][script][regression]") {
+    // Behaviors calling a script-tick function for each of a map's markers, every frame: Lua's
+    // own pacing let the heap this leaves double every cycle, each cycle's pause doubling with
+    // it, until a frame took 76 ms. Here it reached 188 MB.
+    Scripted s("script_gc_pace", R"(
+function Pulse(marker, gameTime)
+  local p = marker.Position
+  return p.X > 0
+end
+)");
+    s.engine->loadPacks();
+    const viewer::behaviors::ScriptCall pulse{"Pulse", {}};
+    size_t most = 0;
+    constexpr int kFrames = 20000;
+    for (int frame = 0; frame < kFrames; ++frame) {
+        s.engine->tick(frame / 60.0, 1.0 / 60.0);
+        // As behaviors call a map's script-tick markers, one call each, eighty a frame.
+        for (int call = 0; call < 40; ++call) {
+            for (size_t marker = 0; marker < s.live.markers.size(); ++marker) {
+                s.engine->callBehavior(pulse, viewer::behaviors::Entity{false, marker}, viewer::behaviors::Hook::Tick, false);
+            }
+        }
+        most = std::max(most, s.engine->heapBytes());
+    }
+    CHECK(s.errors() == 0);
+    // What is live is a few hundred KB; a collector that keeps pace holds the heap near it.
+    // Pure Lua garbage, made inside a tick handler, does not set it off: the calls in do.
+    CHECK(most < size_t{8} * 1024 * 1024);
 }

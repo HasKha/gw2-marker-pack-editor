@@ -106,6 +106,9 @@ std::vector<Line> describe(const Figures& figures) {
     for (const PackFigures& pack : figures.packs) {
         if (!pack.error.empty()) text(pack.name + ": " + pack.error, Line::Kind::Error);
     }
+    char lua[48];
+    std::snprintf(lua, sizeof(lua), "Lua heap: %.1f MB", static_cast<double>(figures.lua_bytes) / (1024.0 * 1024.0));
+    text(lua);
 
     heading(ICON_FA_IMAGE, "Images");
     size_t ready = 0;

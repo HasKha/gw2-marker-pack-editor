@@ -63,6 +63,7 @@ struct Figures {
     size_t uploads_images = 0; // handed to Nexus and not made yet
     int64_t uploads_pixels = 0;
     size_t jobs = 0; // unfinished on the worker
+    size_t lua_bytes = 0; // the scripts' heap, garbage included
 };
 
 struct Line {

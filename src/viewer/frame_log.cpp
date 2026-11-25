@@ -17,7 +17,7 @@ std::string milliseconds(double value) {
 } // namespace
 
 double Steps::total() const {
-    return packs + live_map + scripts + behaviors + editor + scene + maps + render + moments;
+    return packs + live_map + scripts + behaviors + interaction + visibility + saves + editor + scene + maps + render + moments;
 }
 
 std::string line(const Frame& frame) {
@@ -34,6 +34,9 @@ std::string line(const Frame& frame) {
     step("live map", s.live_map);
     step("scripts", s.scripts, frame.slowest_scripts.empty() ? "" : " (mostly " + frame.slowest_scripts + ")");
     step("behaviors", s.behaviors);
+    step("interaction", s.interaction);
+    step("visibility", s.visibility);
+    step("saves", s.saves);
     step("editor", s.editor);
     step("scene", s.scene);
     step("maps", s.maps);
@@ -45,6 +48,11 @@ std::string line(const Frame& frame) {
     // What was going on: the map and its size, and work waiting that lands on a later frame.
     text += ". Map " + (frame.map_id == kMapUnknown ? std::string("none") : std::to_string(frame.map_id));
     text += ", " + std::to_string(frame.quads) + " quads";
+    if (frame.lua_bytes > 0) {
+        char lua[32];
+        std::snprintf(lua, sizeof(lua), ", Lua %.1f MB", static_cast<double>(frame.lua_bytes) / (1024.0 * 1024.0));
+        text += lua;
+    }
     if (frame.jobs > 0) text += ", " + std::to_string(frame.jobs) + " jobs";
     if (frame.uploads > 0) {
         // RGBA, four bytes a pixel, as Nexus copies them to the GPU.

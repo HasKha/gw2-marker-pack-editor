@@ -17,7 +17,10 @@ struct Steps {
     double packs = 0.0; // packs loaded, written or downloaded; the catalog and the account
     double live_map = 0.0; // the camera, and the live map copied out on a map or pack change
     double scripts = 0.0;
-    double behaviors = 0.0; // behaviors, category visibility, fade-ins, the states saved
+    double behaviors = 0.0; // filters, and scripts' once, tick and filter
+    double interaction = 0.0; // the interact key: copies, category toggles, scripts' trigger
+    double visibility = 0.0; // which categories show, worked out again when one changed; fade-ins
+    double saves = 0.0; // the states made text for the worker to write, every few seconds
     double editor = 0.0; // the editor's pack made a live map
     double scene = 0.0;
     double maps = 0.0;
@@ -36,6 +39,9 @@ struct Frame {
 
     int map_id = 0;
     size_t quads = 0;
+    // The scripts' heap, garbage included: one that grows from line to line is the collector
+    // falling behind, and its pauses grow with it.
+    size_t lua_bytes = 0;
     size_t jobs = 0; // unfinished on the worker
     size_t uploads = 0; // images handed to Nexus and not made yet, which its Present makes
     int64_t upload_pixels = 0;
