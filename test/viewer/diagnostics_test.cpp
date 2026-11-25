@@ -50,7 +50,7 @@ TEST_CASE("the diagnostics say what drew the world, and with which camera", "[di
         const std::vector<Line> lines = viewer::ui::diagnostics::describe(figures);
         CHECK(has(lines, "GoodRender: running"));
         CHECK(has(lines, "World: drawn by GoodRender"));
-        CHECK(has(lines, "Maps: drawn by GoodRender, under the game's windows"));
+        CHECK(has(lines, "Minimap: drawn by GoodRender, under the game's windows"));
         CHECK(has(lines, "Camera: GoodRender's to draw, RTAPI's to sort, cull and fade"));
     }
 
@@ -66,7 +66,7 @@ TEST_CASE("the diagnostics say what drew the world, and with which camera", "[di
         const std::vector<Line> lines = viewer::ui::diagnostics::describe(figures);
         CHECK(has(lines, "GoodRender: not running"));
         CHECK(has(lines, "World: the overlay, over everything"));
-        CHECK(has(lines, "Maps: the overlay, over everything"));
+        CHECK(has(lines, "Minimap: the overlay, over everything"));
         CHECK(has(lines, "Camera: MumbleLink"));
     }
 

@@ -18,14 +18,33 @@ namespace viewer::map_scene {
 
 namespace {
 
-std::atomic<std::shared_ptr<const MapScene>> latest;
+std::atomic<std::shared_ptr<const MapScene>> latest_minimap;
+std::atomic<std::shared_ptr<const MapScene>> latest_full_map;
 
 // Blish HUD's pixels per UI pixel at the Normal interface size (GraphicsService.GetScaleRatio),
 // which Pathing's sizes on the map are in: an icon's mapDisplaySize, a trail's width.
 constexpr float kBlishPixel = 0.897f;
 
-// FlatMap's fade-in, in seconds.
+// FlatMap's fade-in, in seconds. About the game's own as the full map opens: from the recording
+// FullMapZoom's figures come from, faint at 0.15 s and nearly whole at 0.6 s.
 constexpr double kFadeSeconds = 0.65;
+
+// FullMapZoom's figures, measured off two 60 fps recordings, November 2026, four openings and four
+// closings, with scripts/measure_map_zoom.py.
+// - The scale's rate, both ways: within 0.6 of this every time, the line missing no frame from 13
+//   times down by more than 0.4.
+// - When the opening lands, after the Present that sees IsMapOpen, so the scale it starts from,
+//   which the closing goes no further than; and when the closing starts, after the Present that
+//   sees the world back. Both carry how far the game's picture comes after our Present: our own
+//   markers, drawn without it, ran 38-39 ms ahead opening and 42-43 ms closing. It may be a frame
+//   or two of the game's pipeline rather than a time, which another frame rate would move.
+// - The closing's fade, roughly: the map's edges against the settled map's, frame by frame, were
+//   down to the world's noise by about this.
+constexpr double kZoomPerSecond = 39.5;
+constexpr double kZoomOpenSeconds = 0.54;
+constexpr double kZoomMost = 1.0 + kZoomPerSecond * kZoomOpenSeconds;
+constexpr double kZoomCloseDelay = 0.04;
+constexpr double kCloseFadeSeconds = 0.4;
 
 // StandardMarker.MiniMap: an icon this far above or below the player in metres says so, while
 // the map is zoomed in further than this.
@@ -224,6 +243,79 @@ float FadeIn::update(const MumbleState& mumble, double seconds) {
     return static_cast<float>(std::clamp((seconds - since_) / kFadeSeconds, 0.0, 1.0));
 }
 
+FullMapZoom::Frame FullMapZoom::update(bool map_open, bool world_drawn, double seconds) {
+    if (!map_open) {
+        *this = FullMapZoom{};
+        return Frame{};
+    }
+    if (!map_open_) {
+        *this = FullMapZoom{};
+        map_open_ = true;
+        opened_at_ = seconds;
+    }
+
+    // Frames in a row without the world, once the opening is done, that say the map is fully up;
+    // more than one, so a frame GoodRender happened to miss is not taken for it.
+    constexpr int kFramesWithoutWorld = 3;
+    if (!closing_at_ && seconds - opened_at_ >= kZoomOpenSeconds) {
+        if (!world_drawn) {
+            ++frames_without_world_;
+        } else if (frames_without_world_ >= kFramesWithoutWorld) {
+            closing_at_ = seconds;
+        } else {
+            frames_without_world_ = 0;
+        }
+    }
+
+    Frame frame;
+    if (closing_at_) {
+        const double closing = std::max(0.0, seconds - *closing_at_ - kZoomCloseDelay);
+        frame.zoom = static_cast<float>(std::min(kZoomMost, 1.0 + kZoomPerSecond * closing));
+        frame.opacity = static_cast<float>(std::clamp(1.0 - closing / kCloseFadeSeconds, 0.0, 1.0));
+    } else {
+        frame.zoom = static_cast<float>(1.0 + kZoomPerSecond * std::max(0.0, kZoomOpenSeconds - (seconds - opened_at_)));
+    }
+    return frame;
+}
+
+Compass compassOf(const MumbleState& mumble) {
+    Compass compass;
+    compass.width = mumble.compass_width;
+    compass.height = mumble.compass_height;
+    compass.rotation = mumble.compass_rotation;
+    compass.rotating = mumble.is_compass_rotation_enabled;
+    compass.top_right = mumble.is_compass_top_right;
+    compass.scale = mumble.map_scale;
+    compass.centre = mumble.map_center;
+    return compass;
+}
+
+MumbleState withCompass(MumbleState mumble, const Compass& compass) {
+    mumble.compass_width = compass.width;
+    mumble.compass_height = compass.height;
+    mumble.compass_rotation = compass.rotation;
+    mumble.is_compass_rotation_enabled = compass.rotating;
+    mumble.is_compass_top_right = compass.top_right;
+    mumble.map_scale = compass.scale;
+    mumble.map_center = compass.centre;
+    mumble.is_map_open = false;
+    return mumble;
+}
+
+CompassKeeper::Kept CompassKeeper::update(const MumbleState& mumble) {
+    const Compass now = compassOf(mumble);
+    if (mumble.is_map_open) {
+        full_map_ = now;
+        keep_ = true;
+    } else if (!keep_ || now.scale != full_map_.scale || now.centre != full_map_.centre) {
+        // Exactly the full map's last scale and centre is its fields not yet given back; the
+        // compass's own being those to the bit does not happen.
+        keep_ = false;
+        compass_ = now;
+    }
+    return Kept{compass_, keep_};
+}
+
 void build(
     const std::vector<Layer>& layers,
     const map::MapDetails& details,
@@ -234,6 +326,9 @@ void build(
     MapScene* out) {
     out->full_map = mumble.is_map_open;
     out->ui_scale = ui_scale;
+    out->compass = compassOf(mumble);
+    out->keep_compass = false;
+    out->zoom = 1.0f;
     out->trail_width = options.trail_width;
     out->fade_far_trails = options.fade_far_trails;
     out->opacity = 0.0f;
@@ -335,6 +430,7 @@ float lineOpacity(const MapScene& scene, const Line& line, float player_height) 
 
 void draw(ImDrawList* list, const MapScene& scene, const map::View& view, float player_height) {
     const float blish_pixel = view.ui_scale * kBlishPixel;
+    const int first_vertex = list->VtxBuffer.Size;
 
     const float width = scene.trail_width * blish_pixel;
     for (const Path& path : scene.paths) {
@@ -365,6 +461,16 @@ void draw(ImDrawList* list, const MapScene& scene, const map::View& view, float 
         const float size = static_cast<float>(kAboveBelowSize * blish_pixel / zoom);
         const glm::vec2 corner(max.x - size, min.y);
         drawClippedImage(list, indicator, corner, corner + glm::vec2(size), applyOpacity(IM_COL32_WHITE, scene.opacity), view);
+    }
+
+    // The whole picture scaled, as the game scales its map's, icons and all: what is outside the
+    // bounds at the view MumbleLink describes is outside them zoomed too.
+    if (scene.zoom != 1.0f) {
+        const ImVec2 middle((view.min.x + view.max.x) * 0.5f, (view.min.y + view.max.y) * 0.5f);
+        for (int i = first_vertex; i < list->VtxBuffer.Size; ++i) {
+            ImVec2& pos = list->VtxBuffer[i].pos;
+            pos = ImVec2(middle.x + (pos.x - middle.x) * scene.zoom, middle.y + (pos.y - middle.y) * scene.zoom);
+        }
     }
 }
 
@@ -431,20 +537,25 @@ glm::vec2 tooltipPosition(glm::vec2 mouse, glm::vec2 size, glm::vec2 display) {
     return position;
 }
 
-void publish(std::shared_ptr<const MapScene> scene) {
-    latest.store(std::move(scene));
+void publish(std::shared_ptr<const MapScene> minimap, std::shared_ptr<const MapScene> full_map) {
+    latest_minimap.store(std::move(minimap));
+    latest_full_map.store(std::move(full_map));
 }
 
-std::shared_ptr<const MapScene> published() {
-    return latest.load();
+std::shared_ptr<const MapScene> published(bool full_map) {
+    return full_map ? latest_full_map.load() : latest_minimap.load();
 }
 
-void drawPublished(ImDrawList* list, const Mumble::Data* mumble, glm::vec2 display) {
-    const std::shared_ptr<const MapScene> scene = published();
+void drawPublished(ImDrawList* list, const Mumble::Data* mumble, glm::vec2 display, bool full_map) {
+    const std::shared_ptr<const MapScene> scene = published(full_map);
     if (!scene) return;
-    const MumbleState state = contextState(mumble);
-    // The scene was decided for the other map: the frame it changed on draws nothing.
-    if (state.is_map_open != scene->full_map) return;
+    MumbleState state = contextState(mumble);
+    if (full_map) {
+        // The frame the map went down on draws nothing of it.
+        if (!state.is_map_open) return;
+    } else if (state.is_map_open || scene->keep_compass) {
+        state = withCompass(std::move(state), scene->compass);
+    }
     if (const std::optional<map::View> view = map::view(state, display, scene->ui_scale)) {
         draw(list, *scene, *view, state.player_position.z);
     }

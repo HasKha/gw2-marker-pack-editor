@@ -15,6 +15,7 @@
 #include "draw_list.h"
 #include "fake_png.h"
 #include "test_camera.h"
+#include "viewer/map_scene.h"
 #include "viewer/render/good_render.h"
 #include "viewer/runtime.h"
 #include "viewer/scene.h"
@@ -880,6 +881,76 @@ TEST_CASE("the world is drawn at WORLD_FINISHED with the map open, under it", "[
 
     viewer::good_render_sink::unload();
     viewer::publish(nullptr);
+}
+
+TEST_CASE("with the full map up, BEFORE_WINDOWS draws the minimap on its compass, never the full map", "[good_render]") {
+    // The game draws its full map after BEFORE_WINDOWS, so the full map is the overlay's; the
+    // minimap goes on under it as it opens and closes over the compass.
+    viewer::map_scene::Compass compass;
+    compass.width = 200;
+    compass.height = 200;
+    compass.top_right = true;
+    compass.centre = glm::dvec2(500.0, 500.0);
+    viewer::map_scene::Icon icon;
+    icon.texture = fakeTexture();
+    icon.continent = glm::dvec2(500.0, 500.0);
+
+    auto minimap = std::make_shared<viewer::map_scene::MapScene>();
+    minimap->icons.push_back(icon);
+    minimap->compass = compass;
+    auto full_map = std::make_shared<viewer::map_scene::MapScene>();
+    full_map->full_map = true;
+    full_map->icons.push_back(icon);
+    viewer::map_scene::publish(minimap, full_map);
+
+    // The full map's fields: centred on the same point, which it draws in the screen's middle.
+    Mumble::Data mumble{};
+    mumble.UITick = 1;
+    mumble.Context.IsMapOpen = 1;
+    mumble.Context.Compass.Width = 200;
+    mumble.Context.Compass.Height = 200;
+    mumble.Context.Compass.Scale = 1.0f;
+    mumble.Context.Compass.Center.X = 500.0f;
+    mumble.Context.Compass.Center.Y = 500.0f;
+    viewer::good_render_sink::load(&mumble);
+    viewer::good_render_sink::takeDrawn();
+
+    viewer::test::DrawListFixture fixture;
+    good_render::Moment moment{};
+    moment.moment = good_render::MOMENT_BEFORE_WINDOWS;
+    moment.width = 1920;
+    moment.height = 1080;
+    moment.pixels_per_window_pixel = 1.0f;
+    moment.draw_list = &fixture.list();
+    viewer::good_render_sink::onMoment(&moment);
+
+    REQUIRE(fixture.list().VtxBuffer.Size > 0);
+    for (const ImDrawVert& vertex : fixture.list().VtxBuffer) {
+        CHECK(vertex.pos.x >= 1720.0f);
+        CHECK(vertex.pos.y <= 200.0f);
+    }
+    const viewer::good_render_sink::Drawn drawn = viewer::good_render_sink::takeDrawn();
+    CHECK(drawn.map);
+    CHECK_FALSE(drawn.world);
+
+    viewer::good_render_sink::unload();
+    viewer::map_scene::publish(nullptr, nullptr);
+}
+
+TEST_CASE("a WORLD_FINISHED moment says the game drew its world, camera or not", "[good_render]") {
+    viewer::good_render_sink::takeDrawn();
+    viewer::test::DrawListFixture fixture;
+    good_render::Moment moment{};
+    moment.moment = good_render::MOMENT_WORLD_FINISHED;
+    moment.width = 1920;
+    moment.height = 1080;
+    moment.pixels_per_window_pixel = 1.0f;
+    moment.draw_list = &fixture.list();
+    viewer::good_render_sink::onMoment(&moment);
+    const viewer::good_render_sink::Drawn drawn = viewer::good_render_sink::takeDrawn();
+    CHECK(drawn.world);
+    CHECK_FALSE(drawn.over);
+    CHECK_FALSE(viewer::good_render_sink::takeDrawn().world);
 }
 
 TEST_CASE("a real pack draws on its own map, and only there", "[scene][corpus]") {

@@ -4,6 +4,7 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include <limits>
 #include <memory>
 #include <vector>
 
@@ -530,4 +531,232 @@ TEST_CASE("map scene: the map fades in after it opens, closes or the interface r
     CHECK(fade.update(state, 13.0) == 1.0f);
     state.ui_size = 3;
     CHECK(fade.update(state, 14.0) == 0.0f);
+}
+
+namespace {
+
+// MumbleLink as `state` describes it, for what reads the link itself.
+Mumble::Data mumbleData(const MumbleState& state) {
+    Mumble::Data data{};
+    data.UITick = 1;
+    // MumbleLink's axes: y up.
+    data.AvatarPosition.X = state.player_position.x;
+    data.AvatarPosition.Y = state.player_position.z;
+    data.AvatarPosition.Z = state.player_position.y;
+    data.Context.Compass.Width = static_cast<unsigned short>(state.compass_width);
+    data.Context.Compass.Height = static_cast<unsigned short>(state.compass_height);
+    data.Context.Compass.Rotation = static_cast<float>(state.compass_rotation);
+    data.Context.Compass.Scale = static_cast<float>(state.map_scale);
+    data.Context.Compass.Center.X = static_cast<float>(state.map_center.x);
+    data.Context.Compass.Center.Y = static_cast<float>(state.map_center.y);
+    data.Context.IsMapOpen = state.is_map_open;
+    data.Context.IsCompassTopRight = state.is_compass_top_right;
+    data.Context.IsCompassRotating = state.is_compass_rotation_enabled;
+    return data;
+}
+
+// The full map up, MumbleLink's compass fields now its own: the whole screen, centred elsewhere.
+MumbleState fullMap() {
+    MumbleState state = mumble();
+    state.is_map_open = true;
+    state.map_scale = 2.0;
+    state.map_center = glm::dvec2(300.0, 300.0);
+    return state;
+}
+
+struct Box {
+    glm::vec2 min{std::numeric_limits<float>::max()};
+    glm::vec2 max{std::numeric_limits<float>::lowest()};
+    glm::vec2 middle() const { return (min + max) * 0.5f; }
+};
+
+Box drawnBox(const ImDrawList& list) {
+    Box box;
+    for (const ImDrawVert& vertex : list.VtxBuffer) {
+        box.min = glm::min(box.min, glm::vec2(vertex.pos.x, vertex.pos.y));
+        box.max = glm::max(box.max, glm::vec2(vertex.pos.x, vertex.pos.y));
+    }
+    return box;
+}
+
+} // namespace
+
+TEST_CASE("map scene: under the full map, the minimap is drawn on the compass it had") {
+    runtime::LiveMap live;
+    live.markers.push_back(marker({500, 0, 500})); // the compass's middle: (1820, 100)
+    const MumbleState on_compass = map_scene::withCompass(fullMap(), map_scene::compassOf(mumble()));
+    auto minimap = std::make_shared<map_scene::MapScene>(build(live, on_compass));
+    const Mumble::Data link = mumbleData(fullMap());
+
+    SECTION("with the compass kept") {
+        minimap->keep_compass = true;
+        map_scene::publish(minimap, nullptr);
+        test::DrawListFixture fixture;
+        map_scene::drawPublished(&fixture.list(), &link, kDisplay, false);
+        REQUIRE(fixture.list().VtxBuffer.Size > 0);
+        const Box box = drawnBox(fixture.list());
+        CHECK(box.min.x == Approx(1810.0f));
+        CHECK(box.max.x == Approx(1830.0f));
+        CHECK(box.min.y == Approx(90.0f));
+        CHECK(box.max.y == Approx(110.0f));
+    }
+
+    SECTION("on the frame the map came up on, on the compass a scene built before it had") {
+        // A moment can read MumbleLink after IsMapOpen came on and before a Present saw it: once
+        // in a recording, November 2026, the minimap's markers dropped for that frame.
+        map_scene::publish(minimap, nullptr);
+        test::DrawListFixture fixture;
+        map_scene::drawPublished(&fixture.list(), &link, kDisplay, false);
+        REQUIRE(fixture.list().VtxBuffer.Size > 0);
+        CHECK(drawnBox(fixture.list()).middle().x == Approx(1820.0f));
+        CHECK(drawnBox(fixture.list()).middle().y == Approx(100.0f));
+    }
+
+    SECTION("with IsMapOpen off and the fields still the full map's, on the compass kept") {
+        // The other way round, seen too: the minimap drawn at the full map's scale for a frame.
+        MumbleState stale = fullMap();
+        stale.is_map_open = false;
+        const Mumble::Data stale_link = mumbleData(stale);
+        minimap->keep_compass = true;
+        map_scene::publish(minimap, nullptr);
+        test::DrawListFixture fixture;
+        map_scene::drawPublished(&fixture.list(), &stale_link, kDisplay, false);
+        REQUIRE(fixture.list().VtxBuffer.Size > 0);
+        CHECK(drawnBox(fixture.list()).middle().x == Approx(1820.0f));
+        CHECK(drawnBox(fixture.list()).middle().y == Approx(100.0f));
+    }
+
+    SECTION("the full map, none published, draws nothing") {
+        map_scene::publish(minimap, nullptr);
+        test::DrawListFixture fixture;
+        map_scene::drawPublished(&fixture.list(), &link, kDisplay, true);
+        CHECK(fixture.list().VtxBuffer.Size == 0);
+    }
+    map_scene::publish(nullptr, nullptr);
+}
+
+TEST_CASE("map scene: the full map is drawn while it is up, zoomed as the game zooms it") {
+    runtime::LiveMap live;
+    live.markers.push_back(marker({500, 0, 500})); // continent (500, 500): 100 px right of and below the middle
+    auto full_map = std::make_shared<map_scene::MapScene>(build(live, fullMap()));
+    map_scene::publish(nullptr, full_map);
+    const Mumble::Data up = mumbleData(fullMap());
+
+    test::DrawListFixture still;
+    map_scene::drawPublished(&still.list(), &up, kDisplay, true);
+    REQUIRE(still.list().VtxBuffer.Size > 0);
+    const Box still_box = drawnBox(still.list());
+
+    SECTION("still: where MumbleLink's view puts it") {
+        CHECK(still_box.middle().x == Approx(1060.0f));
+        CHECK(still_box.middle().y == Approx(640.0f));
+    }
+
+    SECTION("zoomed: the picture scaled about the screen's middle, the icon with it") {
+        full_map->zoom = 3.0f;
+        test::DrawListFixture fixture;
+        map_scene::drawPublished(&fixture.list(), &up, kDisplay, true);
+        const Box box = drawnBox(fixture.list());
+        CHECK(box.middle().x == Approx(1260.0f));
+        CHECK(box.middle().y == Approx(840.0f));
+        CHECK(box.max.x - box.min.x == Approx((still_box.max.x - still_box.min.x) * 3.0f));
+    }
+
+    SECTION("not once MumbleLink has the map down") {
+        const Mumble::Data down = mumbleData(mumble());
+        test::DrawListFixture fixture;
+        map_scene::drawPublished(&fixture.list(), &down, kDisplay, true);
+        CHECK(fixture.list().VtxBuffer.Size == 0);
+    }
+    map_scene::publish(nullptr, nullptr);
+}
+
+TEST_CASE("map scene: the full map zooms down to 1 at 39.5 times a second, landing 0.54 s after it opens") {
+    map_scene::FullMapZoom zoom;
+    CHECK(zoom.update(false, true, 10.0).zoom == 1.0f);
+    CHECK(zoom.update(true, true, 20.0).zoom == Approx(1.0 + 39.5 * 0.54));
+    CHECK(zoom.update(true, true, 20.44).zoom == Approx(1.0 + 39.5 * 0.1));
+    CHECK(zoom.update(true, true, 20.54).zoom == Approx(1.0f));
+    const map_scene::FullMapZoom::Frame still = zoom.update(true, false, 21.0);
+    CHECK(still.zoom == 1.0f);
+    CHECK(still.opacity == 1.0f);
+    // Opening again starts over.
+    zoom.update(false, true, 30.0);
+    CHECK(zoom.update(true, true, 31.0).zoom == Approx(1.0 + 39.5 * 0.54));
+}
+
+TEST_CASE("map scene: the full map zooms back and fades from the first frame the world is drawn again") {
+    map_scene::FullMapZoom zoom;
+    zoom.update(true, true, 0.0);
+    zoom.update(true, true, 0.6);
+    // Fully up: the game draws no world, so no moment comes.
+    for (int frame = 1; frame <= 5; ++frame) CHECK(zoom.update(true, false, 0.6 + frame * 0.016).zoom == 1.0f);
+
+    SECTION("the world back is the closing, the game's picture 40 ms behind it") {
+        CHECK(zoom.update(true, true, 2.0).zoom == Approx(1.0f));
+        const map_scene::FullMapZoom::Frame waiting = zoom.update(true, true, 2.03);
+        CHECK(waiting.zoom == Approx(1.0f));
+        CHECK(waiting.opacity == Approx(1.0f));
+        const map_scene::FullMapZoom::Frame closing = zoom.update(true, true, 2.14);
+        CHECK(closing.zoom == Approx(1.0 + 39.5 * 0.1));
+        CHECK(closing.opacity == Approx(0.75f));
+        CHECK(zoom.update(true, true, 2.5).opacity == 0.0f);
+        CHECK(zoom.update(true, true, 3.0).zoom == Approx(1.0 + 39.5 * 0.54));
+        // Down at last: still again, for the next time.
+        CHECK(zoom.update(false, true, 3.1).zoom == 1.0f);
+    }
+
+    SECTION("a world missing during the opening says nothing") {
+        map_scene::FullMapZoom opening;
+        opening.update(true, true, 0.0);
+        opening.update(true, false, 0.1);
+        opening.update(true, false, 0.2);
+        opening.update(true, false, 0.3);
+        CHECK(opening.update(true, true, 0.6).zoom == 1.0f);
+    }
+
+    SECTION("nor a frame or two GoodRender missed") {
+        map_scene::FullMapZoom missed;
+        missed.update(true, true, 0.0);
+        missed.update(true, true, 0.6);
+        missed.update(true, false, 0.62);
+        missed.update(true, false, 0.63);
+        CHECK(missed.update(true, true, 0.64).zoom == 1.0f);
+        CHECK(missed.update(true, true, 0.8).zoom == 1.0f);
+    }
+}
+
+TEST_CASE("map scene: without GoodRender the closing is not seen, and the map stays still") {
+    map_scene::FullMapZoom zoom;
+    zoom.update(true, false, 0.0);
+    for (int frame = 34; frame <= 100; ++frame) {
+        const map_scene::FullMapZoom::Frame now = zoom.update(true, false, frame * 0.016);
+        CHECK(now.zoom == 1.0f);
+        CHECK(now.opacity == 1.0f);
+    }
+}
+
+TEST_CASE("map scene: the compass is kept from the full map coming up until MumbleLink gives its fields back") {
+    map_scene::CompassKeeper keeper;
+    const MumbleState compass = mumble();
+    CHECK_FALSE(keeper.update(compass).keep);
+
+    map_scene::CompassKeeper::Kept kept = keeper.update(fullMap());
+    CHECK(kept.keep);
+    CHECK(kept.compass.scale == compass.map_scale);
+    CHECK(kept.compass.centre == compass.map_center);
+
+    // IsMapOpen off, the fields still the full map's: kept.
+    MumbleState stale = fullMap();
+    stale.is_map_open = false;
+    kept = keeper.update(stale);
+    CHECK(kept.keep);
+    CHECK(kept.compass.scale == compass.map_scale);
+
+    // The compass's own fields back, moved since: they are the compass now.
+    MumbleState back = compass;
+    back.map_center = glm::dvec2(510.0, 500.0);
+    kept = keeper.update(back);
+    CHECK_FALSE(kept.keep);
+    CHECK(kept.compass.centre == back.map_center);
 }

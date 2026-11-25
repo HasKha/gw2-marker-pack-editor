@@ -35,7 +35,10 @@ double takeMomentMilliseconds();
 struct Drawn {
     bool occluded = false; // the world's items something of the world hides
     bool over = false; // the world's other items
-    bool map = false;
+    bool map = false; // the minimap; the full map is always the overlay's
+    // A WORLD_FINISHED moment came, drawing or not: the game drew its world. It stops while the
+    // full map is fully up (map_scene::FullMapZoom).
+    bool world = false;
 };
 Drawn takeDrawn();
 

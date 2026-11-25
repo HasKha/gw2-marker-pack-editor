@@ -6,6 +6,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -21,6 +22,10 @@
 // no MapScale, centre or rotation: those are read from MumbleLink where it is drawn, so a
 // map being dragged does not trail a frame behind. What is decided here is what MumbleLink
 // moving does not change within a frame — what shows, in what colour, in what order.
+//
+// **Two scenes while the full map is up**: the minimap's, under the map as it opens and closes
+// over the compass, and the full map's. MumbleLink's compass fields describe the full map then,
+// so the minimap's scene carries the compass as it last was (`MapScene::compass`).
 //
 // **Trails are laid on the continent once per live map**, not per frame: a map with every
 // corpus pack installed has 180,000 trail points. A frame picks which trails show; the fade by
@@ -95,10 +100,53 @@ private:
     std::shared_ptr<const TrailLines> lines_;
 };
 
+// What MumbleLink says of the compass. While the full map is up the same fields describe the full
+// map: CompassKeeper keeps the compass's.
+struct Compass {
+    int width = 0;
+    int height = 0;
+    double rotation = 0.0;
+    bool rotating = false;
+    bool top_right = false;
+    double scale = 1.0;
+    glm::dvec2 centre{0.0};
+};
+Compass compassOf(const MumbleState& mumble);
+// `mumble` with `compass` in its compass fields and the full map down.
+MumbleState withCompass(MumbleState mumble, const Compass& compass);
+
+// The compass the minimap is drawn on, decided at Present. MumbleLink's compass fields and its
+// IsMapOpen do not change on the same frame: seen in a recording, November 2026, a frame with
+// IsMapOpen off still had the full map's fields, and drew the minimap at the full map's scale.
+// So the compass is kept from the full map coming up until the fields are no longer the ones the
+// full map last had.
+class CompassKeeper
+{
+public:
+    struct Kept {
+        Compass compass;
+        bool keep = false; // MumbleLink's fields are not the compass's: draw on `compass` whatever they say
+    };
+    Kept update(const MumbleState& mumble);
+
+private:
+    Compass compass_;
+    Compass full_map_;
+    bool keep_ = false;
+};
+
 struct MapScene {
     bool full_map = false; // which map it was decided for: the map's settings differ
     float ui_scale = 1.0f; // screen pixels per UI pixel, which the view is built with
     float opacity = 1.0f; // the map's opacity under its fade, for every line and icon
+    // The minimap's: the compass it was built on, drawn on whenever MumbleLink has the full map up
+    // as the scene is drawn, or `keep_compass` says its fields are not the compass's. A moment can
+    // read MumbleLink after it changed and before the next Present built a scene for it.
+    Compass compass;
+    bool keep_compass = false;
+    // The full map's, while it opens or closes: how many times larger than MumbleLink's view the
+    // game draws its map (FullMapZoom). 1 once it is still.
+    float zoom = 1.0f;
     float trail_width = 2.0f;
     bool fade_far_trails = true;
     std::vector<std::shared_ptr<const TrailLines>> trails; // each layer's
@@ -121,6 +169,36 @@ private:
     bool map_open_ = false;
     int ui_size_ = -1;
     double since_ = 0.0;
+};
+
+// The game's full map opening and closing. It draws the map at the view MumbleLink describes and
+// scales the whole picture, its icons too, about the screen's centre, linearly in the scale:
+// opening, down to 1 a set time after IsMapOpen comes on; closing, up from 1 a little after the
+// world comes back, while it fades out. The figures, and how they were measured, are beside them
+// in map_scene.cpp.
+//
+// IsMapOpen only goes off well after the closing ends, so the closing is told by the world
+// instead: the game stops drawing it once the map is fully open, and GoodRender's moments stop
+// with it; they come back on the closing's first frame. Without GoodRender, or when the map
+// closes before it was fully open, the closing is not seen and the map stays still until
+// IsMapOpen goes off.
+class FullMapZoom
+{
+public:
+    struct Frame {
+        float zoom = 1.0f; // MapScene::zoom
+        float opacity = 1.0f; // the closing's fade, under FadeIn's
+    };
+
+    // At Present: whether MumbleLink has the full map up, whether a GoodRender moment came for the
+    // world in the frame before (good_render_sink::Drawn::world), and the time.
+    Frame update(bool map_open, bool world_drawn, double seconds);
+
+private:
+    bool map_open_ = false;
+    double opened_at_ = 0.0;
+    int frames_without_world_ = 0;
+    std::optional<double> closing_at_;
 };
 
 // One live map going onto the map.
@@ -168,7 +246,8 @@ float lineOpacity(const MapScene& scene, const Line& line, float player_height);
 bool iconRect(const Icon& icon, const map::View& view, glm::vec2* min, glm::vec2* max);
 
 // Draws `scene` into `list` under `view`, the player at `player_height` metres, cut to the
-// view's bounds by hand: a GoodRender list ignores clip rectangles.
+// view's bounds by hand: a GoodRender list ignores clip rectangles. Then scaled by the scene's
+// zoom about the bounds' middle, as the game scales its own map's picture.
 void draw(ImDrawList* list, const MapScene& scene, const map::View& view, float player_height);
 
 // The icon under `mouse`, the nearest one drawn last; null when none is.
@@ -190,12 +269,19 @@ Tooltip tooltip(const runtime::LiveMarker& marker, const registry::CategoryTree&
 // tip, else left of it, never under it.
 glm::vec2 tooltipPosition(glm::vec2 mouse, glm::vec2 size, glm::vec2 display);
 
-// The scene the sinks draw, one atomic swap of a finished one, as the world's is.
-void publish(std::shared_ptr<const MapScene> scene);
-std::shared_ptr<const MapScene> published();
+// The scenes the sinks draw, each one atomic swap of a finished one, as the world's is: the
+// minimap's always, the full map's while it is up and null otherwise.
+//
+// They are drawn in different places. The minimap goes under the game's windows at GoodRender's
+// BEFORE_WINDOWS, so under the full map as it opens and closes over it. The full map goes over
+// everything, in the overlay at Nexus's render: the game draws it after BEFORE_WINDOWS, and draws
+// no world while it is fully open, so no moment fires then at all.
+void publish(std::shared_ptr<const MapScene> minimap, std::shared_ptr<const MapScene> full_map);
+std::shared_ptr<const MapScene> published(bool full_map);
 
-// Draws the published scene under the view MumbleLink holds now, on a `display` that size.
-// Any thread: MumbleLink is read without its identity.
-void drawPublished(ImDrawList* list, const Mumble::Data* mumble, glm::vec2 display);
+// Draws the published minimap or full map under the view MumbleLink holds now, on a `display`
+// that size: the minimap on its scene's compass while the full map is up, the full map only
+// while MumbleLink has it up. Any thread: MumbleLink is read without its identity.
+void drawPublished(ImDrawList* list, const Mumble::Data* mumble, glm::vec2 display, bool full_map);
 
 } // namespace viewer::map_scene

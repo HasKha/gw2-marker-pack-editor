@@ -70,7 +70,7 @@ std::vector<Line> describe(const Figures& figures) {
     } else {
         text("World: the overlay, over everything");
     }
-    text(figures.drawn.map ? "Maps: drawn by GoodRender, under the game's windows" : "Maps: the overlay, over everything");
+    text(figures.drawn.map ? "Minimap: drawn by GoodRender, under the game's windows" : "Minimap: the overlay, over everything");
     // The scene is built at Present with the game's camera, which sorts, culls and places the
     // player fades go by; a moment draws it with GoodRender's own. The overlay draws with the
     // game's camera as well.

@@ -82,15 +82,17 @@ sink for the same reason. Publishing is an atomic pointer swap.
 |---|---|---|
 | markers and trails | `world_quad`, in the scene's order, each with its `HiddenBehind` | `WORLD_FINISHED` |
 | the same, from a moment without `world_quad` | over the terrain only, into `draw_list` through `render/overlay.*` | `WORLD_FINISHED` |
-| minimap and full map | `draw_list`, from MumbleLink's map fields as the moment reads them | `BEFORE_WINDOWS` |
+| minimap | `draw_list`, from MumbleLink's map fields as the moment reads them | `BEFORE_WINDOWS` |
+| full map | the overlay, over everything, as the minimap is without the service | Nexus's render |
 | info text, interact prompt, map tooltip and menu | ImGui windows | Nexus's render |
 
 - **Everything goes through `world_quad`**, over the terrain too: a draw list spreads a texture evenly over
   pixels, so a trail running past the camera stretches; the GPU foreshortens it as Blish's does.
 - **Billboards are not `world_billboard`.** Blish's faces the ray to its own centre and is clamped on its
   projected corners; building corners ourselves (`itemCorners` in `scene.*`) gives both sinks one shape.
-- **The world goes under the game's whole UI**, where Blish HUD draws over it; only the map waits for
-  `BEFORE_WINDOWS`, over the HUD as the game's map markers are.
+- **The world goes under the game's whole UI**, where Blish HUD draws over it; only the minimap waits for
+  `BEFORE_WINDOWS`, over the HUD as the game's map markers are. The full map cannot: the game draws it after
+  that moment, and once it is fully up draws no world, so no moment fires at all.
 - **The order is Blish's**: every trail, then markers back to front by where each stands before
   `heightOffset` (`buildScene`).
 - **Occlusion is the player's Marker occlusion**: None (default, as Blish HUD), Behind Characters, or Behind
@@ -111,7 +113,8 @@ sink for the same reason. Publishing is an atomic pointer swap.
   while Nexus's `IsGameplay` is off.
 - **The world is drawn with the full map up**, under it. MumbleLink's `IsMapOpen` comes on at once and goes
   off late, so the scene ignores it; the overlay, which draws over the game's UI and so over the map, draws
-  no world while it is set.
+  no world while it is set. The minimap goes on under the map too, on the compass as it was
+  (`CompassKeeper`): MumbleLink's compass fields and `IsMapOpen` change on different frames, either way.
 - **A marker without its icon is not drawn**, as in Pathing, including while its image is being read.
   The editor's overlay draws a dot there for the edited pack.
 - **Picking comes from the scene**: the editor projects the edited pack's items through `itemCorners`, so what
@@ -186,6 +189,14 @@ Pathing's FlatMap and `RenderToMiniMap`, in `map.*` and `map_scene.*`.
 - **The map scene carries no view** either: the moment reads MumbleLink's centre, scale and rotation itself.
 - **Trails are laid on the continent once per live map**; a frame picks which show.
 - **Clipped by hand**: a GoodRender draw list ignores clip rectangles.
+- **The full map zooms as the game's does** while it opens and closes (`FullMapZoom`): MumbleLink only
+  describes where it lands. The closing is told by GoodRender's moments coming back, long before `IsMapOpen`
+  goes off; without the service the map stays still until then. The figures come from recordings, through
+  `scripts/measure_map_zoom.py`: record the map opening and closing over a busy part of a map, and give it a
+  frame of the settled map and what to leave out (addon windows, chat, the skill bar). With a pack whose
+  markers sit on the game's own icons, `--markers` says how far ours run
+  ahead of the game's picture, which is what the zoom's delays make up for. Measure again at a very
+  different frame rate before trusting them there.
 - **The right click reaches the game too**, as FlatMap does not block it.
 
 ## Packs

@@ -21,6 +21,7 @@ const Mumble::Data* mumble_link = nullptr;
 std::atomic<bool> occluded_drawn{false};
 std::atomic<bool> over_drawn{false};
 std::atomic<bool> map_drawn{false};
+std::atomic<bool> world_moment{false};
 
 // The time spent in the moments since takeMomentMilliseconds last took it.
 std::atomic<int64_t> moment_nanoseconds{0};
@@ -45,12 +46,16 @@ glm::vec2 windowSize(const good_render::Moment& moment) {
 void onMoment(const good_render::Moment* moment) {
     const MomentTimer timer;
 
-    // In the game's UI, over its HUD: the map, where the game draws its own map markers.
+    // In the game's UI, over its HUD: the minimap, where the game draws its own map markers.
+    // Under the full map as it opens and closes over the compass. The full map is the overlay's:
+    // the game draws it after this moment, and no moment comes while it is fully up.
     if (moment->moment == good_render::MOMENT_BEFORE_WINDOWS && moment->draw_list) {
-        map_scene::drawPublished(moment->draw_list, mumble_link, windowSize(*moment));
+        map_scene::drawPublished(moment->draw_list, mumble_link, windowSize(*moment), false);
         map_drawn = true;
         return;
     }
+
+    if (moment->moment == good_render::MOMENT_WORLD_FINISHED) world_moment = true;
 
     // The finished world, before any UI, so the game's HUD and nameplates go over every marker:
     // all of it through world_quad, or, with no world_quad, what nothing hides into the draw
@@ -99,6 +104,7 @@ Drawn takeDrawn() {
     drawn.occluded = occluded_drawn.exchange(false);
     drawn.over = over_drawn.exchange(false);
     drawn.map = map_drawn.exchange(false);
+    drawn.world = world_moment.exchange(false);
     return drawn;
 }
 

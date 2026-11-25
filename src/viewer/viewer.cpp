@@ -157,12 +157,17 @@ private:
     std::chrono::steady_clock::time_point last_ = std::chrono::steady_clock::now();
 };
 
-// The minimap and the full map: every map's rectangles, the fade after the map changes, and
-// what was published.
+// The minimap and the full map: every map's rectangles, each one's fade after it comes up, the
+// full map's zoom as it opens and closes, the compass as MumbleLink last described it, and what
+// was published.
 map::Catalog maps;
-map_scene::FadeIn map_fade;
+map_scene::FadeIn minimap_fade;
+map_scene::FadeIn full_map_fade;
+map_scene::FullMapZoom full_map_zoom;
+map_scene::CompassKeeper compass;
 map_scene::TrailCache map_trails;
-Recycled<map_scene::MapScene> map_scenes;
+Recycled<map_scene::MapScene> minimap_scenes;
+Recycled<map_scene::MapScene> full_map_scenes;
 
 // The pack open in the editor this frame, as EditorHooks::edited_live hands it over: drawn in
 // the world and on the maps with the installed packs. Its markers belong to no node of our
@@ -964,28 +969,46 @@ ImTextureID aboveBelowImage(bool above) {
     return texture ? static_cast<ImTextureID>(texture->Resource) : nullptr;
 }
 
-// What the minimap or the full map shows this frame. Nothing on a map the API has not
-// described, as in Pathing, nor on a loading screen.
+// What the minimap shows this frame, and the full map while it is up. Nothing on a map the API
+// has not described, as in Pathing, nor on a loading screen.
 void buildMapScene(const TextureLookup& texture) {
-    const std::shared_ptr<map_scene::MapScene> next = map_scenes.take();
-    const float fade = map_fade.update(mumble_state, ImGui::GetTime());
+    const double now = ImGui::GetTime();
+    const map_scene::CompassKeeper::Kept kept = compass.update(mumble_state);
+    // The compass stays where it was under the full map, so its fade goes on through it.
+    const MumbleState on_compass = map_scene::withCompass(mumble_state, kept.compass);
+    const float minimap_opacity = minimap_fade.update(on_compass, now);
+    const float full_map_opacity = full_map_fade.update(mumble_state, now);
+    const map_scene::FullMapZoom::Frame zoom = full_map_zoom.update(mumble_state.is_map_open, last_drawn.world, now);
+
+    const std::shared_ptr<map_scene::MapScene> minimap = minimap_scenes.take();
+    std::shared_ptr<map_scene::MapScene> full_map;
     if (const map::MapDetails* details = mumble_state.available && inGameplay() ? maps.find(mumble_state.map_id) : nullptr) {
         std::vector<map_scene::Layer> layers{map_scene::Layer{&live, &visible, texture, &map_trails}};
         if (edited_live) layers.push_back(map_scene::Layer{edited_live, &kNoNodes, edited_texture, &edited_map_trails});
-        map_scene::build(layers, *details, mumble_state, mapOptions(), fade, uiScale(), next.get());
-        next->above = aboveBelowImage(true);
-        next->below = aboveBelowImage(false);
+        map_scene::build(layers, *details, on_compass, mapOptions(), minimap_opacity, uiScale(), minimap.get());
+        minimap->keep_compass = kept.keep;
+        minimap->above = aboveBelowImage(true);
+        minimap->below = aboveBelowImage(false);
+        if (mumble_state.is_map_open) {
+            full_map = full_map_scenes.take();
+            map_scene::build(layers, *details, mumble_state, mapOptions(), full_map_opacity * zoom.opacity, uiScale(), full_map.get());
+            full_map->zoom = zoom.zoom;
+            full_map->above = minimap->above;
+            full_map->below = minimap->below;
+        }
     } else {
-        *next = map_scene::MapScene{};
+        *minimap = map_scene::MapScene{};
     }
-    map_scenes.keep(next);
-    map_scene::publish(next);
+    minimap_scenes.keep(minimap);
+    if (full_map) full_map_scenes.keep(full_map);
+    map_scene::publish(minimap, full_map);
 }
 
-// The map's tooltip and menu, over what was published this frame.
+// The map's tooltip and menu, over what was published this frame. None on the compass while the
+// full map is up or MumbleLink's fields are still its, nor on the full map while it zooms.
 void drawMapMenu() {
-    const std::shared_ptr<const map_scene::MapScene> scene = map_scene::published();
-    if (!scene || scene->full_map != mumble_state.is_map_open) return;
+    const std::shared_ptr<const map_scene::MapScene> scene = map_scene::published(mumble_state.is_map_open);
+    if (!scene || scene->full_map != mumble_state.is_map_open || scene->zoom != 1.0f || scene->keep_compass) return;
     const ImVec2 display = ImGui::GetIO().DisplaySize;
     const std::optional<map::View> view = map::view(mumble_state, glm::vec2(display.x, display.y), scene->ui_scale);
     if (!view) return;
@@ -1122,7 +1145,8 @@ void preRender() {
 void drawOptionsWindow();
 
 // The overlay draws what GoodRender did not reach: everything with no service, or a loading
-// screen or the full map. Behind our own windows and the editor's, but over the game.
+// screen or the full map; and the full map always. Behind our own windows and the editor's, but
+// over the game.
 void drawWorld() {
     const ImVec2 display = ImGui::GetIO().DisplaySize;
     const Camera camera = gameCamera(mumble_link, rtapi::data(), glm::vec2(display.x, display.y));
@@ -1135,9 +1159,11 @@ void drawWorld() {
     if (scene && camera.valid && !camera.map_open && !(drawn.occluded && drawn.over)) {
         overlay::drawScene(ImGui::GetBackgroundDrawList(), camera, *scene, !drawn.occluded, !drawn.over);
     }
-    if (!drawn.map) {
-        map_scene::drawPublished(ImGui::GetBackgroundDrawList(), mumble_link, glm::vec2(display.x, display.y));
+    // Not the minimap with the full map up, which covers it.
+    if (!drawn.map && !camera.map_open) {
+        map_scene::drawPublished(ImGui::GetBackgroundDrawList(), mumble_link, glm::vec2(display.x, display.y), false);
     }
+    map_scene::drawPublished(ImGui::GetBackgroundDrawList(), mumble_link, glm::vec2(display.x, display.y), true);
 }
 
 // Our windows and ImGui's: what is drawn with our font pushed.
@@ -1496,8 +1522,9 @@ void unload() {
     screen = behaviors::Screen{};
     publish(nullptr);
     scenes.clear();
-    map_scene::publish(nullptr);
-    map_scenes.clear();
+    map_scene::publish(nullptr, nullptr);
+    minimap_scenes.clear();
+    full_map_scenes.clear();
     map_trails = map_scene::TrailCache{};
     live = runtime::LiveMap{};
     installed = runtime::Installed{};
