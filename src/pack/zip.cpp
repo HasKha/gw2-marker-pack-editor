@@ -3,6 +3,7 @@
 #include <miniz.h>
 
 #include <cstdio>
+#include <mutex>
 
 #ifdef _WIN32
     #ifndef NOMINMAX
@@ -22,6 +23,10 @@ namespace pack::zip {
 
 struct Archive::Impl {
     mz_zip_archive zip{};
+    // miniz keeps its place in the file and its last error in `zip`, so two reads at once
+    // would corrupt each other: an archive is read on a worker and, in the editor, on the
+    // frame too.
+    std::mutex reading;
     // Ours to close: miniz leaves a file it was handed open.
     FILE* file = nullptr;
 };
@@ -157,6 +162,7 @@ bool Archive::read(std::string_view path, std::vector<uint8_t>* out, std::string
         return false;
     }
 
+    const std::lock_guard<std::mutex> lock(impl_->reading);
     mz_zip_archive_file_stat stat{};
     if (!mz_zip_reader_file_stat(&impl_->zip, it->second, &stat)) {
         if (error) *error = "Could not stat entry: " + std::string(path);

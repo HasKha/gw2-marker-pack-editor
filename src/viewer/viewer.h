@@ -62,4 +62,8 @@ void unload();
 // Before load: the viewer's callbacks reach the editor as soon as they are registered.
 void connectEditor(const EditorHooks& hooks);
 
+// What bounds how much of every image is handed to Nexus at once, the editor's included: one
+// Nexus makes them all at one Present. The viewer moves it on a frame at a time.
+TextureUploads& textureUploads();
+
 } // namespace viewer

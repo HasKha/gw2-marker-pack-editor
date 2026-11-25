@@ -16,7 +16,9 @@ editor uses `viewer/` for the camera, textures and drawing; nothing in `viewer/`
   the property form and the resources window's reference counts are generated from it; an attribute named
   anywhere else is a second definition.
 - **Never block the render thread.** Anything modal or slow, such as the native file dialogs, runs on a
-  worker and is polled from `render()`.
+  worker and is polled from `render()`. **No file is read or written on it after load**, not even a stat: a disk
+  usually answers at once and now and then takes a tenth of a second, which is a stutter. Hand it to a
+  `util::JobQueue` and take the answer on a later frame.
 - **One pack open at a time**, the single source of truth in memory; its file is touched only on open and
   save.
 - **The parsed XML document is the storage.** `Pack` owns a `pugi::xml_document` per file; the model
@@ -66,7 +68,8 @@ The viewer's folder is [viewer.md](viewer.md#layout).
 ```
 src/
   addon/entry.cpp      Nexus entry
-  util/                path_text.h, json_file.* (lenient reads, all-or-nothing writes)
+  util/                path_text.h, json_file.* (lenient reads, all-or-nothing writes),
+                       job_queue.* (the worker every file the frame needs goes through)
   http/                http.*, background.h
   pack/
     source.*           DataSource: a zip or a folder; path normalization
@@ -84,7 +87,7 @@ src/
     trail_edit.*       the open trail's working copy
     undo.*             the undo stack
     file_dialog.*      NFD on a worker
-    resources.*        icons and .trl read from the pack on demand, budgeted
+    resources.*        icons and .trl read from the pack on demand, on a worker of its own
     settings.*         settings.json
     ui/                windows.* (the window table), tree_window, property_panel, resource_window,
                        trail_editor
@@ -197,11 +200,11 @@ overlay's handles.
 - Selecting a trail opens it; selecting anything else or closing the trail editor closes it.
 - `reindex` runs on every shape change and prunes the point selection.
 - A trail whose `.trl` cannot be read closes whatever was open, rather than showing its points under another
-  trail's name. `open` tells "over budget, ask next frame" from "tried and failed".
+  trail's name. `open` tells "still being read, ask next frame" from "tried and failed".
 - **Renaming `traildata` moves the `.trl`** (`pathable_edit::attributeRenamed`, once the field is
   committed), since a trail's name is its file. It never overwrites a path the pack has, and never deletes a
   file that shipped.
-- `Reload from file` reads the source directly, bypassing the budget. `Save to file` exports a copy outside
+- `Reload from file` reads the source directly, not waiting for the worker. `Save to file` exports a copy outside
   the pack.
 
 ## Two selections

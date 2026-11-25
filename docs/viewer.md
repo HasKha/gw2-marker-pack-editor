@@ -48,7 +48,7 @@ src/viewer/
   camera.*       RTAPI or MumbleLink -> view/projection
   rtapi.*        the RealTime API addon's data block, followed as Nexus loads and unloads it
   mumble.*       MumbleLink as Blish HUD names it, for scripts and behaviors
-  textures.*     budgeted texture decoding
+  textures.*     images read and decoded on the worker, made into Nexus textures a few MB a Present
   catalog.*      the public pack catalog; downloads.* its downloads
   account.*, achievements.*, api_key.*   the GW2 API, for achievement and raid filters
   game_binds.*   the game's Interact bind, from Nexus's GameBinds.xml
@@ -66,7 +66,7 @@ an `EditorHooks` hook, which does nothing while the editor is not running.
 
 | Where | Runs |
 |---|---|
-| worker | parsing and baking packs, handed over in order; the catalog, downloads, festivals, maps |
+| worker | parsing and baking packs, handed over in order; the catalog, downloads, festivals, maps; every file read or written after load, through `util::JobQueue` |
 | `ERenderType_PreRender` | MumbleLink, map changes, behaviors, Lua `OnTick`, building and publishing the scenes |
 | `ERenderType_Render` | our windows, the map's tooltip; the overlay sink for what no moment drew; the editor's overlay |
 | GoodRender moments | the latest published scenes, submitted. Nothing else |
@@ -111,7 +111,7 @@ sink for the same reason. Publishing is an atomic pointer swap.
 - **The world is drawn with the full map up**, under it. MumbleLink's `IsMapOpen` comes on at once and goes
   off late, so the scene ignores it; the overlay, which draws over the game's UI and so over the map, draws
   no world while it is set.
-- **A marker without its icon is not drawn**, as in Pathing, including while it waits for the load budget.
+- **A marker without its icon is not drawn**, as in Pathing, including while its image is being read.
   The editor's overlay draws a dot there for the edited pack.
 - **Picking comes from the scene**: the editor projects the edited pack's items through `itemCorners`, so what
   you click is what is drawn.

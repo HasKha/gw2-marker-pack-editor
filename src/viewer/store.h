@@ -43,6 +43,8 @@ public:
 
     // A missing or unreadable file leaves no choices made.
     void load(const std::filesystem::path& file);
+    // The choices as the file holds them, and that written to `file`.
+    std::string text() const;
     bool save(const std::filesystem::path& file) const;
 
 private:
@@ -62,16 +64,18 @@ public:
     std::optional<std::string> read(const std::string& key) const;
     void erase(const std::string& key);
 
-    // Whether anything changed since the last load or save. Pathing writes at most every
-    // five seconds rather than on every change; a script may write every tick.
-    bool dirty() const { return dirty_; }
+    // Moves whenever a value changes. Pathing writes at most every five seconds rather than on
+    // every change; a script may write every tick.
+    uint64_t revision() const { return revision_; }
 
     void load(const std::filesystem::path& file);
-    bool save(const std::filesystem::path& file);
+    // The values as the file holds them, and that written to `file`.
+    std::string text() const;
+    bool save(const std::filesystem::path& file) const;
 
 private:
     std::unordered_map<std::string, std::string> values_;
-    bool dirty_ = false;
+    uint64_t revision_ = 0;
 };
 
 } // namespace viewer::store

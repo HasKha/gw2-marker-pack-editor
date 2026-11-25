@@ -38,9 +38,14 @@ std::string packLabel(const Context& ctx, size_t pack) {
     return pack < packs.size() ? util::pathText(packs[pack]->loaded->path.filename()) : std::string("system");
 }
 
-const pack::DataSource* packSource(const Context& ctx, size_t pack) {
+// The text of `pack`'s script at the normalized `path`, as the pack was read; null for a file
+// it does not have.
+const std::string* packScript(const Context& ctx, size_t pack, const std::string& path) {
     const auto& packs = ctx.host.installed->packs;
-    return pack < packs.size() ? packs[pack]->loaded->source.get() : nullptr;
+    if (pack >= packs.size()) return nullptr;
+    const auto& scripts = packs[pack]->loaded->scripts;
+    const auto it = scripts.find(path);
+    return it == scripts.end() ? nullptr : &it->second;
 }
 
 std::string lowercase(std::string text) {
@@ -132,17 +137,15 @@ sol::object runChunk(sol::state_view lua, size_t pack, const std::string& file, 
 // file the pack does not have.
 sol::object loadScript(sol::state_view lua, size_t pack, const std::string& file, bool quiet_when_missing) {
     Context& ctx = context(lua);
-    const pack::DataSource* source = packSource(ctx, pack);
     const std::string path = pack::normalizePath(file);
-    std::string text;
-    std::string error;
-    if (!source || !source->contains(path) || !source->readText(path, &text, &error)) {
+    const std::string* text = packScript(ctx, pack, path);
+    if (!text) {
         if (!quiet_when_missing) ctx.console.push(Level::Warn, "system", "Script '" + path + "' could not be found.");
         return sol::make_object(lua, sol::lua_nil);
     }
 
     const Clock::time_point start = Clock::now();
-    sol::object chunk = runChunk(lua, pack, path, text);
+    sol::object chunk = runChunk(lua, pack, path, *text);
     if (chunk.valid()) {
         // Warned past half a second, as ScriptEngine.LoadScript does.
         const double milliseconds = std::chrono::duration<double, std::milli>(Clock::now() - start).count();

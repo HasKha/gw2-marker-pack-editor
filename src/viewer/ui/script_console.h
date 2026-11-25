@@ -2,6 +2,7 @@
 
 #include <filesystem>
 
+#include "util/job_queue.h"
 #include "viewer/runtime.h"
 #include "viewer/script/engine.h"
 
@@ -13,7 +14,13 @@ constexpr const char* SAVE_FILE_NAME = "script_console.txt";
 
 // The "Lua Script Console" window while `*open`: messages, Debug:Watch values, each pack's
 // script time per frame, and the census of what scripts asked for that does not exist.
-// The messages can be copied to the clipboard, or saved to `save_file` when there is one.
-void draw(const script::Engine& engine, const runtime::Installed& installed, const std::filesystem::path& save_file, bool* open);
+// The messages can be copied to the clipboard, or saved to `save_file` when there is one,
+// written by `jobs`.
+void draw(
+    const script::Engine& engine,
+    const runtime::Installed& installed,
+    const std::filesystem::path& save_file,
+    util::JobQueue& jobs,
+    bool* open);
 
 } // namespace viewer::ui::script_console

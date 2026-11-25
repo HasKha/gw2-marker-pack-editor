@@ -108,7 +108,7 @@ struct BakedTrail {
     // header is what decides which map Pathing draws a trail on and the attribute is dead
     // weight — see docs/format.md. So it is unknown until the file has been read, by
     // whoever reads it: the registry does so for every trail on its worker, the edited pack's
-    // are read through the editor's cache as its load budget allows.
+    // are read through the editor's cache, on its worker.
     int map_id = kMapUnknown;
 
     float alpha = 1.0f;

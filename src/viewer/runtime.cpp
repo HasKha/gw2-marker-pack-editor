@@ -15,7 +15,7 @@ void mergeInto(Installed* installed, InstalledPack* pack) {
 void install(Installed* installed, std::unique_ptr<registry::LoadedPack> loaded) {
     const std::string prefix = "MPV" + std::to_string(installed->next_serial++) + "_";
     auto pack = std::make_unique<InstalledPack>(std::move(loaded), prefix);
-    pack->textures.setApi(installed->api);
+    pack->textures.setApi(installed->api, installed->jobs, installed->uploads);
     mergeInto(installed, pack.get());
     installed->packs.push_back(std::move(pack));
     ++installed->revision;

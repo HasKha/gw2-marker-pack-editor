@@ -65,21 +65,25 @@ public:
     // What ReappearOnMapChange waits for.
     void mapChanged();
 
-    // Whether the timers changed since the last load or save; only they are written.
-    bool dirty() const { return dirty_; }
+    // Moves whenever the timers change; only they are written, so a hide that waits for an
+    // event leaves it.
+    uint64_t revision() const { return revision_; }
 
     // A missing file leaves nothing hidden; a line that does not parse is skipped.
     void load(const std::filesystem::path& file);
 
     // Takes every timer of `other` in, the later expiry winning where both hide one marker.
     void merge(const BehaviorStates& other);
-    bool save(const std::filesystem::path& file);
+
+    // The timers as the file holds them, and that written to `file`.
+    std::string text() const;
+    bool save(const std::filesystem::path& file) const;
 
 private:
     std::unordered_set<Guid, GuidHash> until_map_change_;
     std::unordered_map<Guid, UtcMillis, GuidHash> until_time_;
     std::unordered_map<uint64_t, std::unordered_set<Guid, GuidHash>> in_instance_;
-    bool dirty_ = false;
+    uint64_t revision_ = 0;
 };
 
 } // namespace viewer::behaviors

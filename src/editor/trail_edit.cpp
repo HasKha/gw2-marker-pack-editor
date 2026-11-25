@@ -118,7 +118,7 @@ bool open(editor::State& state, size_t pathable_index) {
     }
     if (open_pathable == pathable_index && open_path == data) return true;
 
-    // A read that is only over budget comes back next frame; one that failed is cached as a
+    // A read still on the worker comes back on a later frame; one that failed is cached as a
     // miss and never will. Holding the previous trail open over that second case is what
     // made two differently named trails look like they shared a point list.
     bool deferred = false;
@@ -149,7 +149,7 @@ void close(editor::State& state) {
 void followSelection(editor::State& state) {
     const editor::NodeRef primary = state.selection.primary();
 
-    // Reading the .trl is budgeted, so the first attempt after picking a trail can
+    // The .trl is read on a worker, so the first attempt after picking a trail can
     // legitimately come back empty — which is fine, the next frame tries again.
     if (primary.kind == editor::NodeKind::Pathable && primary.index < state.pack.pathables.size() &&
         state.pack.pathables[primary.index].type == pack::PathableType::Trail) {
@@ -283,9 +283,9 @@ bool reload(editor::State& state) {
     // only copy of it. Dropping those first and *then* failing the read would leave the
     // pack with no trail at all while the working copy still held the points.
     //
-    // Straight from the source rather than through the cache: cached reads are budgeted a
-    // few per frame, and a menu action that silently does nothing when the budget happens
-    // to be spent is worse than one that costs one extra read.
+    // Straight from the source rather than through the cache: a cached read comes back on a
+    // later frame, and a menu action that silently does nothing while it is out is worse than
+    // one that costs one extra read.
     const pack::DataSource* source = resources::source();
     std::vector<uint8_t> bytes;
     std::string error;

@@ -3,6 +3,13 @@
 // and "two trails in one category" is exactly the thing that has to keep working.
 #include <catch2/catch_test_macros.hpp>
 
+#include <filesystem>
+#include <future>
+#include <memory>
+#include <mutex>
+#include <string>
+#include <vector>
+
 #include "corpus.h"
 #include "editor/editor_state.h"
 #include "editor/pathable_edit.h"
@@ -22,7 +29,7 @@ void startPack(editor::State& state) {
     undo::clear();
     resources::setSource(nullptr);
     resources::setPendingAssets(&state.pack);
-    resources::beginFrame();
+    resources::waitForReads();
 
     state.pack = pack::createPack("markers.xml", "testpack", "Test Pack");
     REQUIRE_FALSE(state.pack.categories.empty());
@@ -36,10 +43,10 @@ std::string trailDataOf(const editor::State& state, size_t pathable) {
     return value ? *value : std::string();
 }
 
-// What marker_editor::render does every frame, minus the drawing: refill the decode budget
-// and let the open trail follow the selection.
+// What marker_editor::render does every frame, minus the drawing: let the open trail follow
+// the selection, once what earlier frames asked the worker for has been read.
 void frame(editor::State& state) {
-    resources::beginFrame();
+    resources::waitForReads();
     undo::beginFrame();
     trail_edit::followSelection(state);
 }
@@ -156,7 +163,7 @@ TEST_CASE("two trails in a real pack's category get their own .trl", "[trail]") 
     REQUIRE(pack::loadPack(*source, &state.pack, &error));
     resources::setSource(std::move(source));
     resources::setPendingAssets(&state.pack);
-    resources::beginFrame();
+    resources::waitForReads();
     state.rebuildIndex();
     state.loaded = true;
 
@@ -342,4 +349,67 @@ TEST_CASE("undo takes a traildata rename and its .trl back together", "[trail]")
     CHECK(trail_edit::pointCount() == 1);
 
     trail_edit::close(state);
+}
+
+namespace {
+
+// What a HeldSource was asked to read, by path, and a signal once the first read is under way.
+struct Reads {
+    std::mutex mutex;
+    std::vector<std::string> paths;
+    std::promise<void> first;
+};
+
+// A pack source whose every read waits for the test to let the disk answer.
+class HeldSource : public pack::DataSource
+{
+public:
+    HeldSource(std::shared_future<void> answered, Reads* reads)
+        : answered_(std::move(answered))
+        , reads_(reads) {}
+
+    const std::vector<std::string>& entries() const override { return entries_; }
+    std::string originalName(std::string_view path) const override { return std::string(path); }
+    bool contains(std::string_view) const override { return true; }
+    bool read(std::string_view path, std::vector<uint8_t>* out, std::string*) const override {
+        {
+            std::lock_guard<std::mutex> lock(reads_->mutex);
+            reads_->paths.emplace_back(path);
+            if (reads_->paths.size() == 1) reads_->first.set_value();
+        }
+        answered_.wait();
+        out->clear();
+        return true;
+    }
+    const std::filesystem::path& root() const override { return root_; }
+    bool isDirectory() const override { return false; }
+
+private:
+    std::shared_future<void> answered_;
+    Reads* reads_;
+    std::vector<std::string> entries_;
+    std::filesystem::path root_;
+};
+
+} // namespace
+
+TEST_CASE("a new source does not wait behind the old one's queued reads", "[trail][regression]") {
+    Reads reads;
+    std::promise<void> disk;
+    resources::setPendingAssets(nullptr);
+    resources::setSource(std::make_unique<HeldSource>(disk.get_future().share(), &reads));
+
+    // The first read holds the worker, so the rest are still queued when the pack goes.
+    bool deferred = false;
+    resources::trail("first.trl", &deferred);
+    REQUIRE(deferred);
+    reads.first.get_future().wait();
+    resources::trail("second.trl");
+    resources::trailColour("icon.png");
+    resources::setSource(nullptr);
+    disk.set_value();
+    resources::waitForReads();
+
+    std::lock_guard<std::mutex> lock(reads.mutex);
+    CHECK(reads.paths == std::vector<std::string>{"first.trl"});
 }

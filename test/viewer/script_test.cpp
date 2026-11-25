@@ -167,6 +167,17 @@ TEST_CASE("Pack:Require runs a file of the pack once, whatever its case", "[view
     CHECK(s.errors() == 0);
 }
 
+// Scripts load on the frame, on every map change, and a frame never reads the disk: what they
+// run is what was read with the pack.
+TEST_CASE("pack.lua and what it requires come from the pack as it was read", "[viewer][script][regression]") {
+    Scripted s("script_read_with_pack", "loaded = true\nPack:Require(\"scripts/counted\")\n");
+    std::filesystem::remove_all(s.temp / "pack");
+    s.engine->loadPacks();
+    CHECK(s.eval("loaded") == "true");
+    CHECK(s.eval("required") == "1");
+    CHECK(s.errors() == 0);
+}
+
 TEST_CASE("pack.lua runs with Pack, and its OnTick handlers every tick", "[viewer][script]") {
     Scripted s("script_pack_lua", R"(
 ticks = 0

@@ -5,6 +5,7 @@
 #include <filesystem>
 
 #include "corpus.h"
+#include "util/job_queue.h"
 #include "util/json_file.h"
 #include "viewer/achievements.h"
 
@@ -43,8 +44,9 @@ TEST_CASE("the details cache keeps what the API does not know, and the catalog s
     const std::filesystem::path file = temp / viewer::achievements::CACHE_FILE_NAME;
     REQUIRE(util::json_file::write(file, viewer::achievements::toCache(known)));
 
+    util::JobQueue jobs;
     viewer::achievements::Catalog catalog;
-    catalog.open(file);
+    catalog.open(file, &jobs);
     const Details* jp = catalog.find(100);
     REQUIRE(jp);
     CHECK(jp->requirementFor(0) == "First ledge");
@@ -53,5 +55,6 @@ TEST_CASE("the details cache keeps what the API does not know, and the catalog s
 
     catalog.clear();
     CHECK(catalog.find(100) == nullptr);
+    jobs.wait(); // the file is removed on the worker
     CHECK_FALSE(std::filesystem::exists(file));
 }

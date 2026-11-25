@@ -121,10 +121,11 @@ TEST_CASE("blish import: Pathing's timers merge with ours, the later expiry winn
 
     viewer::behaviors::BehaviorStates ours;
     ours.load(temp / "ours.txt");
+    const uint64_t loaded = ours.revision();
     viewer::behaviors::BehaviorStates theirs;
     theirs.load(temp / "theirs.txt");
     ours.merge(theirs);
-    CHECK(ours.dirty());
+    CHECK(ours.revision() != loaded);
 
     REQUIRE(ours.save(temp / "merged.txt"));
     const std::string merged = read(temp / "merged.txt");

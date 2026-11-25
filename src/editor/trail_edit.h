@@ -30,8 +30,8 @@ size_t segmentOf(size_t index);
 size_t segmentCount();
 
 // Opens the trail data of `pathable`, or keeps the current one when it is already open.
-// Returns false while the `.trl` has not been read yet — reads are budgeted per frame, so
-// the caller should simply try again next frame — and when there is nothing to open.
+// Returns false while the `.trl` is being read on the worker — the caller should simply try
+// again next frame — and when there is nothing to open.
 bool open(editor::State& state, size_t pathable);
 // Takes State because the point selection is scoped to the open trail and goes with it.
 void close(editor::State& state);

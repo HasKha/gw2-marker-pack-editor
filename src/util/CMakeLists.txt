@@ -1,7 +1,7 @@
 # ── markus_util ───────────────────────────────────────────────────────────────
 # What any part of the addon could use and none of it owns: paths as UTF-8 text, the small
-# JSON files kept between sessions. Knows nothing of packs, the game or the addon, and
-# includes nothing else of ours.
+# JSON files kept between sessions, the queue that does the frame's file work. Knows nothing
+# of packs, the game or the addon, and includes nothing else of ours.
 add_library(markus_util STATIC)
 markus_target_sources(markus_util)
 

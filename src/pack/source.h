@@ -34,6 +34,7 @@ public:
     // every path to lowercase would be a gratuitous diff. Empty if not found.
     virtual std::string originalName(std::string_view path) const = 0;
     virtual bool contains(std::string_view path) const = 0;
+    // Safe from several threads at once, as everything const here is.
     virtual bool read(std::string_view path, std::vector<uint8_t>* out, std::string* error) const = 0;
 
     // Where the pack came from: the .zip file, or the folder.

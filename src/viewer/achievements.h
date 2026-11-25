@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "http/background.h"
+#include "util/job_queue.h"
 
 // What an achievement is, for the tooltip Pathing shows on an achievement marker's gear and
 // over a category in the menu (AchievementTooltipView): its name, description and requirement
@@ -54,8 +55,9 @@ class Catalog
 public:
     using Clock = std::chrono::steady_clock;
 
-    // Where the cache is, empty for none: it is read now.
-    void open(const std::filesystem::path& cache_file);
+    // Where the cache is, empty for none: it is read now, at load, before there is a frame to
+    // stall. `jobs` removes it, and outlives the catalog.
+    void open(const std::filesystem::path& cache_file, util::JobQueue* jobs);
 
     // The details of `id`, or null while they are not known: asked for on the next update.
     // Null for good for an id the API does not know.
@@ -72,6 +74,7 @@ public:
 
 private:
     std::filesystem::path file_;
+    util::JobQueue* jobs_ = nullptr;
     Known known_;
     std::set<int> wanted_; // looked up, not known, not yet asked for
     // The ask in flight, which works on a copy of known_ and hands the whole of it back.

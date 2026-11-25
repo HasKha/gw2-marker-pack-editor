@@ -4,6 +4,7 @@
 
 #include <chrono>
 #include <filesystem>
+#include <future>
 #include <memory>
 #include <optional>
 #include <set>
@@ -13,6 +14,7 @@
 #include <vector>
 
 #include "http/background.h"
+#include "util/job_queue.h"
 #include "viewer/utc.h"
 
 // What the GW2 API says of the player's account, asked with the key the options register:
@@ -68,12 +70,17 @@ class Fetcher
 public:
     using Clock = std::chrono::steady_clock;
 
-    // Where the cache is, empty for none, and the key to ask with: the cache is read now.
-    void open(const std::filesystem::path& cache_file, const std::string& key, UtcMillis now);
+    // Where the cache is, empty for none, the key to ask with, and where the cache is read and
+    // removed, which outlives the fetcher.
+    void open(const std::filesystem::path& cache_file, const std::string& key, UtcMillis now, util::JobQueue* jobs);
 
-    // A new key, or none: what the last one said is forgotten and the new one's cache read and
-    // asked again at once, as SubtokenUpdated does in Pathing.
+    // A new key, or none: what the last one said is forgotten and the new one's cache read on
+    // the worker, then asked again at once, as SubtokenUpdated does in Pathing.
     void setKey(const std::string& key, UtcMillis now);
+
+    // Takes the key's cache once the worker has read it. False while it is being read, when
+    // nothing is known yet and nothing is asked. update() calls it first.
+    bool takeCache();
 
     // From the frame: takes an answer that has come in, lets this week's raids go at the
     // weekly reset, and starts the next ask when it is due.
@@ -89,8 +96,11 @@ public:
 
 private:
     std::filesystem::path file_;
+    util::JobQueue* jobs_ = nullptr;
     std::string key_;
     Progress progress_;
+    // The key's cache, being read: the first ask waits for it, since it starts from what is known.
+    std::future<Progress> cached_;
     // The ask in flight: it works on a copy of progress_, and hands the whole of it back.
     std::unique_ptr<http::Background<Progress>> request_;
     std::optional<Clock::time_point> last_asked_; // nothing: ask on the next update

@@ -118,8 +118,9 @@ Progress fromCache(const nlohmann::json& cache, std::string_view key, UtcMillis 
     return progress;
 }
 
-void Fetcher::open(const std::filesystem::path& cache_file, const std::string& key, UtcMillis now) {
+void Fetcher::open(const std::filesystem::path& cache_file, const std::string& key, UtcMillis now, util::JobQueue* jobs) {
     file_ = cache_file;
+    jobs_ = jobs;
     key_.clear();
     setKey(key, now);
 }
@@ -129,14 +130,26 @@ void Fetcher::setKey(const std::string& key, UtcMillis now) {
     request_.reset();
     key_ = key;
     progress_ = Progress{};
+    cached_ = {};
     last_asked_.reset();
-    if (key_.empty() || file_.empty()) return;
-    if (const std::optional<nlohmann::json> cache = util::json_file::readObject(file_)) progress_ = fromCache(*cache, key_, now);
+    if (key_.empty() || file_.empty() || !jobs_) return;
+    cached_ = jobs_->ask([file = file_, key = key_, now] {
+        const std::optional<nlohmann::json> cache = util::json_file::readObject(file);
+        return cache ? fromCache(*cache, key, now) : Progress{};
+    });
+}
+
+bool Fetcher::takeCache() {
+    if (!cached_.valid()) return true;
+    if (!util::ready(cached_)) return false;
+    progress_ = util::take(cached_).value_or(Progress{});
+    return true;
 }
 
 void Fetcher::update(Clock::time_point now, UtcMillis utc_now) {
+    if (!takeCache()) return;
     if (request_ && request_->finished()) {
-        if (const Progress* answer = request_->get()) progress_ = *answer;
+        if (std::optional<Progress> answer = request_->take()) progress_ = std::move(*answer);
         request_.reset();
     }
     if (progress_.raids && behaviors::nextWeeklyReset(progress_.raids_at) <= utc_now) progress_.raids.reset();
@@ -182,9 +195,14 @@ void Fetcher::clearCache() {
     stop();
     request_.reset();
     progress_ = Progress{};
+    cached_ = {};
     last_asked_.reset();
-    std::error_code ignored;
-    if (!file_.empty()) std::filesystem::remove(file_, ignored);
+    if (!file_.empty() && jobs_) {
+        jobs_->post([file = file_] {
+            std::error_code ignored;
+            std::filesystem::remove(file, ignored);
+        });
+    }
 }
 
 void Fetcher::stop() {

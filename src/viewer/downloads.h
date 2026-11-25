@@ -52,7 +52,8 @@ public:
     // What finished since the last call. Each is handed over once.
     std::vector<Finished> take();
 
-    // Says why a finished download could not be put in place, removing what it downloaded.
+    // Says why a finished download could not be put in place. Removing what it downloaded is
+    // the caller's, who was moving it on a worker.
     void fail(const Finished& finished, const std::string& error);
 
     // Cancels every download and waits for each.

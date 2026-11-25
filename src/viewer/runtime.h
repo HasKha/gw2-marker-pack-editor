@@ -39,6 +39,10 @@ struct Installed {
     // What every pack's images are decoded through. Without it a pack's TextureCache hands back
     // no image at all, and the world draws nothing without one. Null in tests that draw nothing.
     AddonAPI* api = nullptr;
+    // Where they are read and decoded; null draws nothing too.
+    util::JobQueue* jobs = nullptr;
+    // What bounds how much of their images is handed to Nexus at once; null draws nothing too.
+    TextureUploads* uploads = nullptr;
 
     // Every install gets its own texture prefix, never reused. A pack reinstalled after the
     // editor saved it has new bytes under old paths, and Nexus would hand back the old

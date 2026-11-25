@@ -204,10 +204,9 @@ TEST_CASE("downloads: a pack arrives beside its target, ready to replace it") {
     CHECK(std::filesystem::exists(finished[0].part));
     CHECK(downloads.take().empty()); // handed over once
 
-    // The frame could not put it in place: it says why, and the part goes.
+    // It could not be put in place: it says why. The part is the mover's to remove, on its worker.
     downloads.fail(finished[0], "open in the editor");
     CHECK(downloads.status("Teh.taco")->error == "open in the editor");
-    CHECK_FALSE(std::filesystem::exists(finished[0].part));
 }
 
 TEST_CASE("downloads: what fails, or is no pack, leaves nothing behind") {

@@ -6,6 +6,7 @@
 #include <filesystem>
 
 #include "corpus.h"
+#include "util/job_queue.h"
 #include "util/json_file.h"
 #include "viewer/account.h"
 
@@ -57,18 +58,29 @@ TEST_CASE("the fetcher starts from the cache, and clearing it forgets the file t
     const std::filesystem::path file = temp / viewer::account::CACHE_FILE_NAME;
     REQUIRE(util::json_file::write(file, viewer::account::toCache(someProgress(), "KEY")));
 
+    // The cache is read on the worker; a frame only takes what it read.
+    util::JobQueue jobs;
+    const auto read = [&](viewer::account::Fetcher& fetcher) {
+        jobs.wait();
+        REQUIRE(fetcher.takeCache());
+    };
+
     viewer::account::Fetcher fetcher;
-    fetcher.open(file, "KEY", kNoon + kHour);
+    fetcher.open(file, "KEY", kNoon + kHour, &jobs);
+    read(fetcher);
     CHECK(fetcher.progress().achievementHidden(1, -1));
     CHECK(fetcher.progress().raidsComplete({"vale_guardian"}));
 
     fetcher.setKey("OTHER", kNoon + kHour);
+    read(fetcher);
     CHECK(fetcher.progress().achievements.empty());
     fetcher.setKey("KEY", kNoon + kHour);
+    read(fetcher);
     CHECK(fetcher.progress().achievementHidden(1, -1));
 
     fetcher.clearCache();
     CHECK(fetcher.progress().achievements.empty());
+    jobs.wait();
     CHECK_FALSE(std::filesystem::exists(file));
 }
 

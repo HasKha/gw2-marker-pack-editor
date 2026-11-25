@@ -78,8 +78,6 @@ std::vector<Downloads::Finished> Downloads::take() {
 }
 
 void Downloads::fail(const Finished& finished, const std::string& error) {
-    std::error_code ec;
-    std::filesystem::remove(finished.part, ec);
     if (Job* job = find(finished.file_name)) job->error = error;
 }
 

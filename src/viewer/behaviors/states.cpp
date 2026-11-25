@@ -74,14 +74,14 @@ void BehaviorStates::hide(Mode mode, const Guid& guid, uint64_t instance) {
 void BehaviorStates::hideUntil(const Guid& guid, UtcMillis expiry) {
     UtcMillis& stored = until_time_[guid];
     stored = std::max(stored, expiry);
-    dirty_ = true;
+    ++revision_;
 }
 
 void BehaviorStates::clear(const Guid& guid) {
     // As ClearHiddenBehavior: the first place that held it.
     if (until_map_change_.erase(guid)) return;
     if (until_time_.erase(guid)) {
-        dirty_ = true;
+        ++revision_;
         return;
     }
     for (auto& [instance, guids] : in_instance_) {
@@ -92,7 +92,7 @@ void BehaviorStates::clear(const Guid& guid) {
 void BehaviorStates::expire(UtcMillis now) {
     std::erase_if(until_time_, [&](const auto& timer) {
         const bool expired = timer.second <= now;
-        dirty_ |= expired;
+        if (expired) ++revision_;
         return expired;
     });
 }
@@ -103,7 +103,7 @@ void BehaviorStates::mapChanged() {
 
 void BehaviorStates::load(const std::filesystem::path& file) {
     until_time_.clear();
-    dirty_ = false;
+    ++revision_;
     std::ifstream in(file);
     std::string line;
     while (std::getline(in, line)) {
@@ -124,17 +124,19 @@ void BehaviorStates::merge(const BehaviorStates& other) {
         UtcMillis& mine = until_time_[guid];
         if (expiry > mine) {
             mine = expiry;
-            dirty_ = true;
+            ++revision_;
         }
     }
 }
 
-bool BehaviorStates::save(const std::filesystem::path& file) {
+std::string BehaviorStates::text() const {
     std::string text;
     for (const auto& [guid, expiry] : until_time_) text += toString(guid) + ",t" + formatUtc(expiry) + "\n";
-    if (!util::json_file::writeText(file, text)) return false;
-    dirty_ = false;
-    return true;
+    return text;
+}
+
+bool BehaviorStates::save(const std::filesystem::path& file) const {
+    return util::json_file::writeText(file, text());
 }
 
 } // namespace viewer::behaviors

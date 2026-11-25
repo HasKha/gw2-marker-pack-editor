@@ -49,8 +49,13 @@ struct LoadedPack {
     // writtenAt(path) as the load began: a pack written since is read again.
     std::filesystem::file_time_type written{};
 
-    // Kept open: icons are read out of it as they come into view.
-    std::unique_ptr<pack::DataSource> source;
+    // Kept open: icons are read out of it as they come into view. Shared with the reads queued
+    // on the worker, which may outlive the pack's being installed.
+    std::shared_ptr<const pack::DataSource> source;
+
+    // Every .lua file of the pack, by normalized path, read with the rest: a script loads and
+    // requires on the frame, which never reads the disk. Scripts are kilobytes.
+    std::unordered_map<std::string, std::string> scripts;
 
     BakedPathables pathables; // every trail's geometry and map id read already
     std::vector<BakedCategory> categories;

@@ -1032,7 +1032,6 @@ void render() {
         }
     }
 
-    resources::beginFrame();
     undo::beginFrame();
     applyRequestedHistory();
     // Compares and writes only when something moved, so this is free on almost every frame.

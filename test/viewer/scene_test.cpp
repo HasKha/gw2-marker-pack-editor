@@ -13,6 +13,7 @@
 
 #include "corpus.h"
 #include "draw_list.h"
+#include "fake_png.h"
 #include "test_camera.h"
 #include "viewer/render/good_render.h"
 #include "viewer/runtime.h"
@@ -189,18 +190,30 @@ TEST_CASE("an installed pack's images are decoded through the API the packs were
     static Texture made{16, 16, reinterpret_cast<void*>(uintptr_t{0x1234})};
     AddonAPI api{};
     api.Textures.GetOrCreateFromMemory = [](const char*, void*, size_t) { return &made; };
+    api.Textures.Get = [](const char*) { return &made; };
 
+    util::JobQueue jobs;
+    viewer::TextureUploads uploads;
     viewer::runtime::Installed installed;
     installed.api = &api;
+    installed.jobs = &jobs;
+    installed.uploads = &uploads;
     viewer::runtime::install(&installed, loadedPack("pack", {}));
 
-    viewer::LoadBudget budget{1};
-    const auto read = [](const std::string&, std::vector<uint8_t>* bytes) {
-        *bytes = {1, 2, 3};
-        return true;
+    const auto reader = [] {
+        return viewer::TextureCache::Reader([](const std::string&, std::vector<uint8_t>* bytes) {
+            *bytes = pngHeader(16, 16);
+            return true;
+        });
     };
-    // Without the API, the world had no image for any installed pack, and drew nothing.
-    CHECK(installed.packs[0]->textures.get("icon.png", budget, read).texture == made.Resource);
+    // Without the API, the world had no image for any installed pack, and drew nothing. Read,
+    // then handed over, then there.
+    for (int frame = 0; frame < 2; ++frame) {
+        installed.packs[0]->textures.get("icon.png", reader);
+        jobs.wait();
+        uploads.nextFrame();
+    }
+    CHECK(installed.packs[0]->textures.get("icon.png", reader).texture == made.Resource);
 }
 
 TEST_CASE("taking a pack away merges the tree again from the others", "[runtime]") {

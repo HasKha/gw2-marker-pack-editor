@@ -92,8 +92,9 @@ Known fromCache(const nlohmann::json& cache) {
     return known;
 }
 
-void Catalog::open(const std::filesystem::path& cache_file) {
+void Catalog::open(const std::filesystem::path& cache_file, util::JobQueue* jobs) {
     file_ = cache_file;
+    jobs_ = jobs;
     if (file_.empty()) return;
     if (const std::optional<nlohmann::json> cache = util::json_file::readObject(file_)) known_ = fromCache(*cache);
 }
@@ -106,8 +107,8 @@ const Details* Catalog::find(int id) {
 
 void Catalog::update(Clock::time_point now) {
     if (request_ && request_->finished()) {
-        if (const Known* answer = request_->get()) {
-            known_ = *answer;
+        if (std::optional<Known> answer = request_->take()) {
+            known_ = std::move(*answer);
             failed_at_.reset();
         } else {
             wanted_.insert(asking_.begin(), asking_.end());
@@ -158,8 +159,12 @@ void Catalog::clear() {
     wanted_.clear();
     asking_.clear();
     failed_at_.reset();
-    std::error_code ignored;
-    if (!file_.empty()) std::filesystem::remove(file_, ignored);
+    if (!file_.empty() && jobs_) {
+        jobs_->post([file = file_] {
+            std::error_code ignored;
+            std::filesystem::remove(file, ignored);
+        });
+    }
 }
 
 void Catalog::stop() {

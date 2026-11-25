@@ -87,13 +87,17 @@ LoadedPack loadPack(const std::filesystem::path& path) {
     loaded.path = path;
     loaded.written = writtenAt(path);
 
-    loaded.source = pack::open(path, &loaded.error);
-    if (!loaded.source) return loaded;
+    std::unique_ptr<pack::DataSource> source = pack::open(path, &loaded.error);
+    if (!source) return loaded;
 
     pack::Pack model;
-    if (!pack::loadPack(*loaded.source, &model, &loaded.error)) {
-        loaded.source.reset();
-        return loaded;
+    if (!pack::loadPack(*source, &model, &loaded.error)) return loaded;
+    loaded.source = std::move(source);
+
+    for (const std::string& key : loaded.source->entriesWithExtension(".lua")) {
+        std::string text;
+        std::string error;
+        if (loaded.source->readText(key, &text, &error)) loaded.scripts.emplace(key, std::move(text));
     }
 
     loaded.pathables = bake(model);

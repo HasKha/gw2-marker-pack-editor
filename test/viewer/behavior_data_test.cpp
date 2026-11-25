@@ -154,6 +154,7 @@ TEST_CASE("hidden markers wait for their own event", "[behaviors][states]") {
     const uint64_t elsewhere = instanceKey(15, 4);
     BehaviorStates states;
 
+    const uint64_t loaded = states.revision();
     states.hide(Mode::ReappearOnMapChange, a, here);
     CHECK(states.hidden(Mode::ReappearOnMapChange, a, here, now));
     CHECK_FALSE(states.hidden(Mode::ReappearOnMapChange, b, here, now));
@@ -163,11 +164,11 @@ TEST_CASE("hidden markers wait for their own event", "[behaviors][states]") {
     states.hide(Mode::OncePerInstance, a, here);
     CHECK(states.hidden(Mode::OncePerInstance, a, here, now));
     CHECK_FALSE(states.hidden(Mode::OncePerInstance, a, elsewhere, now));
-    CHECK_FALSE(states.dirty()); // only timers are saved
+    CHECK(states.revision() == loaded); // only timers are saved
 
     // Every timed mode shares one set.
     states.hideUntil(b, now + kMinute);
-    CHECK(states.dirty());
+    CHECK(states.revision() != loaded);
     CHECK(states.hidden(Mode::ReappearOnDailyReset, b, here, now));
     CHECK(states.hidden(Mode::ReappearAfterTimer, b, here, now));
     CHECK_FALSE(states.hidden(Mode::ReappearAfterTimer, b, here, now + kMinute));
@@ -192,7 +193,6 @@ TEST_CASE("timers survive a session in Pathing's file layout", "[behaviors][stat
     BehaviorStates states;
     states.hideUntil(guid, utc(2026, 11, 23));
     REQUIRE(states.save(file));
-    CHECK_FALSE(states.dirty());
 
     std::ifstream in(file);
     std::string line;

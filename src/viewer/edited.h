@@ -35,11 +35,11 @@ struct Report {
 };
 
 // A trail's points as the editor reads them, unsaved edits included. Null when there is no such
-// file, or, with `*deferred` set, when this frame's reads are spent: try again next frame.
+// file, or, with `*deferred` set, while it is being read: try again next frame.
 using TrailLookup = std::function<std::shared_ptr<const pack::trl::Trail>(const std::string& path, bool* deferred)>;
 
 // The colour a texture gives a trail on the map (trail_colour::sample), unsaved images included.
-// Nothing, with `*deferred` set, when this frame's reads are spent: try again next frame.
+// Nothing, with `*deferred` set, while it is being read: try again next frame.
 using ColourLookup = std::function<std::optional<ImU32>(const std::string& path, bool* deferred)>;
 
 // The model as a live map of its own, apart from the installed packs': an edit, which a gizmo

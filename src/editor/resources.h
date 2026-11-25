@@ -12,18 +12,20 @@
 #include "pack/trl.h"
 #include "viewer/textures.h"
 
-// Images and trail data read out of the open pack on demand, since a large pack ships thousands.
+// Images and trail data read out of the open pack on demand, since a large pack ships thousands,
+// on a worker of the editor's own: a frame asks, and a later frame has the answer.
 namespace resources {
 
 void init(AddonAPI* api);
+// Drops everything and waits for the reads in flight.
 void shutdown();
 
-// Resets the per-frame load budget, which images and trails share — see viewer::LoadBudget.
-// Call once at the top of the render callback.
-void beginFrame();
+// Blocks until every read asked for so far has run. Never from a frame: for tests.
+void waitForReads();
 
 // Takes ownership of the pack's source and drops every cached asset. The source has to
-// outlive the pack because assets are read from it long after loading.
+// outlive the pack because assets are read from it long after loading; a read in flight keeps
+// it open past this.
 void setSource(std::unique_ptr<pack::DataSource> source);
 const pack::DataSource* source();
 
@@ -40,14 +42,13 @@ ImTextureID texture(const std::string& path);
 // nullptr if the file is missing or unparseable. Shared, because the viewer draws the open
 // pack's trails from it and keeps one past setSource, forget or shutdown.
 //
-// `deferred` tells the two kinds of nullptr apart: true means the frame's budget was spent
-// before the read was attempted, so next frame will do better; false means it was tried and
-// the miss is cached, so no later frame will.
+// `deferred` tells the two kinds of nullptr apart: true means it is being read, so a later
+// frame will have it; false means it was read and the miss is cached, so no later frame will.
 std::shared_ptr<const pack::trl::Trail> trail(const std::string& path, bool* deferred = nullptr);
 
 // The colour the image at `path` gives a trail on the map: viewer::trail_colour::sample, or its
-// NO_COLOUR for a file that is not there. Cached, and spending the same budget; nothing, with
-// `*deferred` set, when it is spent.
+// NO_COLOUR for a file that is not there. Cached; nothing, with `*deferred` set, while it is
+// being read.
 std::optional<ImU32> trailColour(const std::string& path, bool* deferred = nullptr);
 
 } // namespace resources

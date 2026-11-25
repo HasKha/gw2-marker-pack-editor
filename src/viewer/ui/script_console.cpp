@@ -3,8 +3,10 @@
 #include <IconsFontAwesome7.h>
 #include <imgui.h>
 
+#include <future>
 #include <string>
 
+#include "util/job_queue.h"
 #include "util/json_file.h"
 #include "util/path_text.h"
 #include "viewer/ui/fonts.h"
@@ -23,9 +25,14 @@ ImVec4 colourOf(script::Level level) {
     }
 }
 
-void drawMessages(const script::Engine& engine, const std::filesystem::path& save_file) {
+void drawMessages(const script::Engine& engine, const std::filesystem::path& save_file, util::JobQueue& jobs) {
     static uint64_t seen_revision = 0;
     static std::string status; // what the last Copy or Save did, until the next
+    static std::future<bool> saved; // the last Save, until the worker has written it
+
+    if (util::ready(saved))
+        status =
+            util::take(saved).value_or(false) ? "Saved to " + util::pathText(save_file) : "Could not write " + util::pathText(save_file);
 
     // The whole log, tracebacks included, for a player to send with a report.
     if (ImGui::Button(fonts::label(ICON_FA_COPY, "Copy").c_str())) {
@@ -35,8 +42,8 @@ void drawMessages(const script::Engine& engine, const std::filesystem::path& sav
     if (!save_file.empty()) {
         ImGui::SameLine();
         if (ImGui::Button(fonts::label(ICON_FA_FLOPPY_DISK, "Save").c_str())) {
-            status = util::json_file::writeText(save_file, engine.console().text()) ? "Saved to " + util::pathText(save_file)
-                                                                                    : "Could not write " + util::pathText(save_file);
+            status = "Saving...";
+            saved = jobs.ask([save_file, text = engine.console().text()] { return util::json_file::writeText(save_file, text); });
         }
     }
     if (!status.empty()) {
@@ -100,14 +107,19 @@ void drawCensus(const script::Engine& engine) {
 
 } // namespace
 
-void draw(const script::Engine& engine, const runtime::Installed& installed, const std::filesystem::path& save_file, bool* open) {
+void draw(
+    const script::Engine& engine,
+    const runtime::Installed& installed,
+    const std::filesystem::path& save_file,
+    util::JobQueue& jobs,
+    bool* open) {
     if (!*open) return;
     ImGui::SetNextWindowSize(ImVec2(640.0f, 400.0f), ImGuiCond_FirstUseEver);
     if (ImGui::Begin("Lua Script Console", open)) {
         const size_t census = engine.census().entries().size();
         if (ImGui::BeginTabBar("##tabs")) {
             if (ImGui::BeginTabItem("Messages")) {
-                drawMessages(engine, save_file);
+                drawMessages(engine, save_file, jobs);
                 ImGui::EndTabItem();
             }
             if (ImGui::BeginTabItem("Watches")) {

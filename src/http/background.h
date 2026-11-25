@@ -51,6 +51,13 @@ public:
     // none. Never written again once set, so it is read without a lock.
     const T* get() const { return ready_.load(std::memory_order_acquire) ? &value_ : nullptr; }
 
+    // The answer moved out, for whoever drops the job next: what get() reads after is what is
+    // left of it. Nothing until the job gave one.
+    std::optional<T> take() {
+        if (!ready_.load(std::memory_order_acquire)) return std::nullopt;
+        return std::move(value_);
+    }
+
     // Whether the job has returned, with an answer or without one.
     bool finished() const { return finished_.load(std::memory_order_acquire); }
 

@@ -11,12 +11,15 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <future>
 #include <memory>
 #include <set>
 #include <string>
 #include <vector>
 
 #include "pack/source.h"
+#include "util/job_queue.h"
+#include "util/json_file.h"
 #include "util/path_text.h"
 #include "viewer/account.h"
 #include "viewer/achievements.h"
@@ -66,8 +69,22 @@ const NexusLinkData* nexus_link = nullptr;
 
 std::filesystem::path folder;
 
+// Every read and write of a file after load: the frame hands them over and takes the answer
+// on a later frame, never waiting for the disk itself. Stopped in unload, which lets what is
+// queued finish.
+util::JobQueue jobs;
+
+// The images of every pack, the editor's too, handed to Nexus and not made yet: see TextureUploads.
+TextureUploads texture_uploads;
+
 // What the options page edits and saves, against what this session loaded with.
 settings::Settings persisted;
+
+// Writes `persisted` as it is now, on the worker: whether it landed, which only the API key's
+// message waits for.
+std::future<bool> saveSettings() {
+    return jobs.ask([folder = folder, saved = persisted] { return settings::save(folder, saved); });
+}
 
 // The game's device, which our font's atlas is uploaded to. Taken from Nexus's swap chain once
 // there is one; ours to release.
@@ -86,9 +103,6 @@ store::CategoryStates category_states;
 std::vector<char> visible;
 uint64_t visible_revision = ~0ull; // the category_states revision `visible` was derived from
 uint64_t visible_tree = ~0ull; // and the Installed revision
-
-// A few textures decoded per frame across every pack — see LoadBudget.
-LoadBudget texture_budget{4};
 
 // The last scene published, and the one before it, the older reused once no sink holds it any
 // more. A scene is thousands of items, and allocating one a frame is a waste.
@@ -130,21 +144,30 @@ TextureLookup edited_texture;
 map_scene::TrailCache edited_map_trails;
 const std::vector<char> kNoNodes;
 
-// When packs were last checked for a write since they were read.
+// A pack as it was read: a check on the worker hands back the ones written since.
+struct ReadAt {
+    std::filesystem::path path;
+    std::filesystem::file_time_type written;
+};
+// When packs were last checked for a write since they were read, and the check while it runs.
 std::chrono::steady_clock::time_point last_change_check{};
+std::future<std::vector<ReadAt>> change_check;
 
 bool console_window = false;
 bool catalog_window = false;
 bool options_window = false;
 
-// The Blish HUD import: what Pathing has, what the player chose to bring, and the copy while it
-// runs, which reads what Pathing kept too so that the frame only has to apply it.
+// The Blish HUD import: what Pathing has, read on the worker before the window opens, what the
+// player chose to bring, and the copy while it runs, which reads what Pathing kept too so that
+// the frame only has to apply it.
 bool import_window = false;
+std::future<blish_import::Found> import_search;
 blish_import::Found import_found;
 ui::import_window::Choices import_choices;
 struct Imported {
     blish_import::Copied copied;
     blish_import::Found states; // what of Pathing's states was chosen
+    behaviors::BehaviorStates timers; // states.timers, read
 };
 std::unique_ptr<http::Background<Imported>> import_job;
 std::string import_status;
@@ -157,8 +180,16 @@ catalog::Downloads downloads;
 catalog::AutoUpdate auto_update;
 std::vector<catalog::LocalPack> local_packs;
 bool auto_updated = false;
-// The packs on disk changed while the loader was busy: they are synced once it is done.
+// The packs on disk changed: they are listed again on the worker once the loader is done, since
+// the pack it reads may be about to go, and the installed packs brought in line with the list.
+struct Discovered {
+    std::vector<std::filesystem::path> packs;
+    std::vector<catalog::LocalPack> local;
+};
 bool sync_pending = false;
+std::future<Discovered> discovery;
+// Downloads being moved into place on the worker: those that could not be, and why.
+std::future<std::vector<std::pair<catalog::Downloads::Finished, std::string>>> placing;
 
 // Scripts: one engine for every pack, built again with every live map, as Pathing's is with
 // every map. `scripts_stale` holds from the moment the live map is replaced until the engine
@@ -188,6 +219,7 @@ struct KeyCheck {
 };
 std::unique_ptr<http::Background<KeyCheck>> key_check;
 std::string key_status;
+std::future<bool> key_saved; // the registered key being written, which key_status waits for
 // What the registered key says of the account: achievements and this week's raids.
 account::Fetcher account_progress;
 // What achievements are, for their tooltips.
@@ -212,6 +244,8 @@ int menu_show_all_map = 0;
 // name Interact at all. Bound to the mouse or to keys not known here, it has no key: F then may
 // well be some other action's, and a marker interacting on it would be a surprise.
 std::atomic<uint32_t> interact_binds[2] = {'F', 0};
+// Set at load. The write time is readInteractBind's alone, which runs at load and after that
+// only on the worker.
 std::filesystem::path game_binds_file;
 std::filesystem::file_time_type game_binds_written{};
 
@@ -249,7 +283,33 @@ std::atomic<bool> escape_released{false};
 // since a script may change them every tick.
 constexpr std::chrono::seconds kSaveInterval{5};
 std::chrono::steady_clock::time_point last_save;
-uint64_t saved_categories = 0; // the CategoryStates revision last written
+
+// One file kept between sessions, written on the worker whenever its store's revision moves.
+// A write that fails is handed over again at the next save.
+class KeptFile
+{
+public:
+    // What the store holds at `revision` is what the file holds: it was just read from it.
+    void loaded(uint64_t revision) { handed_ = revision; }
+
+    // Hands `text()` over to be written to `file` when the store moved past what was handed
+    // over last. Writes of one file land in order, so the last handed over is what stays.
+    template <class Text>
+    void save(const std::filesystem::path& file, uint64_t revision, const Text& text) {
+        if (util::ready(written_) && !util::take(written_).value_or(false)) handed_ = kNothing;
+        if (file.empty() || revision == handed_) return;
+        handed_ = revision;
+        written_ = jobs.ask([file, text = text()] { return util::json_file::writeText(file, text); });
+    }
+
+private:
+    static constexpr uint64_t kNothing = ~0ull;
+    uint64_t handed_ = kNothing;
+    std::future<bool> written_; // the last handed over
+};
+KeptFile categories_file;
+KeptFile storage_file;
+KeptFile timers_file;
 
 std::filesystem::path categoriesFile() {
     return folder.empty() ? folder : folder / store::CATEGORIES_FILE_NAME;
@@ -275,14 +335,14 @@ std::filesystem::path mapsFile() {
     return folder.empty() ? folder : folder / map::CACHE_FILE_NAME;
 }
 
-// Every few seconds: what changed is written, and timers that ran out are dropped.
+// Every few seconds: what changed is handed over to be written, timers that ran out are
+// dropped, and Nexus's binds are looked at again.
 void saveStates() {
-    if (category_states.revision() != saved_categories && category_states.save(categoriesFile()))
-        saved_categories = category_states.revision();
-    if (script_storage.dirty()) script_storage.save(storageFile());
+    categories_file.save(categoriesFile(), category_states.revision(), [] { return category_states.text(); });
+    storage_file.save(storageFile(), script_storage.revision(), [] { return script_storage.text(); });
     behavior_states.expire(utcNow());
-    readInteractBind();
-    if (behavior_states.dirty()) behavior_states.save(timersFile());
+    timers_file.save(timersFile(), behavior_states.revision(), [] { return behavior_states.text(); });
+    jobs.post(readInteractBind);
     last_save = std::chrono::steady_clock::now();
 }
 
@@ -318,15 +378,17 @@ void runScripts() {
     scripts->tick(ImGui::GetTime(), io.DeltaTime);
 }
 
-// Lists every pack in our folder. Blish HUD's are drawn once imported into it, not from theirs.
-void discover() {
-    discovered.clear();
-    if (!folder.empty()) {
+// Every pack in `packs_folder`, and each as the catalog sees it. Blish HUD's are drawn once
+// imported into ours, not from theirs. Reads the disk: at load, or on the worker.
+Discovered discoverIn(const std::filesystem::path& packs_folder) {
+    Discovered found;
+    if (!packs_folder.empty()) {
         std::error_code ec;
-        std::filesystem::create_directories(packsFolder(), ec);
-        discovered = registry::discoverPacks(packsFolder());
+        std::filesystem::create_directories(packs_folder, ec);
+        found.packs = registry::discoverPacks(packs_folder);
     }
-    local_packs = catalog::localPacks(discovered);
+    found.local = catalog::localPacks(found.packs);
+    return found;
 }
 
 bool isDiscovered(const std::filesystem::path& path) {
@@ -335,39 +397,48 @@ bool isDiscovered(const std::filesystem::path& path) {
     });
 }
 
-void discoverAndLoad() {
-    discover();
-    loader.add(discovered);
+// The packs on disk changed, by the catalog's hand or ours: see updateDiscovery.
+void syncPacks() {
+    sync_pending = true;
 }
 
-// Brings the installed packs in line with the folders after the catalog wrote or deleted one:
-// what is gone is dropped, what is new is loaded, and nothing else is read again. Waits for
-// the loader, which may be reading a pack that is about to go.
-void syncPacks() {
-    if (loader.busy()) {
-        sync_pending = true;
-        return;
-    }
-    sync_pending = false;
-    discover();
+// Brings the installed packs in line with our folder once the worker has listed it: what is gone
+// is dropped, what is new is loaded, and nothing else is read again. Listed only while the
+// loader is idle, since it may be reading a pack that is about to go. A list made while the loader
+// started, or while the packs changed again, is made again: one from before a delete or a
+// download put in place would load the very pack being deleted or replaced.
+void updateDiscovery() {
+    if (util::ready(discovery)) {
+        std::optional<Discovered> found = util::take(discovery);
+        if (sync_pending || loader.busy()) {
+            sync_pending = true;
+        } else if (found) {
+            discovered = std::move(found->packs);
+            local_packs = std::move(found->local);
 
-    std::vector<std::filesystem::path> gone;
-    for (const std::unique_ptr<runtime::InstalledPack>& pack : installed.packs) {
-        if (!isDiscovered(pack->loaded->path)) gone.push_back(pack->loaded->path);
-    }
-    for (const std::filesystem::path& path : gone) runtime::uninstall(&installed, path);
+            std::vector<std::filesystem::path> gone;
+            for (const std::unique_ptr<runtime::InstalledPack>& pack : installed.packs) {
+                if (!isDiscovered(pack->loaded->path)) gone.push_back(pack->loaded->path);
+            }
+            for (const std::filesystem::path& path : gone) runtime::uninstall(&installed, path);
 
-    std::vector<std::filesystem::path> added;
-    for (const std::filesystem::path& path : discovered) {
-        if (!runtime::isInstalled(installed, path)) added.push_back(path);
+            std::vector<std::filesystem::path> added;
+            for (const std::filesystem::path& path : discovered) {
+                if (!runtime::isInstalled(installed, path)) added.push_back(path);
+            }
+            loader.add(std::move(added));
+        }
     }
-    loader.add(std::move(added));
+    if (sync_pending && !discovery.valid() && !loader.busy()) {
+        sync_pending = false;
+        discovery = jobs.ask([packs_folder = packsFolder()] { return discoverIn(packs_folder); });
+    }
 }
 
 void reloadPacks() {
     loader.stop();
     runtime::clear(&installed);
-    discoverAndLoad();
+    syncPacks();
 }
 
 void replaceLiveMap(int map_id) {
@@ -456,40 +527,76 @@ void updatePacks() {
 }
 
 // Reads again every pack written since it was read: saved by the editor, or by anything else.
-// Every few seconds, not every frame, and not while the loader is reading.
+// Looked at on the worker every few seconds, and not while the loader is reading.
 void reloadChangedPacks() {
-    const auto now = std::chrono::steady_clock::now();
-    if (now - last_change_check < std::chrono::seconds(2) || loader.busy()) return;
-    last_change_check = now;
-    std::vector<std::filesystem::path> changed;
-    for (const std::unique_ptr<runtime::InstalledPack>& pack : installed.packs) {
-        if (registry::writtenAt(pack->loaded->path) != pack->loaded->written) changed.push_back(pack->loaded->path);
-    }
-    if (!changed.empty()) loader.add(std::move(changed));
-}
-
-// Puts each download that arrived in place of its old copy. Not while the loader is busy: the
-// pack it is reading may be the one being replaced.
-void installDownloads() {
-    if (loader.busy()) return;
-    bool any = false;
-    for (const catalog::Downloads::Finished& finished : downloads.take()) {
-        any = true;
-        // An installed pack keeps its archive open, and Windows will not replace an open file.
-        runtime::uninstall(&installed, finished.target);
-        if (!MoveFileExW(finished.part.c_str(), finished.target.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_COPY_ALLOWED)) {
-            downloads.fail(finished, "could not replace " + util::pathText(finished.target.filename()));
+    if (util::ready(change_check)) {
+        // Only a pack still installed as the check found it: one removed or read again while
+        // it ran is not the pack it looked at.
+        std::vector<std::filesystem::path> changed;
+        for (const ReadAt& pack : util::take(change_check).value_or(std::vector<ReadAt>{})) {
+            const bool same =
+                std::any_of(installed.packs.begin(), installed.packs.end(), [&](const std::unique_ptr<runtime::InstalledPack>& now) {
+                    return now->loaded->path == pack.path && now->loaded->written == pack.written;
+                });
+            if (same) changed.push_back(pack.path);
         }
+        if (!changed.empty() && !loader.busy()) loader.add(std::move(changed));
     }
-    if (any) syncPacks();
+
+    constexpr auto kInterval = std::chrono::seconds(2);
+    const auto now = std::chrono::steady_clock::now();
+    if (change_check.valid() || now - last_change_check < kInterval || loader.busy()) return;
+    last_change_check = now;
+    std::vector<ReadAt> read;
+    for (const std::unique_ptr<runtime::InstalledPack>& pack : installed.packs)
+        read.push_back(ReadAt{pack->loaded->path, pack->loaded->written});
+    change_check = jobs.ask([read = std::move(read)] {
+        std::vector<ReadAt> changed;
+        for (const ReadAt& pack : read) {
+            if (registry::writtenAt(pack.path) != pack.written) changed.push_back(pack);
+        }
+        return changed;
+    });
 }
 
-// Deletes one of our packs from disk.
+// Puts each download that arrived in place of its old copy, on the worker, then lists the packs
+// again: the list is made after the moves, the worker running both in order. Not while the
+// loader is busy: the pack it is reading may be the one being replaced.
+void installDownloads() {
+    if (util::ready(placing)) {
+        using Failed = std::vector<std::pair<catalog::Downloads::Finished, std::string>>;
+        for (const auto& [finished, error] : util::take(placing).value_or(Failed{})) downloads.fail(finished, error);
+    }
+    if (placing.valid() || loader.busy()) return;
+    std::vector<catalog::Downloads::Finished> finished = downloads.take();
+    if (finished.empty()) return;
+
+    // An installed pack keeps its archive open. Its reads queued on the worker go before the
+    // move, and each lets go of the archive as it is done, so it is closed by then.
+    for (const catalog::Downloads::Finished& download : finished) runtime::uninstall(&installed, download.target);
+    placing = jobs.ask([finished = std::move(finished)] {
+        std::vector<std::pair<catalog::Downloads::Finished, std::string>> failed;
+        for (const catalog::Downloads::Finished& download : finished) {
+            if (!MoveFileExW(download.part.c_str(), download.target.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_COPY_ALLOWED)) {
+                std::error_code ec;
+                std::filesystem::remove(download.part, ec);
+                failed.emplace_back(download, "could not replace " + util::pathText(download.target.filename()));
+            }
+        }
+        return failed;
+    });
+    syncPacks();
+}
+
+// Deletes one of our packs from disk, on the worker, then lists the packs again: the list is
+// made after the delete, the worker running both in order.
 void deletePack(const std::filesystem::path& path) {
     runtime::uninstall(&installed, path);
-    std::error_code ec;
-    std::filesystem::remove(path, ec);
-    if (ec) api->Log(ELogLevel_WARNING, ADDON_NAME, ("could not delete " + util::pathText(path) + ": " + ec.message()).c_str());
+    jobs.post([path, nexus = api] {
+        std::error_code ec;
+        std::filesystem::remove(path, ec);
+        if (ec) nexus->Log(ELogLevel_WARNING, ADDON_NAME, ("could not delete " + util::pathText(path) + ": " + ec.message()).c_str());
+    });
     syncPacks();
 }
 
@@ -528,17 +635,20 @@ void openInBrowser(const std::string& url) {
 // From the frame rather than the options page, so a key is kept even if the page closed
 // while the check ran.
 void finishKeyCheck() {
+    if (util::ready(key_saved) && !util::take(key_saved).value_or(false)) {
+        key_status = "Key added, but it could not be saved: you will need to add it again next time.";
+    }
     if (!key_check || !key_check->finished()) return;
     // The job always answers; one that did not counts as the API not answering.
-    const KeyCheck done = key_check->get() ? *key_check->get() : KeyCheck{};
+    const KeyCheck done = key_check->take().value_or(KeyCheck{});
     key_check.reset();
     switch (done.check.outcome) {
     case api_key::Outcome::Valid:
         persisted.api_key = done.key;
         account_progress.setKey(persisted.api_key, utcNow());
         std::fill(std::begin(key_field), std::end(key_field), char{});
-        key_status = settings::save(folder, persisted) ? "Key added."
-                                                       : "Key added, but it could not be saved: you will need to add it again next time.";
+        key_status = "Key added.";
+        key_saved = saveSettings();
         break;
     case api_key::Outcome::MissingPermissions:
         key_status =
@@ -595,7 +705,7 @@ void drawCatalog() {
             break;
         case ui::pack_catalog::Action::Kind::KeepUpdated:
             auto_update.set(row.package->name, action.value);
-            auto_update.save(catalogFile());
+            jobs.post([file = catalogFile(), choices = auto_update] { choices.save(file); });
             break;
         case ui::pack_catalog::Action::Kind::OpenPage: openInBrowser(row.package->info); break;
         }
@@ -603,16 +713,14 @@ void drawCatalog() {
     if (retry) startCatalogRequest();
 }
 
-// Opens the import, reading again what Blish HUD has now.
+// Opens the import, reading again what Blish HUD has now: the window opens once the worker has
+// read it (drawImport).
 void openImport() {
     if (import_job) {
         import_window = true;
-        return;
+    } else if (!import_search.valid()) {
+        import_search = jobs.ask([] { return blish_import::find(registry::blishMarkersFolder()); });
     }
-    import_found = blish_import::find(registry::blishMarkersFolder());
-    import_choices = {};
-    import_status.clear();
-    import_window = true;
 }
 
 // Copies the chosen packs on a worker, and reads the chosen states with them.
@@ -631,6 +739,7 @@ void startImport() {
     import_job->start([packs, chosen, into = packsFolder()](const http::Cancel&) -> std::optional<Imported> {
         Imported done = chosen;
         done.copied = blish_import::copyPacks(packs, into);
+        if (!done.states.timers.empty()) done.timers.load(done.states.timers);
         return done;
     });
 }
@@ -647,11 +756,7 @@ void finishImport() {
 
     for (const auto& [id, on] : done->states.categories) category_states.remember(id, on);
     for (const auto& [key, value] : done->states.storage) script_storage.upsert(key, value);
-    if (!done->states.timers.empty()) {
-        behaviors::BehaviorStates theirs;
-        theirs.load(done->states.timers);
-        behavior_states.merge(theirs);
-    }
+    behavior_states.merge(done->timers);
     saveStates();
 
     // A pack kept because ours was as new is imported as far as the player can tell.
@@ -666,6 +771,12 @@ void finishImport() {
 }
 
 void drawImport() {
+    if (util::ready(import_search)) {
+        import_found = util::take(import_search).value_or(blish_import::Found{});
+        import_choices = {};
+        import_status.clear();
+        import_window = true;
+    }
     finishImport();
     const bool was_open = import_window;
     const ui::import_window::Answer answer =
@@ -674,7 +785,7 @@ void drawImport() {
     // Answered, or closed: it does not open by itself again.
     if (!persisted.import_offered && (answer != ui::import_window::Answer::None || (was_open && !import_window))) {
         persisted.import_offered = true;
-        settings::save(folder, persisted);
+        saveSettings();
     }
 }
 
@@ -880,10 +991,11 @@ void drawMapMenu() {
 // moments only draw what this publishes, because a moment runs inside the game's frame and
 // anything slow there stalls the game.
 void preRender() {
+    texture_uploads.nextFrame();
     updatePacks();
     reloadChangedPacks();
     installDownloads();
-    if (sync_pending) syncPacks();
+    updateDiscovery();
     autoUpdate();
     account_progress.update(std::chrono::steady_clock::now(), utcNow());
     achievement_details.update(std::chrono::steady_clock::now());
@@ -910,15 +1022,16 @@ void preRender() {
     if (edited_live) runtime::startFadeIns(edited_live, kNoNodes, ImGui::GetTime());
     if (std::chrono::steady_clock::now() - last_save > kSaveInterval) saveStates();
 
-    texture_budget.reset();
+    // A miss is read on the worker from the pack's source, which the read keeps open.
     const TextureLookup texture = [](size_t pack, const std::string& path) -> ImTextureID {
         runtime::InstalledPack& installed_pack = *installed.packs[pack];
-        const pack::DataSource* source = installed_pack.loaded->source.get();
-        const TextureCache::Reader read = [source](const std::string& key, std::vector<uint8_t>* bytes) {
-            std::string error;
-            return source && source->read(key, bytes, &error);
+        const auto reader = [&installed_pack] {
+            return TextureCache::Reader([source = installed_pack.loaded->source](const std::string& key, std::vector<uint8_t>* bytes) {
+                std::string error;
+                return source && source->read(key, bytes, &error);
+            });
         };
-        return installed_pack.textures.get(pack::normalizePath(path), texture_budget, read).texture;
+        return installed_pack.textures.get(pack::normalizePath(path), reader).texture;
     };
 
     std::vector<SceneLayer> layers{SceneLayer{&live, &visible, texture, false}};
@@ -962,7 +1075,12 @@ void drawFrame() {
     drawMenuPopup();
     // Before the windows it can open, so they show in the frame it was clicked in.
     drawOptionsWindow();
-    ui::script_console::draw(*scripts, installed, folder.empty() ? folder : folder / ui::script_console::SAVE_FILE_NAME, &console_window);
+    ui::script_console::draw(
+        *scripts,
+        installed,
+        folder.empty() ? folder : folder / ui::script_console::SAVE_FILE_NAME,
+        jobs,
+        &console_window);
     drawCatalog();
     drawImport();
     finishKeyCheck();
@@ -1048,14 +1166,14 @@ void drawOptionsPage() {
         places |= ImGui::Checkbox("Show an icon in Nexus's bar", &persisted.menu_icon);
         if (places) {
             applyMenuPlaces();
-            settings::save(folder, persisted);
+            saveSettings();
         }
     }
 
     if (ImGui::CollapsingHeader("Marker Packs", ImGuiTreeNodeFlags_DefaultOpen)) {
         const bool scripts_changed = ImGui::Checkbox("Enable Lua scripts", &persisted.run_scripts);
         if (scripts_changed) {
-            settings::save(folder, persisted);
+            saveSettings();
             // Off throws every handler away, and what scripts did to the map with them; on starts
             // them again from pack.lua.
             scripts->reset();
@@ -1094,7 +1212,7 @@ void drawOptionsPage() {
             break;
         case ui::options::KeyAction::Remove:
             persisted.api_key.clear();
-            settings::save(folder, persisted);
+            saveSettings();
             // The progress kept was the key's: it goes with it.
             account_progress.setKey(persisted.api_key, utcNow());
             account_progress.clearCache();
@@ -1109,10 +1227,10 @@ void drawOptionsPage() {
     }
 
     if (ImGui::CollapsingHeader("Markers")) {
-        if (ui::options::drawPack(&persisted, &show_hidden)) settings::save(folder, persisted);
+        if (ui::options::drawPack(&persisted, &show_hidden)) saveSettings();
     }
     if (ImGui::CollapsingHeader("Map and Minimap") && ui::options::drawMaps(&persisted, aboveBelowImage(true), aboveBelowImage(false))) {
-        settings::save(folder, persisted);
+        saveSettings();
     }
 }
 
@@ -1150,12 +1268,15 @@ void load(AddonAPI* aApi, Mumble::Data* aMumbleLink) {
         if (!error.empty()) api->Log(ELogLevel_WARNING, ADDON_NAME, error.c_str());
     }
     persisted = settings::load(folder);
-    account_progress.open(folder.empty() ? folder : folder / account::CACHE_FILE_NAME, persisted.api_key, utcNow());
-    achievement_details.open(folder.empty() ? folder : folder / achievements::CACHE_FILE_NAME);
+    // Read here, before there is a frame to stall; from here on every file goes through `jobs`.
+    account_progress.open(folder.empty() ? folder : folder / account::CACHE_FILE_NAME, persisted.api_key, utcNow(), &jobs);
+    achievement_details.open(folder.empty() ? folder : folder / achievements::CACHE_FILE_NAME, &jobs);
     category_states.load(categoriesFile());
-    saved_categories = category_states.revision();
+    categories_file.loaded(category_states.revision());
     script_storage.load(storageFile());
+    storage_file.loaded(script_storage.revision());
     behavior_states.load(timersFile());
+    timers_file.loaded(behavior_states.revision());
     if (const char* game = api->Paths.GetGameDirectory()) {
         game_binds_file = std::filesystem::path(game) / "addons" / "Nexus" / game_binds::FILE_NAME;
         readInteractBind();
@@ -1178,11 +1299,16 @@ void load(AddonAPI* aApi, Mumble::Data* aMumbleLink) {
         if (api) api->UI.SendAlert(text.c_str());
     };
     installed.api = api;
+    installed.jobs = &jobs;
+    installed.uploads = &texture_uploads;
     scripts = std::make_unique<script::Engine>(host);
     scripts_stale = true;
 
     auto_update.load(catalogFile());
-    discoverAndLoad();
+    Discovered found = discoverIn(packsFolder());
+    discovered = std::move(found.packs);
+    local_packs = std::move(found.local);
+    loader.add(discovered);
     startCatalogRequest();
     // Offered once, by itself, when Blish HUD has anything to bring.
     if (!persisted.import_offered) {
@@ -1248,12 +1374,25 @@ void unload() {
     map_trails = map_scene::TrailCache{};
     live = runtime::LiveMap{};
     installed = runtime::Installed{};
+    // After the packs are gone, so what was queued to read their images reads nothing, and
+    // after saveStates, whose writes it waits for.
+    jobs.stop();
+    texture_uploads = TextureUploads{};
+    change_check = {};
+    discovery = {};
+    placing = {};
+    import_search = {};
+    key_saved = {};
     editor = {};
     api = nullptr;
 }
 
 void connectEditor(const EditorHooks& hooks) {
     editor = hooks;
+}
+
+TextureUploads& textureUploads() {
+    return texture_uploads;
 }
 
 } // namespace viewer
