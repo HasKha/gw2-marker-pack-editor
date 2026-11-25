@@ -49,6 +49,10 @@ public:
     // sat on for so long that it never will.
     void nextFrame();
 
+    // What is out now: images, and their pixels.
+    size_t images() const { return out_.size(); }
+    int64_t pixels() const { return pixels_; }
+
 private:
     struct Out {
         AddonAPI* api;
@@ -93,6 +97,15 @@ public:
 
     // Drops everything, for a new set of files under the same paths.
     void clear();
+
+    // Every image looked up so far, by where it is: drawable, still on its way (read, waiting for
+    // room, or waiting for Nexus), or missing, a file not there or no image.
+    struct Counts {
+        size_t ready = 0;
+        size_t loading = 0;
+        std::vector<std::string> missing; // their keys, sorted
+    };
+    Counts counts() const;
 
 private:
     std::string prefix_;

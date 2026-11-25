@@ -336,6 +336,7 @@ Camera gameCamera(const Mumble::Data* mumble, const RTAPI::RealTimeData* realtim
     // RTAPI's own author swaps one for the other in RaidcoreGG/GW2-RangeIndicators. It has no up.
     if (realtime) {
         Camera from_realtime = camera;
+        from_realtime.source = CameraSource::Rtapi;
         from_realtime.position = glm::make_vec3(realtime->CameraPosition);
         from_realtime.front = glm::make_vec3(realtime->CameraFacing);
         from_realtime.up = glm::vec3(0.0f);
@@ -344,6 +345,7 @@ Camera gameCamera(const Mumble::Data* mumble, const RTAPI::RealTimeData* realtim
         if (finishView(&from_realtime)) return from_realtime;
     }
 
+    camera.source = CameraSource::MumbleLink;
     camera.position = toGlm(mumble->CameraPosition);
     camera.front = toGlm(mumble->CameraFront);
     camera.up = toGlm(mumble->CameraTop);

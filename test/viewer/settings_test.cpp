@@ -191,3 +191,23 @@ TEST_CASE("a kept file is replaced whole, or left as it was", "[viewer][settings
     CHECK(std::filesystem::is_directory(temp / "blocked.json" / "inside"));
     CHECK_FALSE(std::filesystem::exists(temp / "blocked.json.tmp"));
 }
+
+TEST_CASE("slow frames are not logged unless asked, and the threshold is kept within its range", "[viewer][settings]") {
+    const corpus::TempDir temp("settings_slow_frames");
+    const viewer::settings::Settings defaults = viewer::settings::load(temp.path());
+    CHECK_FALSE(defaults.log_slow_frames);
+    CHECK(defaults.slow_frame_ms == 5.0f);
+
+    viewer::settings::Settings settings;
+    settings.log_slow_frames = true;
+    settings.slow_frame_ms = 2.5f;
+    REQUIRE(viewer::settings::save(temp.path(), settings));
+    viewer::settings::Settings loaded = viewer::settings::load(temp.path());
+    CHECK(loaded.log_slow_frames);
+    CHECK(loaded.slow_frame_ms == 2.5f);
+
+    settings.slow_frame_ms = 0.0f; // hand-edited: every frame would be slow
+    REQUIRE(viewer::settings::save(temp.path(), settings));
+    loaded = viewer::settings::load(temp.path());
+    CHECK(loaded.slow_frame_ms == 1.0f);
+}

@@ -54,8 +54,9 @@ src/viewer/
   game_binds.*   the game's Interact bind, from Nexus's GameBinds.xml
   store.*        category toggles, script Storage
   utc.*          the wall clock, and the date format timers and the catalog share
+  frame_log.*    the slow-frame log: a frame the player waited on, and our share of it, in Nexus's log
   ui/            main_menu, options, pack_catalog, import_window, script_console, interaction,
-                 map_menu, fonts (Font Awesome merged into Nexus's font), achievement_tooltip,
+                 diagnostics (the options page's Development section), map_menu, fonts (Font Awesome merged into Nexus's font), achievement_tooltip,
                  style (the palette and shared widgets, the editor's too)
 ```
 

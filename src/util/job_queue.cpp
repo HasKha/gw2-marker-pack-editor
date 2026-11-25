@@ -26,6 +26,11 @@ void JobQueue::stop() {
     if (worker_.joinable()) worker_.join();
 }
 
+size_t JobQueue::unfinished() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return queued_.size() + (running_job_ ? 1 : 0);
+}
+
 void JobQueue::work() {
     std::unique_lock<std::mutex> lock(mutex_);
     while (true) {

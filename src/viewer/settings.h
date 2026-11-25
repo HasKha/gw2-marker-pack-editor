@@ -63,6 +63,12 @@ struct Settings {
     int map_dpi_scaling = 1; // Nexus
     float map_dpi_custom = 1.0f;
 
+    // Ours, the Development section's: a frame in which our own work takes more than
+    // `slow_frame_ms` goes to Nexus's log (frame_log.h). Our work is a few tenths of a millisecond
+    // a frame, as the log shows in game; 5 ms is a third of a frame at 60 fps.
+    bool log_slow_frames = false;
+    float slow_frame_ms = 5.0f;
+
     // The player's GW2 API key, empty for none: written only once /v2/tokeninfo has said it is
     // a key with the permissions api_key.h names.
     std::string api_key;

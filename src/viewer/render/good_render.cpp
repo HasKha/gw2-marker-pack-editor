@@ -3,6 +3,7 @@
 #include <glm/gtc/type_ptr.hpp>
 
 #include <atomic>
+#include <chrono>
 
 #include "viewer/map_scene.h"
 #include "viewer/render/overlay.h"
@@ -21,6 +22,17 @@ std::atomic<bool> occluded_drawn{false};
 std::atomic<bool> over_drawn{false};
 std::atomic<bool> map_drawn{false};
 
+// The time spent in the moments since takeMomentMilliseconds last took it.
+std::atomic<int64_t> moment_nanoseconds{0};
+
+// Adds the time from its making to its end to moment_nanoseconds, whichever way the moment returns.
+struct MomentTimer {
+    std::chrono::steady_clock::time_point started = std::chrono::steady_clock::now();
+    ~MomentTimer() {
+        moment_nanoseconds += std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - started).count();
+    }
+};
+
 // Up to WORLD_FINISHED what is bound is the scene, which resolution scaling makes smaller than
 // the window; minSize and maxSize, and the draw list, are in window pixels.
 glm::vec2 windowSize(const good_render::Moment& moment) {
@@ -31,6 +43,8 @@ glm::vec2 windowSize(const good_render::Moment& moment) {
 } // namespace
 
 void onMoment(const good_render::Moment* moment) {
+    const MomentTimer timer;
+
     // In the game's UI, over its HUD: the map, where the game draws its own map markers.
     if (moment->moment == good_render::MOMENT_BEFORE_WINDOWS && moment->draw_list) {
         map_scene::drawPublished(moment->draw_list, mumble_link, windowSize(*moment));
@@ -71,6 +85,15 @@ void unload() {
     good_render::close(link);
 }
 
+Service service() {
+    if (!link.block || link.block->newest_served.load() == 0) return Service::None;
+    return good_render::served(*link.block) ? Service::Serving : Service::OtherVersion;
+}
+
+double takeMomentMilliseconds() {
+    return static_cast<double>(moment_nanoseconds.exchange(0)) / 1.0e6;
+}
+
 Drawn takeDrawn() {
     Drawn drawn;
     drawn.occluded = occluded_drawn.exchange(false);
@@ -82,6 +105,7 @@ Drawn takeDrawn() {
 Camera cameraFromMoment(const good_render::Camera& source, glm::vec2 viewport) {
     Camera camera;
     camera.valid = true;
+    camera.source = CameraSource::GoodRender;
     camera.position = glm::make_vec3(source.position);
     camera.front = glm::make_vec3(source.front);
     camera.up = glm::make_vec3(source.up);

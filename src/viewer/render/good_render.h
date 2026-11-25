@@ -20,6 +20,15 @@ void load(const Mumble::Data* mumble);
 // Unsubscribes and waits for a call in progress to return. Never from inside a moment.
 void unload();
 
+// Whether GoodRender is calling the moments: no service (not loaded, not loaded yet, or unable to
+// follow the frame), one that does not serve the Moment version this was built against, or one
+// that does.
+enum class Service { None, OtherVersion, Serving };
+Service service();
+
+// The milliseconds spent in our moments since the last call, for the slow-frame log.
+double takeMomentMilliseconds();
+
 // What the moments drew since the last call. The Nexus render at the end of the frame draws in
 // the overlay what they did not: every moment of a frame comes before its Present, so what the
 // service reached has already been drawn.

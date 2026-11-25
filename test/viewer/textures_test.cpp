@@ -322,3 +322,33 @@ TEST_CASE("without Nexus nothing is loaded and nothing is read", "[textures]") {
     jobs.wait();
     CHECK(files.reads == 0);
 }
+
+TEST_CASE("the cache counts its images as ready, on their way, or missing", "[textures]") {
+    Harness h;
+    h.files.files["there.png"] = pngHeader(2, 1);
+    h.files.files["also_there.png"] = pngHeader(2, 1);
+
+    REQUIRE(h.drawn("there.png").texture != nullptr);
+    h.drawn("missing_b.png");
+    h.drawn("missing_a.png");
+    h.get("also_there.png"); // read on the worker, not handed over yet
+
+    const viewer::TextureCache::Counts counts = h.cache.counts();
+    CHECK(counts.ready == 1);
+    CHECK(counts.loading == 1);
+    CHECK(counts.missing == std::vector<std::string>{"missing_a.png", "missing_b.png"});
+}
+
+TEST_CASE("the upload budget says what is out", "[textures]") {
+    Harness h;
+    h.files.files["icon.png"] = pngHeader(64, 32);
+    h.get("icon.png");
+    h.jobs.wait();
+    h.get("icon.png"); // handed over: out until Nexus's next Present makes it
+    CHECK(h.uploads.images() == 1);
+    CHECK(h.uploads.pixels() == 64 * 32);
+
+    h.endFrame();
+    CHECK(h.uploads.images() == 0);
+    CHECK(h.uploads.pixels() == 0);
+}

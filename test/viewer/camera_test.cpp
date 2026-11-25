@@ -417,6 +417,7 @@ TEST_CASE("the camera is RTAPI's while it is loaded, the map MumbleLink's", "[ca
 
     const viewer::Camera camera = viewer::gameCamera(mumble.get(), &realtime, glm::vec2(kWidth, kHeight));
     REQUIRE(camera.valid);
+    CHECK(camera.source == viewer::CameraSource::Rtapi);
     CHECK(camera.position == glm::vec3(11.0f, 20.0f, 30.0f));
     CHECK(camera.front.x == Approx(std::sqrt(0.5f)));
     CHECK(camera.front.z == Approx(std::sqrt(0.5f)));
@@ -439,6 +440,7 @@ TEST_CASE("the camera is MumbleLink's without RTAPI, or where RTAPI's makes no v
     SECTION("not loaded") {
         const viewer::Camera camera = viewer::gameCamera(mumble.get(), nullptr, viewport);
         REQUIRE(camera.valid);
+        CHECK(camera.source == viewer::CameraSource::MumbleLink);
         CHECK(camera.position == glm::vec3(10.0f, 20.0f, 30.0f));
         CHECK(camera.player == glm::vec3(10.0f, 18.0f, 35.0f));
         CHECK(camera.fov == Approx(0.9f));
@@ -448,6 +450,7 @@ TEST_CASE("the camera is MumbleLink's without RTAPI, or where RTAPI's makes no v
         RTAPI::RealTimeData realtime = realtimeAt(glm::vec3(11.0f, 20.0f, 30.0f), glm::vec3(0.0f));
         const viewer::Camera camera = viewer::gameCamera(mumble.get(), &realtime, viewport);
         REQUIRE(camera.valid);
+        CHECK(camera.source == viewer::CameraSource::MumbleLink);
         CHECK(camera.position == glm::vec3(10.0f, 20.0f, 30.0f));
     }
 

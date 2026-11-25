@@ -33,6 +33,7 @@ constexpr Field<bool> kBools[] = {
     {"map_above_below", &Settings::map_above_below},
     {"map_fade_far_trails", &Settings::map_fade_far_trails},
     {"map_tooltips", &Settings::map_tooltips},
+    {"log_slow_frames", &Settings::log_slow_frames},
 };
 
 // With the range each is clamped to, so that a hand-edited file cannot name a choice that
@@ -58,6 +59,8 @@ constexpr Field<float> kFloats[] = {
     {"minimap_opacity", &Settings::minimap_opacity, 0.0f, 1.0f},
     {"map_trail_width", &Settings::map_trail_width, 0.5f, 4.5f},
     {"map_dpi_custom", &Settings::map_dpi_custom, 0.5f, 4.0f},
+    // From a few times our usual work to a frame at 10 fps.
+    {"slow_frame_ms", &Settings::slow_frame_ms, 1.0f, 100.0f},
 };
 
 } // namespace

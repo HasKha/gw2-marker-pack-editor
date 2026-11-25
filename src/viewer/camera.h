@@ -54,10 +54,14 @@ inline float bilinearValue(const float corner[4], glm::vec2 at) {
 // cut.
 int clipQuadRegion(const float corner_depth[4], glm::vec2 low, glm::vec2 high, glm::vec2 out_corners[5]);
 
+// Where a Camera came from.
+enum class CameraSource { None, MumbleLink, Rtapi, GoodRender };
+
 // The game camera for this frame, from RTAPI or MumbleLink, or GoodRender's in a moment: left-handed,
 // X right, Y up, Z forward, metres, the same space as xpos/ypos/zpos.
 struct Camera {
     bool valid = false;
+    CameraSource source = CameraSource::None;
 
     glm::vec3 position{0.0f};
     glm::vec3 front{0.0f, 0.0f, 1.0f};

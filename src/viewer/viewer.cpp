@@ -31,6 +31,7 @@
 #include "viewer/camera.h"
 #include "viewer/catalog.h"
 #include "viewer/downloads.h"
+#include "viewer/frame_log.h"
 #include "viewer/game_binds.h"
 #include "viewer/map.h"
 #include "viewer/map_scene.h"
@@ -45,6 +46,7 @@
 #include "viewer/settings.h"
 #include "viewer/store.h"
 #include "viewer/textures.h"
+#include "viewer/ui/diagnostics.h"
 #include "viewer/ui/fonts.h"
 #include "viewer/ui/icon_data.h"
 #include "viewer/ui/import_window.h"
@@ -128,6 +130,32 @@ private:
 };
 
 Recycled<Scene> scenes;
+
+// For the Development section: what built the last scene and how long Present's work took, and
+// what GoodRender's moments drew in the last frame.
+CameraSource scene_camera = CameraSource::None;
+ui::diagnostics::FrameTimes present_times;
+good_render_sink::Drawn last_drawn;
+
+// The slow-frame log: when the last Present began, where the frame since went, and which slow
+// frames make a line.
+std::chrono::steady_clock::time_point last_present{};
+frame_log::Steps frame_steps;
+frame_log::Limiter slow_frames;
+
+// Adds the time since the last lap, or since it was made, to a step of frame_steps.
+class Laps
+{
+public:
+    void lap(double* step) {
+        const auto now = std::chrono::steady_clock::now();
+        *step += std::chrono::duration<double, std::milli>(now - last_).count();
+        last_ = now;
+    }
+
+private:
+    std::chrono::steady_clock::time_point last_ = std::chrono::steady_clock::now();
+};
 
 // The minimap and the full map: every map's rectangles, the fade after the map changes, and
 // what was published.
@@ -991,6 +1019,39 @@ void drawMapMenu() {
 // moments only draw what this publishes, because a moment runs inside the game's frame and
 // anything slow there stalls the game.
 void preRender() {
+    const auto started = std::chrono::steady_clock::now();
+
+    // The frame that ended with this Present, logged when our work in it took long. Loading
+    // screens and the game in the background included: what we do there is ours all the same.
+    frame_steps.moments = good_render_sink::takeMomentMilliseconds();
+    if (last_present != std::chrono::steady_clock::time_point{}) {
+        const double interval = std::chrono::duration<double, std::milli>(started - last_present).count();
+        size_t skipped = 0;
+        if (persisted.log_slow_frames && slow_frames.take(frame_steps.total(), persisted.slow_frame_ms, started, &skipped)) {
+            frame_log::Frame frame;
+            frame.interval = interval;
+            frame.steps = frame_steps;
+            double slowest = 0.0;
+            for (size_t pack = 0; pack < installed.packs.size(); ++pack) {
+                if (const double seconds = scripts->frameSeconds(pack); seconds > slowest) {
+                    slowest = seconds;
+                    frame.slowest_scripts = util::pathText(installed.packs[pack]->loaded->path.filename());
+                }
+            }
+            frame.map_id = live.map_id;
+            if (const std::shared_ptr<const Scene> scene = published()) frame.quads = scene->items.size();
+            frame.jobs = jobs.unfinished();
+            frame.uploads = texture_uploads.images();
+            frame.upload_pixels = texture_uploads.pixels();
+            frame.loading_packs = loader.busy();
+            frame.skipped = skipped;
+            api->Log(ELogLevel_INFO, ADDON_NAME, frame_log::line(frame).c_str());
+        }
+    }
+    last_present = started;
+    frame_steps = {};
+
+    Laps laps;
     texture_uploads.nextFrame();
     updatePacks();
     reloadChangedPacks();
@@ -999,13 +1060,16 @@ void preRender() {
     autoUpdate();
     account_progress.update(std::chrono::steady_clock::now(), utcNow());
     achievement_details.update(std::chrono::steady_clock::now());
+    laps.lap(&frame_steps.packs);
 
     const ImVec2 display = ImGui::GetIO().DisplaySize;
     const Camera camera = gameCamera(mumble_link, rtapi::data(), glm::vec2(display.x, display.y));
 
     refreshLiveMap(camera.valid ? static_cast<int>(camera.map_id) : live.map_id);
+    laps.lap(&frame_steps.live_map);
     mumble_state = mumbleState(mumble_link);
     runScripts();
+    laps.lap(&frame_steps.scripts);
 
     // Behaviors see what scripts did this frame, and the scene what both did.
     const auto updateVisible = [] {
@@ -1018,9 +1082,11 @@ void preRender() {
     runBehaviors();
     updateVisible();
     runtime::startFadeIns(&live, visible, ImGui::GetTime());
+    if (std::chrono::steady_clock::now() - last_save > kSaveInterval) saveStates();
+    laps.lap(&frame_steps.behaviors);
     edited_live = editor.edited_live ? editor.edited_live(live.map_id, &edited_texture) : nullptr;
     if (edited_live) runtime::startFadeIns(edited_live, kNoNodes, ImGui::GetTime());
-    if (std::chrono::steady_clock::now() - last_save > kSaveInterval) saveStates();
+    laps.lap(&frame_steps.editor);
 
     // A miss is read on the worker from the pack's source, which the read keeps open.
     const TextureLookup texture = [](size_t pack, const std::string& path) -> ImTextureID {
@@ -1041,8 +1107,12 @@ void preRender() {
     buildScene(layers, camera, static_cast<float>(ImGui::GetTime()), worldOptions(), next.get());
     scenes.keep(next);
     publish(next);
+    scene_camera = camera.source;
+    laps.lap(&frame_steps.scene);
 
     buildMapScene(texture);
+    laps.lap(&frame_steps.maps);
+    present_times.add(std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started).count());
 }
 
 void drawOptionsWindow();
@@ -1055,6 +1125,7 @@ void drawWorld() {
     const std::shared_ptr<const Scene> scene = published();
 
     const good_render_sink::Drawn drawn = good_render_sink::takeDrawn();
+    last_drawn = drawn;
     // Not with the map up: this is over the game's UI, so over the map. The scene is still built
     // then, for GoodRender, which draws it under the map.
     if (scene && camera.valid && !camera.map_open && !(drawn.occluded && drawn.over)) {
@@ -1104,6 +1175,7 @@ void drawFrame() {
 }
 
 void render() {
+    Laps laps;
     takeFontDevice();
     // The world and the map before our font is pushed: see fonts::push.
     drawWorld();
@@ -1112,6 +1184,7 @@ void render() {
     ui::fonts::pop();
     // Over the world as well as in its windows, so it pushes the font around its windows itself.
     if (editor.render) editor.render();
+    laps.lap(&frame_steps.render);
 }
 
 void onMenuKeybind(const char*, bool is_release) {
@@ -1179,9 +1252,6 @@ void drawOptionsPage() {
             scripts->reset();
             replaceLiveMap(live.map_id);
         }
-        ImGui::SameLine();
-        if (ImGui::Button(ui::fonts::label(ICON_FA_TERMINAL, "Open Lua Script Console").c_str())) console_window = true;
-        if (ImGui::IsItemHovered()) ImGui::SetTooltip("Messages and errors from pack scripts, for pack authors.");
 
         // One width for the three, so they stand as a column.
         const std::string manage = ui::fonts::label(ICON_FA_BOX_ARCHIVE, "Manage Packs");
@@ -1232,13 +1302,65 @@ void drawOptionsPage() {
     if (ImGui::CollapsingHeader("Map and Minimap") && ui::options::drawMaps(&persisted, aboveBelowImage(true), aboveBelowImage(false))) {
         saveSettings();
     }
+
+    // For pack authors and bug reports. The figures are gathered only while it is open: the
+    // images' counts walk every pack's cache.
+    if (ImGui::CollapsingHeader("Development")) {
+        if (ImGui::Button(ui::fonts::label(ICON_FA_TERMINAL, "Open Lua Script Console").c_str())) console_window = true;
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("Messages and errors from pack scripts.");
+        ImGui::SameLine();
+
+        ui::diagnostics::Figures figures;
+        figures.service = good_render_sink::service();
+        figures.drawn = last_drawn;
+        figures.camera = scene_camera;
+        if (const std::shared_ptr<const Scene> scene = published()) figures.scene_items = scene->items.size();
+        figures.present_ms = present_times.last();
+        figures.present_peak_ms = present_times.peak();
+        figures.map_id = live.map_id;
+        figures.map_described = maps.find(live.map_id) != nullptr;
+        figures.in_gameplay = inGameplay();
+        figures.markers = live.markers.size();
+        figures.trails = live.trails.size();
+        figures.packs_found = discovered.size();
+        figures.loading = loader.busy();
+        for (const std::unique_ptr<runtime::InstalledPack>& pack : installed.packs) {
+            figures.packs.push_back(
+                ui::diagnostics::PackFigures{util::pathText(pack->loaded->path.filename()), pack->loaded->error, pack->textures.counts()});
+        }
+        figures.uploads_images = texture_uploads.images();
+        figures.uploads_pixels = texture_uploads.pixels();
+        figures.jobs = jobs.unfinished();
+        ui::diagnostics::draw(ui::diagnostics::describe(figures), [] {
+            bool changed = ImGui::Checkbox("Log frames where Markus takes more than", &persisted.log_slow_frames);
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip(
+                    "To Nexus's log, one line a second at most: how long Markus's own work took and where,\n"
+                    "how long the whole frame was, and what was going on.");
+            }
+            ImGui::SameLine();
+            ui::style::beginDisabled(!persisted.log_slow_frames);
+            ui::style::setFieldWidth();
+            changed |= ImGui::SliderFloat(
+                "##slow_frame_ms",
+                &persisted.slow_frame_ms,
+                1.0f,
+                100.0f,
+                "%.1f ms",
+                ImGuiSliderFlags_Logarithmic | ImGuiSliderFlags_AlwaysClamp);
+            ui::style::endDisabled();
+            if (changed) saveSettings();
+        });
+    }
 }
 
 void drawOptions() {
+    Laps laps;
     takeFontDevice();
     ui::fonts::push();
     drawOptionsPage();
     ui::fonts::pop();
+    laps.lap(&frame_steps.render);
 }
 
 // The same page in a window of ours, from the menu's Options; our render has the fonts pushed

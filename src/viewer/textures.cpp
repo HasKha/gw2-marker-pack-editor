@@ -96,4 +96,19 @@ void TextureCache::clear() {
     ++generation_;
 }
 
+TextureCache::Counts TextureCache::counts() const {
+    Counts counts;
+    for (const auto& [key, entry] : images_) {
+        if (!entry.done) {
+            ++counts.loading;
+        } else if (entry.image.texture) {
+            ++counts.ready;
+        } else {
+            counts.missing.push_back(key);
+        }
+    }
+    std::sort(counts.missing.begin(), counts.missing.end());
+    return counts;
+}
+
 } // namespace viewer

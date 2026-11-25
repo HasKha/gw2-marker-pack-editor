@@ -47,11 +47,14 @@ public:
     // later post() starts it again.
     void stop();
 
+    // How many jobs have not finished: those queued and the one running.
+    size_t unfinished() const;
+
 private:
     void work();
 
     std::thread worker_;
-    std::mutex mutex_;
+    mutable std::mutex mutex_;
     std::condition_variable wake_;
     std::condition_variable idle_;
     std::deque<std::function<void()>> queued_;

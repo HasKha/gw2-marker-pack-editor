@@ -3,6 +3,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <future>
 #include <optional>
 #include <stdexcept>
 #include <thread>
@@ -57,4 +58,24 @@ TEST_CASE("stopping runs what was queued, and a later post starts it again", "[j
     jobs.post([&written] { ++written; });
     jobs.wait();
     CHECK(written == 4);
+}
+
+TEST_CASE("what is unfinished counts the running job and those queued behind it", "[job_queue]") {
+    util::JobQueue jobs;
+    CHECK(jobs.unfinished() == 0);
+
+    std::promise<void> started;
+    std::promise<void> release;
+    std::shared_future<void> released = release.get_future().share();
+    jobs.post([&started, released] {
+        started.set_value();
+        released.wait();
+    });
+    jobs.post([] {});
+    started.get_future().wait();
+    CHECK(jobs.unfinished() == 2);
+
+    release.set_value();
+    jobs.wait();
+    CHECK(jobs.unfinished() == 0);
 }
