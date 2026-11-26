@@ -4,11 +4,9 @@
 
 #include <algorithm>
 #include <atomic>
-#include <cctype>
 #include <cmath>
 #include <limits>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -115,6 +113,21 @@ bool clipSegment(glm::vec2* a, glm::vec2* b, const glm::vec2& min, const glm::ve
 
 // Whether every corner of the continent box lands on one side outside the bounds:
 // StandardTrail.MiniMap.IsOutside.
+// How wide a trail's line is drawn, in screen pixels. Whole ones: ImGui draws a line of whole
+// pixels from the atlas's baked lines, anti-aliased by the texture, and any other as more triangles
+// for its edges, twice the vertices (ImDrawList::AddPolyline).
+float lineWidth(const MapScene& scene, const map::View& view) {
+    return std::max(1.0f, std::round(scene.trail_width * view.ui_scale * kBlishPixel));
+}
+
+// How far `point` is from the segment from `a` to `b`.
+float distanceToSegment(glm::vec2 point, glm::vec2 a, glm::vec2 b) {
+    const glm::vec2 d = b - a;
+    const float length2 = glm::dot(d, d);
+    const float t = length2 > 0.0f ? std::clamp(glm::dot(point - a, d) / length2, 0.0f, 1.0f) : 0.0f;
+    return glm::distance(point, a + d * t);
+}
+
 bool outside(const map::View& view, const glm::dvec2& min, const glm::dvec2& max) {
     const glm::vec2 corners[4] = {
         map::project(view, min),
@@ -154,45 +167,6 @@ std::string groupedInteger(double value) {
     return whole < 0 ? "-" + digits : digits;
 }
 
-bool isBlank(const std::string& text) {
-    return std::all_of(text.begin(), text.end(), [](unsigned char c) { return std::isspace(c); });
-}
-
-// The labels from the root category down to `node`. `node` must be in the tree.
-std::vector<std::string> categoryChain(const registry::CategoryTree& tree, size_t node) {
-    std::vector<std::string> chain;
-    for (; node != pack::kNoIndex; node = tree.nodes[node].parent) chain.push_back(tree.nodes[node].label);
-    std::reverse(chain.begin(), chain.end());
-    return chain;
-}
-
-// A category label cut short for the tooltip's path, "Haskha's..." for "Haskha's Markers": at
-// a space when one leaves at least half of what is kept, else mid-word. Counted in code points,
-// so a cut never splits a UTF-8 character.
-std::string shortLabel(const std::string& label) {
-    // A typical name stays whole while a deep path still fits on a line or two.
-    constexpr size_t kMaxChars = 12;
-    constexpr std::string_view kEllipsis = "...";
-    constexpr size_t kKeptChars = kMaxChars - kEllipsis.size();
-
-    std::vector<size_t> starts; // the byte each code point starts at
-    for (size_t i = 0; i < label.size(); ++i) {
-        if ((static_cast<unsigned char>(label[i]) & 0xC0) != 0x80) starts.push_back(i);
-    }
-    if (starts.size() <= kMaxChars) return label;
-
-    size_t cut = starts[kKeptChars];
-    for (size_t n = kKeptChars; n > kKeptChars / 2; --n) {
-        if (label[starts[n]] == ' ') {
-            cut = starts[n];
-            break;
-        }
-    }
-    std::string kept = label.substr(0, cut);
-    while (!kept.empty() && kept.back() == ' ') kept.pop_back();
-    return kept.append(kEllipsis);
-}
-
 } // namespace
 
 std::shared_ptr<const TrailLines> TrailCache::get(const runtime::LiveMap& live, const map::MapDetails& details) {
@@ -206,6 +180,7 @@ std::shared_ptr<const TrailLines> TrailCache::get(const runtime::LiveMap& live, 
     for (const runtime::LiveTrail& live_trail : live.trails) {
         const BakedTrail& trail = live_trail.trail;
         Path path;
+        path.trail = lines->paths.size();
         path.first = lines->lines.size();
         path.colour = trail.sample_colour; // what Pathing draws a trail with on the map: never its alpha
         path.min = glm::dvec2(std::numeric_limits<double>::max());
@@ -443,9 +418,7 @@ void draw(ImDrawList* list, const MapScene& scene, const map::View& view, float 
     // fraction of a pixel long costs as much as any. What is drawn strays from the trail by under this.
     constexpr float kLeastPixels = 1.0f;
 
-    // In whole pixels: ImGui draws a line of whole pixels from the atlas's baked lines, anti-aliased by the texture,
-    // and any other as more triangles for its edges, twice the vertices (ImDrawList::AddPolyline).
-    const float width = std::max(1.0f, std::round(scene.trail_width * blish_pixel));
+    const float width = lineWidth(scene, view);
     for (const Path& path : scene.paths) {
         if (outside(view, path.min, path.max)) continue;
         const std::vector<Line>& lines = scene.trails[path.layer]->lines;
@@ -509,43 +482,40 @@ const Icon* hovered(const MapScene& scene, const map::View& view, glm::vec2 mous
     return nullptr;
 }
 
-Tooltip tooltip(const runtime::LiveMarker& marker, const registry::CategoryTree& tree, const glm::vec3& player, bool category_path) {
-    Tooltip tip;
-    if (category_path) {
-        if (marker.node >= tree.nodes.size()) {
-            tip.title = "Unassigned Category";
-            return tip;
-        }
-        for (const std::string& label : categoryChain(tree, marker.node)) {
-            if (!tip.title.empty()) tip.title += "\n > ";
-            tip.title += label;
-        }
-        return tip;
-    }
+const Path* hoveredTrail(const MapScene& scene, const map::View& view, glm::vec2 mouse) {
+    // Beyond the line's edge, so a thin trail can be hit without aiming at its pixel.
+    constexpr float kSlack = 4.0f;
 
+    if (!view.contains(mouse)) return nullptr;
+    const float reach = lineWidth(scene, view) * 0.5f + kSlack;
+    const Path* nearest = nullptr;
+    float nearest_distance = reach;
+    for (const Path& path : scene.paths) {
+        if (outside(view, path.min, path.max)) continue;
+        const std::vector<Line>& lines = scene.trails[path.layer]->lines;
+        for (size_t i = path.first; i < path.first + path.count; ++i) {
+            const float distance = distanceToSegment(mouse, map::project(view, lines[i].from), map::project(view, lines[i].to));
+            if (distance <= nearest_distance) {
+                nearest = &path;
+                nearest_distance = distance;
+            }
+        }
+    }
+    return nearest;
+}
+
+Tooltip tooltip(const runtime::LiveMarker& marker, const glm::vec3& player) {
+    Tooltip tip;
     tip.title = marker.marker.tip_name;
     if (tip.title.empty()) return tip;
-    if (!isBlank(marker.marker.tip_description)) tip.description = marker.marker.tip_description + "\n\n";
-
-    // Where the marker sits, each category cut short. The title is usually the marker's own
-    // category's name, which is not said twice.
-    if (marker.node < tree.nodes.size()) {
-        std::vector<std::string> chain = categoryChain(tree, marker.node);
-        if (chain.back() == tip.title) chain.pop_back();
-        std::string path;
-        for (const std::string& label : chain) {
-            if (!path.empty()) path += "/";
-            path += shortLabel(label);
-        }
-        if (!path.empty()) tip.description += path + "\n";
-    }
 
     const glm::vec3 position = markerPosition(marker.marker);
-    tip.description += groupedInteger(glm::distance(position, player) * kInchesPerMetre) + " away";
+    const std::string away = groupedInteger(glm::distance(position, player) * kInchesPerMetre);
+    tip.distance = (away.empty() ? "0" : away) + " away";
     // How far up or down, in the same units; nothing when level, as groupedInteger says.
     const float rise = position.z - player.z;
     const std::string height = groupedInteger(std::abs(rise) * kInchesPerMetre);
-    if (!height.empty()) tip.description += ", " + height + (rise > 0.0f ? " above" : " below");
+    if (!height.empty()) tip.distance += ", " + height + (rise > 0.0f ? " above" : " below");
     return tip;
 }
 

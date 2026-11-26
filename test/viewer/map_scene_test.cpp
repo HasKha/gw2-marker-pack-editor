@@ -1,5 +1,6 @@
 // What the minimap and the full map show and where: Pathing's FlatMap and RenderToMiniMap,
-// over a live map the test builds by hand, drawn into a draw list with no device.
+// over a live map the test builds by hand, drawn into a draw list with no device. Then what the
+// mouse does over them, in ImGui frames with no device either.
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
@@ -12,6 +13,7 @@
 #include "viewer/live/runtime.h"
 #include "viewer/maps/map.h"
 #include "viewer/maps/map_scene.h"
+#include "viewer/ui/map_menu.h"
 
 using namespace viewer;
 using Catch::Approx;
@@ -75,6 +77,84 @@ build(const runtime::LiveMap& live, const MumbleState& state = mumble(), map_sce
     map_scene::build(live, {}, squareKilometre(), state, options, opacity, 1.0f, everyTexture(), &trails, &scene);
     return scene;
 }
+
+// ImGui frames with no device, the mouse moved by hand, over a minimap whose one marker sits in
+// the category "Chests" under "Tyria", and whose one trail, left of it, in "Paths" beside it.
+class MenuFrames
+{
+public:
+    MenuFrames()
+        : context_(ImGui::CreateContext()) {
+        ImGuiIO& io = ImGui::GetIO();
+        io.IniFilename = nullptr;
+        io.DisplaySize = ImVec2(kDisplay.x, kDisplay.y);
+        io.DeltaTime = 1.0f / 60.0f;
+        unsigned char* pixels = nullptr;
+        int width = 0;
+        int height = 0;
+        io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
+
+        tree_.nodes.resize(3);
+        tree_.nodes[0].id = "tyria";
+        tree_.nodes[0].label = "Tyria";
+        tree_.nodes[1].id = "tyria.chests";
+        tree_.nodes[1].label = "Chests";
+        tree_.nodes[1].parent = 0;
+        tree_.nodes[2].id = "tyria.paths";
+        tree_.nodes[2].label = "Paths";
+        tree_.nodes[2].parent = 0;
+        live_.markers.push_back(marker({500, 0, 500}));
+        live_.markers[0].marker.tip_name = "Chest";
+        live_.markers[0].node = 1;
+        live_.trails.push_back(trail({{430, 0, 500}, {470, 0, 500}}));
+        live_.trails[0].node = 2;
+        scene_ = build(live_);
+        view_ = *map::view(mumble(), kDisplay, 1.0f);
+    }
+    ~MenuFrames() { ImGui::DestroyContext(context_); }
+
+    MenuFrames(const MenuFrames&) = delete;
+    MenuFrames& operator=(const MenuFrames&) = delete;
+
+    // Where the marker's icon is on the screen.
+    glm::vec2 onMarker() const {
+        glm::vec2 min, max;
+        REQUIRE(map_scene::iconRect(scene_.icons.at(0), view_, &min, &max));
+        return (min + max) * 0.5f;
+    }
+
+    // Where continent point `continent` is on the screen.
+    glm::vec2 at(glm::dvec2 continent) const { return map::project(view_, continent); }
+
+    // The category the menu was opened on.
+    size_t menuNode() const { return menu_.menu_node; }
+
+    // One frame with the mouse at `mouse`, right clicked since the last when `clicked`; and, as
+    // over the game's map, the click never handed to ImGui. Whether a popup is open once it ends.
+    bool run(glm::vec2 mouse, bool clicked) {
+        ImGui::GetIO().MousePos = ImVec2(mouse.x, mouse.y);
+        ImGui::NewFrame();
+        ui::map_menu::Context context;
+        context.scene = &scene_;
+        context.view = &view_;
+        context.live = {&live_};
+        context.tree = &tree_;
+        context.states = &states_;
+        context.right_clicked = clicked;
+        ui::map_menu::draw(context, &menu_);
+        ImGui::Render();
+        return ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopup);
+    }
+
+private:
+    ImGuiContext* context_;
+    registry::CategoryTree tree_;
+    runtime::LiveMap live_;
+    map_scene::MapScene scene_;
+    map::View view_;
+    store::CategoryStates states_;
+    ui::map_menu::View menu_;
+};
 
 } // namespace
 
@@ -419,67 +499,31 @@ TEST_CASE("map scene: the mouse is over the nearest icon drawn under it") {
     CHECK(map_scene::hovered(scene, view, glm::vec2(1700.0f, 100.0f)) == nullptr);
 }
 
-TEST_CASE("map scene: the tooltip is the tip, its description and how far away") {
+TEST_CASE("map scene: the tooltip is the tip's name and how far away") {
     runtime::LiveMarker live = marker({500, 0, 600});
     live.marker.tip_name = "Chest";
     live.marker.tip_description = "Under the bridge";
-    registry::CategoryTree tree;
 
     const glm::vec3 player(500.0f, 500.0f, 0.0f);
-    map_scene::Tooltip tip = map_scene::tooltip(live, tree, player, false);
+    const map_scene::Tooltip tip = map_scene::tooltip(live, player);
     CHECK(tip.title == "Chest");
-    CHECK(tip.description == "Under the bridge\n\n3,937 away");
-
-    live.marker.tip_description = "  ";
-    CHECK(map_scene::tooltip(live, tree, player, false).description == "3,937 away");
-    CHECK(map_scene::tooltip(live, tree, glm::vec3(500.0f, 600.0f, 0.0f), false).description == " away");
+    CHECK(tip.distance == "3,937 away");
+    CHECK(map_scene::tooltip(live, glm::vec3(500.0f, 600.0f, 0.0f)).distance == "0 away");
 
     live.marker.tip_name.clear();
-    CHECK(map_scene::tooltip(live, tree, player, false).title.empty());
+    CHECK(map_scene::tooltip(live, player).title.empty());
 }
 
 TEST_CASE("map scene: the tooltip says how far above or below the player the marker is") {
     runtime::LiveMarker live = marker({500, 10, 600}); // 10 m up, in MumbleLink's y
     live.marker.tip_name = "Chest";
-    registry::CategoryTree tree;
 
-    CHECK(map_scene::tooltip(live, tree, glm::vec3(500.0f, 500.0f, 0.0f), false).description == "3,957 away, 394 above");
-    CHECK(map_scene::tooltip(live, tree, glm::vec3(500.0f, 500.0f, 20.0f), false).description == "3,957 away, 394 below");
+    CHECK(map_scene::tooltip(live, glm::vec3(500.0f, 500.0f, 0.0f)).distance == "3,957 away, 394 above");
+    CHECK(map_scene::tooltip(live, glm::vec3(500.0f, 500.0f, 20.0f)).distance == "3,957 away, 394 below");
     // heightOffset only lifts the icon in the world: it is measured from where it stands.
     live.marker.height_offset = 10.0f;
     live.marker.position.y += 10.0f;
-    CHECK(map_scene::tooltip(live, tree, glm::vec3(500.0f, 500.0f, 0.0f), false).description == "3,957 away, 394 above");
-}
-
-TEST_CASE("map scene: the tooltip says which categories the marker sits in, each cut short") {
-    registry::CategoryTree tree;
-    tree.nodes.resize(4);
-    tree.nodes[0].label = "Haskha's Markers";
-    tree.nodes[1].label = "w8";
-    tree.nodes[1].parent = 0;
-    tree.nodes[2].label = "Chest";
-    tree.nodes[2].parent = 1;
-    tree.nodes[3].label = "H\xC3\xA9ro\xC3\xAFquesmentlong"; //"Héroïquesmentlong", in UTF-8
-    tree.nodes[3].parent = 1;
-
-    runtime::LiveMarker live = marker({500, 0, 600});
-    live.marker.tip_name = "Chest";
-    live.node = 2;
-    const glm::vec3 player(500.0f, 500.0f, 0.0f);
-    CHECK(map_scene::tooltip(live, tree, player, false).description == "Haskha's.../w8\n3,937 away");
-
-    // A title that is not the category's name leaves the category in.
-    live.marker.tip_name = "Big chest";
-    CHECK(map_scene::tooltip(live, tree, player, false).description == "Haskha's.../w8/Chest\n3,937 away");
-
-    // No space to cut at: cut mid-word, never inside a character.
-    live.node = 3;
-    CHECK(map_scene::tooltip(live, tree, player, false).description == "Haskha's.../w8/H\xC3\xA9ro\xC3\xAFques...\n3,937 away");
-
-    // A marker of the root category, under its name, has no path.
-    live.marker.tip_name = "Haskha's Markers";
-    live.node = 0;
-    CHECK(map_scene::tooltip(live, tree, player, false).description == "3,937 away");
+    CHECK(map_scene::tooltip(live, glm::vec3(500.0f, 500.0f, 0.0f)).distance == "3,957 away, 394 above");
 }
 
 TEST_CASE("map scene: the tooltip sits above and right of the cursor's tip, else left of it") {
@@ -504,20 +548,6 @@ TEST_CASE("map scene: the tooltip sits above and right of the cursor's tip, else
     // In the top left corner nothing fits beside the tip; it stays on the screen.
     at = map_scene::tooltipPosition(glm::vec2(10.0f, 10.0f), size, display);
     CHECK(at == glm::vec2(0.0f, 0.0f));
-}
-
-TEST_CASE("map scene: with Shift, the tooltip is the category path") {
-    registry::CategoryTree tree;
-    tree.nodes.resize(2);
-    tree.nodes[0].label = "Tyria";
-    tree.nodes[1].label = "Chests";
-    tree.nodes[1].parent = 0;
-
-    runtime::LiveMarker live = marker({500, 0, 500});
-    live.node = 1;
-    CHECK(map_scene::tooltip(live, tree, glm::vec3(0.0f), true).title == "Tyria\n > Chests");
-    live.node = pack::kNoIndex;
-    CHECK(map_scene::tooltip(live, tree, glm::vec3(0.0f), true).title == "Unassigned Category");
 }
 
 TEST_CASE("map scene: the map fades in after it opens, closes or the interface resizes") {
@@ -859,4 +889,69 @@ TEST_CASE("map scene: a trail's line is a whole number of pixels wide") {
         most = std::max(most, vertex.pos.y);
     }
     CHECK(most - least == Approx(2.0f));
+}
+
+TEST_CASE("map menu: a right click on a marker opens its menu, and it stays open") {
+    MenuFrames frames;
+    const glm::vec2 at = frames.onMarker();
+    CHECK_FALSE(frames.run(at, false));
+    CHECK(frames.run(at, true));
+    CHECK(frames.run(at, false));
+}
+
+TEST_CASE("map menu: a right click on a trail opens its category's menu") {
+    MenuFrames frames;
+    // A few pixels off the line, which is drawn 2 px wide.
+    CHECK(frames.run(frames.at(glm::dvec2(450.0, 500.0)) + glm::vec2(0.0f, 3.0f), true));
+    CHECK(frames.menuNode() == 2);
+}
+
+TEST_CASE("map menu: a right click off every marker opens nothing") {
+    MenuFrames frames;
+    CHECK_FALSE(frames.run(glm::vec2(100.0f, 900.0f), true));
+}
+
+TEST_CASE("map menu: a right drag is no click") {
+    ui::map_menu::ClickTracker tracker;
+    tracker.down(glm::ivec2(100, 100));
+    tracker.moved(glm::ivec2(102, 99), true);
+    CHECK(tracker.up(true));
+
+    // The game hid the cursor to turn the camera, and put it back where it went down.
+    tracker.down(glm::ivec2(100, 100));
+    tracker.moved(glm::ivec2(100, 100), false);
+    tracker.moved(glm::ivec2(100, 100), true);
+    CHECK_FALSE(tracker.up(true));
+
+    // Dragged with the cursor shown.
+    tracker.down(glm::ivec2(100, 100));
+    tracker.moved(glm::ivec2(120, 100), true);
+    tracker.moved(glm::ivec2(100, 100), true);
+    CHECK_FALSE(tracker.up(true));
+
+    // Up with the cursor still hidden, and up with no down heard.
+    tracker.down(glm::ivec2(100, 100));
+    CHECK_FALSE(tracker.up(false));
+    CHECK_FALSE(tracker.up(true));
+}
+
+TEST_CASE("map scene: the mouse is over the trail whose line passes nearest it") {
+    runtime::LiveMap live;
+    live.trails.push_back(trail({{400, 0, 500}, {600, 0, 500}}));
+    live.trails.push_back(trail({{400, 0, 510}, {600, 0, 510}})); // 10 px above it on the screen
+    live.trails.push_back(trail({{450, 0, 400}, {550, 0, 400}}));
+    live.trails[2].removed = true; // not drawn, so not under the mouse either
+    const MumbleState state = mumble();
+    const map_scene::MapScene scene = build(live, state);
+    const map::View view = *map::view(state, kDisplay, 1.0f);
+
+    const glm::vec2 on_first = map::project(view, glm::dvec2(500.0, 500.0));
+    const map_scene::Path* over = map_scene::hoveredTrail(scene, view, on_first + glm::vec2(0.0f, -3.0f));
+    REQUIRE(over);
+    CHECK(over->trail == 0);
+    over = map_scene::hoveredTrail(scene, view, on_first + glm::vec2(0.0f, -7.0f));
+    REQUIRE(over);
+    CHECK(over->trail == 1);
+    CHECK(map_scene::hoveredTrail(scene, view, on_first + glm::vec2(0.0f, 20.0f)) == nullptr);
+    CHECK(map_scene::hoveredTrail(scene, view, map::project(view, glm::dvec2(500.0, 600.0))) == nullptr);
 }

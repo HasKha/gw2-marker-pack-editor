@@ -43,4 +43,11 @@ void openInBrowser(const std::string& url) {
     if (!converted.empty()) ShellExecuteW(nullptr, L"open", converted.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
 }
 
+bool cursorVisible() {
+    CURSORINFO info{};
+    info.cbSize = sizeof(info);
+    if (!GetCursorInfo(&info)) return true;
+    return (info.flags & CURSOR_SHOWING) != 0;
+}
+
 } // namespace viewer::desktop

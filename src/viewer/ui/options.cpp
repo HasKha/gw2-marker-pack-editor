@@ -259,8 +259,8 @@ bool drawMaps(settings::Settings* settings, ImTextureID above, ImTextureID below
     changed |= ImGui::Checkbox("Show tooltips", &settings->map_tooltips);
     if (ImGui::IsItemHovered()) {
         ImGui::SetTooltip(
-            "Hold Shift to see a marker's categories instead.\n"
-            "Right-click a marker on the map to hide its category.");
+            "A marker's name and how far away it is.\n"
+            "Right-click a marker on the map to turn its categories on or off.");
     }
     changed |= dpiScalingCombo(settings);
     style::endDisabled();

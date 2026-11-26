@@ -6,6 +6,7 @@
 #include <wrl/client.h>
 
 #include <windows.h>
+#include <windowsx.h>
 
 #include <atomic>
 #include <chrono>
@@ -85,6 +86,9 @@ std::atomic<bool> all_markers_requested{false};
 InteractKey interact_key;
 std::atomic<bool> interact_pressed{false};
 std::atomic<bool> escape_released{false};
+// A right click, for the map's marker menu: ImGui never sees one over the map (ClickTracker).
+ui::map_menu::ClickTracker right_click; // window thread only
+std::atomic<bool> right_clicked{false};
 
 constexpr const char* kMenuPopup = "##marker_pack_menu";
 const std::vector<char> kNoNodes;
@@ -330,14 +334,23 @@ void drawNexusMenuItems() {
     session->drawItems(false);
 }
 
-// Hears the interact key and Escape, and passes both on: the game interacts with what it has
-// in front of it as well, as it does with Blish HUD running. Reaches nothing of the session.
+// Where a mouse message puts the cursor, in the game window's client pixels.
+glm::ivec2 cursorAt(LPARAM flags) {
+    return glm::ivec2(GET_X_LPARAM(flags), GET_Y_LPARAM(flags));
+}
+
+// Hears the interact key, Escape and the right click, and passes them all on: the game interacts
+// with what it has in front of it as well, as it does with Blish HUD running, and FlatMap does
+// not block a right click either. Reaches nothing of the session.
 UINT onWndProc(HWND window, UINT message, WPARAM key, LPARAM flags) {
     // The editor first: a click it picks a marker with is not the game's.
     if (editor.wnd_proc && editor.wnd_proc(window, message, key, flags) == 0) return 0;
     const bool first_press = (flags & (LPARAM{1} << 30)) == 0;
     if (message == WM_KEYDOWN && first_press && interact_key.matches(key)) interact_pressed = true;
     if (message == WM_KEYUP && key == VK_ESCAPE) escape_released = true;
+    if (message == WM_RBUTTONDOWN) right_click.down(cursorAt(flags));
+    if (message == WM_MOUSEMOVE) right_click.moved(cursorAt(flags), desktop::cursorVisible());
+    if (message == WM_RBUTTONUP && right_click.up(desktop::cursorVisible())) right_clicked = true;
     return message;
 }
 
@@ -728,6 +741,8 @@ Maps::Frame Session::mapFrame(const TextureLookup& texture) {
 // The map's tooltip and menu, over what was published this frame. None on the compass while the
 // full map is up or MumbleLink's fields are still its, nor on the full map while it zooms.
 void Session::drawMapMenu() {
+    // Taken every frame, so a click no menu could open on is not kept for a later one.
+    const bool clicked = right_clicked.exchange(false);
     const std::shared_ptr<const map_scene::MapScene> scene = map_scene::published(mumble_state_.is_map_open);
     if (!scene || scene->full_map != mumble_state_.is_map_open || scene->zoom != 1.0f || scene->keep_compass) return;
     const ImVec2 display = ImGui::GetIO().DisplaySize;
@@ -743,6 +758,7 @@ void Session::drawMapMenu() {
     context.states = &states_.categories;
     context.player = mumble_state_.player_position;
     context.tooltips = persisted_.map_tooltips;
+    context.right_clicked = clicked;
     context.copy = [this](const std::string& text) { setClipboard(text, "Copied: " + text); };
     if (ui::map_menu::draw(context, &map_menu_view_)) saveStates();
 }

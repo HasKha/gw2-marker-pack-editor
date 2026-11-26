@@ -28,6 +28,7 @@
 #include "pack/writer.h"
 #include "pack/xml_reader.h"
 #include "util/path_text.h"
+#include "viewer/desktop.h"
 #include "viewer/game/camera.h"
 #include "viewer/game/rtapi.h"
 #include "viewer/live/edited.h"
@@ -82,17 +83,6 @@ editor::ClickMods viewportMods() {
     return pending_select_additive.load() ? editor::ClickMods::Toggle : editor::ClickMods::Replace;
 }
 
-// True only when the OS cursor is actually on screen. Nexus stops updating ImGui's
-// MousePos while the cursor is hidden (UiInput.cpp), so during mouselook the last known
-// position lingers and would otherwise let a camera drag "click" whatever it was last
-// pointing at.
-bool isCursorVisible() {
-    CURSORINFO info{};
-    info.cbSize = sizeof(info);
-    if (!GetCursorInfo(&info)) return true;
-    return (info.flags & CURSOR_SHOWING) != 0;
-}
-
 // A click on nothing clears the selection, but a left drag on nothing turns the camera, so it is
 // decided when the button comes back up. Down and up positions cannot tell them apart: Nexus's
 // `MouseResetFix` puts the cursor back where it went down. The cursor going hidden (mouselook)
@@ -105,7 +95,7 @@ UINT trackDeselectClick(UINT message) {
     switch (message) {
     case WM_MOUSEMOVE: {
         if (!deselect_armed) break;
-        if (!isCursorVisible()) { // the game took the mouse — this is a camera drag
+        if (!viewer::desktop::cursorVisible()) { // the game took the mouse — this is a camera drag
             deselect_armed = false;
             break;
         }
@@ -117,7 +107,7 @@ UINT trackDeselectClick(UINT message) {
         break;
     }
     case WM_LBUTTONUP:
-        if (deselect_armed && isCursorVisible()) pending_deselect.store(true);
+        if (deselect_armed && viewer::desktop::cursorVisible()) pending_deselect.store(true);
         deselect_armed = false;
         break;
     default: break;
@@ -135,7 +125,7 @@ UINT onWndProc(HWND, UINT message, WPARAM key_state, LPARAM) {
     deselect_armed = false;
     if (!picking.load()) return 1;
     if (mouse_over_ui.load()) return 1; // an addon window owns this click
-    if (!isCursorVisible()) return 1;
+    if (!viewer::desktop::cursorVisible()) return 1;
 
     // A trail point handle wins over the marker behind it: the handles are small, only the
     // open trail has them, and they are drawn precisely to be aimed at.

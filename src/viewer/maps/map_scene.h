@@ -73,6 +73,7 @@ struct Line {
 // One trail's lines, and the continent box around them, to skip a trail off the map whole.
 struct Path {
     size_t layer = 0; // whose TrailLines: MapScene::trails[layer]
+    size_t trail = 0; // into that layer's LiveMap::trails
     size_t first = 0; // into TrailLines::lines
     size_t count = 0;
     glm::dvec2 min{0.0};
@@ -264,15 +265,19 @@ void draw(ImDrawList* list, const MapScene& scene, const map::View& view, float 
 // The icon under `mouse`, the nearest one drawn last; null when none is.
 const Icon* hovered(const MapScene& scene, const map::View& view, glm::vec2 mouse);
 
-// What the map's tooltip says of a marker: FlatMap.UpdateTooltip. Empty `title` for none.
+// The trail whose line passes nearest `mouse`, within a few pixels of the line's edge; of two as
+// near, the one drawn last. Null when none does. Every line drawn is looked at, as many as a frame
+// draws: for a click, not every frame.
+const Path* hoveredTrail(const MapScene& scene, const map::View& view, glm::vec2 mouse);
+
+// What the map's tooltip says of a marker: its name, and how far away, above or below it is.
+// Empty `title` for none. The categories it sits in are the right-click menu's.
 struct Tooltip {
     std::string title;
-    std::string description;
+    std::string distance;
 };
 
-// The tip name and description, the categories it sits in, short, and how far away, above or below it is; with
-// `category_path`, the whole category chain instead, as Pathing shows with Shift held.
-Tooltip tooltip(const runtime::LiveMarker& marker, const registry::CategoryTree& tree, const glm::vec3& player, bool category_path);
+Tooltip tooltip(const runtime::LiveMarker& marker, const glm::vec3& player);
 
 // The top left corner of a tooltip `size` big for the mouse at `mouse`, on a `display` that
 // size. The game's cursor hangs down and right of its tip, by a size nothing reports and many
