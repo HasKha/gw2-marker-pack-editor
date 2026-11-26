@@ -3,7 +3,7 @@
 # imgui or the game. Keeping this layer standalone is what lets markus_pack_test and markus_probe
 # exercise it without launching GW2.
 add_library(markus_pack STATIC)
-markus_target_sources(markus_pack)
+markus_target(markus_pack)
 
 target_include_directories(markus_pack PUBLIC "${PROJECT_SOURCE_DIR}/src")
 target_link_libraries(markus_pack PUBLIC

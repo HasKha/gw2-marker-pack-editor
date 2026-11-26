@@ -155,6 +155,14 @@ struct MapScene {
     // The game's above and below images, drawn on an icon's corner; none drawn while null.
     ImTextureID above = nullptr;
     ImTextureID below = nullptr;
+
+    // What building it works in, kept with it so that a recycled scene builds without allocating.
+    // Never read once it is built.
+    struct Workspace {
+        std::vector<DepthKey> keys; // the icons' sort
+        std::vector<Icon> sorted; // the icons in that order, swapped in for them
+    };
+    Workspace workspace;
 };
 
 // Pathing's fade after the map opens or closes, or the interface is resized: 0.65 s from

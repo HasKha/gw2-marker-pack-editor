@@ -857,7 +857,7 @@ TEST_CASE("the world is drawn at WORLD_FINISHED with the map open, under it", "[
 
     Mumble::Data mumble{};
     mumble.Context.IsMapOpen = 1;
-    viewer::good_render_sink::load(&mumble);
+    const viewer::good_render_sink::Subscription subscription(&mumble);
     viewer::good_render_sink::takeDrawn();
 
     const good_render::Camera moment_camera = momentCamera(test_camera::axisCamera());
@@ -879,7 +879,6 @@ TEST_CASE("the world is drawn at WORLD_FINISHED with the map open, under it", "[
     CHECK(drawn.occluded);
     CHECK(drawn.over);
 
-    viewer::good_render_sink::unload();
     viewer::publish(nullptr);
 }
 
@@ -912,7 +911,7 @@ TEST_CASE("with the full map up, BEFORE_WINDOWS draws the minimap on its compass
     mumble.Context.Compass.Scale = 1.0f;
     mumble.Context.Compass.Center.X = 500.0f;
     mumble.Context.Compass.Center.Y = 500.0f;
-    viewer::good_render_sink::load(&mumble);
+    const viewer::good_render_sink::Subscription subscription(&mumble);
     viewer::good_render_sink::takeDrawn();
 
     viewer::test::DrawListFixture fixture;
@@ -933,7 +932,6 @@ TEST_CASE("with the full map up, BEFORE_WINDOWS draws the minimap on its compass
     CHECK(drawn.map);
     CHECK_FALSE(drawn.world);
 
-    viewer::good_render_sink::unload();
     viewer::map_scene::publish(nullptr, nullptr);
 }
 

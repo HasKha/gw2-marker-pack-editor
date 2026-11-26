@@ -90,8 +90,7 @@ LoadedPack loadPack(const std::filesystem::path& path) {
     std::unique_ptr<pack::DataSource> source = pack::open(path, &loaded.error);
     if (!source) return loaded;
 
-    pack::Pack model;
-    if (!pack::loadPack(*source, &model, &loaded.error)) return loaded;
+    pack::Pack model = pack::loadPack(*source);
     loaded.source = std::move(source);
 
     for (const std::string& key : loaded.source->entriesWithExtension(".lua")) {

@@ -26,11 +26,6 @@ constexpr int32_t kMapId = 15;
 // A pack with nothing in it but one root category, the way New Pack builds it. No source:
 // everything it holds is a pending asset, which is the state a freshly created trail is in.
 void startPack(editor::State& state) {
-    undo::clear();
-    resources::setSource(nullptr);
-    resources::setPendingAssets(&state.pack);
-    resources::waitForReads();
-
     state.pack = pack::createPack("markers.xml", "testpack", "Test Pack");
     REQUIRE_FALSE(state.pack.categories.empty());
     state.rebuildIndex();
@@ -46,8 +41,8 @@ std::string trailDataOf(const editor::State& state, size_t pathable) {
 // What marker_editor::render does every frame, minus the drawing: let the open trail follow
 // the selection, once what earlier frames asked the worker for has been read.
 void frame(editor::State& state) {
-    resources::waitForReads();
-    undo::beginFrame();
+    state.resources.waitForReads();
+    undo::beginFrame(state);
     trail_edit::followSelection(state);
 }
 
@@ -87,28 +82,28 @@ TEST_CASE("selecting the other trail opens the other trail's points", "[trail]")
 
     // addTrail leaves the second one selected.
     frame(state);
-    REQUIRE(trail_edit::isOpen());
-    REQUIRE(trail_edit::pathable() == second);
+    REQUIRE(trail_edit::isOpen(state));
+    REQUIRE(trail_edit::pathable(state) == second);
 
     trail_edit::insertPoint(state, pack::kNoIndex, glm::vec3(1.0f, 2.0f, 3.0f));
     trail_edit::insertPoint(state, pack::kNoIndex, glm::vec3(4.0f, 5.0f, 6.0f));
-    CHECK(trail_edit::pointCount() == 2);
+    CHECK(trail_edit::pointCount(state) == 2);
 
     state.selection.set(editor::NodeRef{editor::NodeKind::Pathable, first});
     frame(state);
 
-    CHECK(trail_edit::pathable() == first);
-    CHECK(trail_edit::path() == pack::normalizePath(trailDataOf(state, first)));
+    CHECK(trail_edit::pathable(state) == first);
+    CHECK(trail_edit::path(state) == pack::normalizePath(trailDataOf(state, first)));
     // The first trail was never given points; showing the second one's here is the bug
     // this case exists for.
-    CHECK(trail_edit::pointCount() == 0);
+    CHECK(trail_edit::pointCount(state) == 0);
 
     state.selection.set(editor::NodeRef{editor::NodeKind::Pathable, second});
     frame(state);
 
-    CHECK(trail_edit::pathable() == second);
-    CHECK(trail_edit::pointCount() == 2);
-    CHECK(trail_edit::point(0) == glm::vec3(1.0f, 2.0f, 3.0f));
+    CHECK(trail_edit::pathable(state) == second);
+    CHECK(trail_edit::pointCount(state) == 2);
+    CHECK(trail_edit::point(state, 0) == glm::vec3(1.0f, 2.0f, 3.0f));
 
     trail_edit::close(state);
 }
@@ -123,7 +118,7 @@ TEST_CASE("a trail that cannot be opened does not leave the last one showing", "
     REQUIRE(good != pack::kNoIndex);
     frame(state);
     trail_edit::insertPoint(state, pack::kNoIndex, glm::vec3(1.0f, 2.0f, 3.0f));
-    REQUIRE(trail_edit::pointCount() == 1);
+    REQUIRE(trail_edit::pointCount(state) == 1);
 
     const size_t broken = pathable_edit::addTrail(state, kMapId);
     REQUIRE(broken != pack::kNoIndex);
@@ -133,15 +128,15 @@ TEST_CASE("a trail that cannot be opened does not leave the last one showing", "
     std::vector<uint8_t> bytes(8, 0);
     bytes[0] = 3;
     state.pack.addAsset(broken_path, bytes);
-    resources::forget(broken_path);
+    state.resources.forget(broken_path);
 
     state.selection.set(editor::NodeRef{editor::NodeKind::Pathable, broken});
     // Several frames: a read that is merely over budget must still be retried.
     for (int i = 0; i < 4; ++i) frame(state);
 
-    CHECK_FALSE(trail_edit::isOpen());
-    CHECK_FALSE(trail_edit::pathable() == good);
-    CHECK(trail_edit::pointCount() == 0);
+    CHECK_FALSE(trail_edit::isOpen(state));
+    CHECK_FALSE(trail_edit::pathable(state) == good);
+    CHECK(trail_edit::pointCount(state) == 0);
 
     trail_edit::close(state);
 }
@@ -155,15 +150,13 @@ TEST_CASE("two trails in a real pack's category get their own .trl", "[trail]") 
     }
 
     editor::State state;
-    undo::clear();
 
     std::string error;
     std::unique_ptr<pack::DataSource> source = pack::open(folder, &error);
     REQUIRE(source);
-    REQUIRE(pack::loadPack(*source, &state.pack, &error));
-    resources::setSource(std::move(source));
-    resources::setPendingAssets(&state.pack);
-    resources::waitForReads();
+    state.pack = pack::loadPack(*source);
+    state.resources.setSource(std::move(source));
+    state.resources.waitForReads();
     state.rebuildIndex();
     state.loaded = true;
 
@@ -187,9 +180,6 @@ TEST_CASE("two trails in a real pack's category get their own .trl", "[trail]") 
     INFO("first  " << trailDataOf(state, first));
     INFO("second " << trailDataOf(state, second));
     CHECK(trailDataOf(state, first) != trailDataOf(state, second));
-
-    resources::setSource(nullptr);
-    resources::setPendingAssets(nullptr);
 }
 
 // The report's flow, end to end: lay out one trail, lay out a second, then go back to the
@@ -200,14 +190,12 @@ TEST_CASE("laying out a second trail leaves the first one's points alone", "[tra
     if (folder.empty()) SKIP("No folder pack: set MARKUS_TEST_FOLDER_PACK");
 
     editor::State state;
-    undo::clear();
 
     std::string error;
     std::unique_ptr<pack::DataSource> source = pack::open(folder, &error);
     REQUIRE(source);
-    REQUIRE(pack::loadPack(*source, &state.pack, &error));
-    resources::setSource(std::move(source));
-    resources::setPendingAssets(&state.pack);
+    state.pack = pack::loadPack(*source);
+    state.resources.setSource(std::move(source));
     state.rebuildIndex();
     state.loaded = true;
 
@@ -224,28 +212,26 @@ TEST_CASE("laying out a second trail leaves the first one's points alone", "[tra
     const size_t first = pathable_edit::addTrail(state, kMapId);
     REQUIRE(first != pack::kNoIndex);
     for (int i = 0; i < 3; ++i) frame(state);
-    REQUIRE(trail_edit::pathable() == first);
+    REQUIRE(trail_edit::pathable(state) == first);
     trail_edit::insertPoint(state, pack::kNoIndex, glm::vec3(10.0f, 0.0f, 10.0f));
     trail_edit::insertPoint(state, pack::kNoIndex, glm::vec3(20.0f, 0.0f, 20.0f));
-    REQUIRE(trail_edit::pointCount() == 2);
+    REQUIRE(trail_edit::pointCount(state) == 2);
 
     const size_t second = pathable_edit::addTrail(state, kMapId);
     REQUIRE(second != pack::kNoIndex);
     for (int i = 0; i < 3; ++i) frame(state);
     INFO("first  " << trailDataOf(state, first));
     INFO("second " << trailDataOf(state, second));
-    REQUIRE(trail_edit::pathable() == second);
-    CHECK(trail_edit::pointCount() == 0);
+    REQUIRE(trail_edit::pathable(state) == second);
+    CHECK(trail_edit::pointCount(state) == 0);
     trail_edit::insertPoint(state, pack::kNoIndex, glm::vec3(30.0f, 0.0f, 30.0f));
 
     state.selection.set(editor::NodeRef{editor::NodeKind::Pathable, first});
     for (int i = 0; i < 3; ++i) frame(state);
-    CHECK(trail_edit::pathable() == first);
-    CHECK(trail_edit::pointCount() == 2);
+    CHECK(trail_edit::pathable(state) == first);
+    CHECK(trail_edit::pointCount(state) == 2);
 
     trail_edit::close(state);
-    resources::setSource(nullptr);
-    resources::setPendingAssets(nullptr);
 }
 
 // Renaming a trail's traildata is how a trail gets named — it is the only name the tree
@@ -258,10 +244,10 @@ TEST_CASE("renaming traildata takes the trail's points with it", "[trail]") {
     const size_t first = pathable_edit::addTrail(state, kMapId);
     REQUIRE(first != pack::kNoIndex);
     frame(state);
-    REQUIRE(trail_edit::pathable() == first);
+    REQUIRE(trail_edit::pathable(state) == first);
     trail_edit::insertPoint(state, pack::kNoIndex, glm::vec3(1.0f, 2.0f, 3.0f));
     trail_edit::insertPoint(state, pack::kNoIndex, glm::vec3(4.0f, 5.0f, 6.0f));
-    REQUIRE(trail_edit::pointCount() == 2);
+    REQUIRE(trail_edit::pointCount(state) == 2);
 
     const std::string old_path = trailDataOf(state, first);
     const editor::NodeRef node{editor::NodeKind::Pathable, first};
@@ -277,10 +263,10 @@ TEST_CASE("renaming traildata takes the trail's points with it", "[trail]") {
     CHECK(state.pack.findAddedAsset(old_path) == nullptr);
 
     frame(state);
-    CHECK(trail_edit::isOpen());
-    CHECK(trail_edit::path() == pack::normalizePath(renamed));
-    CHECK(trail_edit::pointCount() == 2);
-    CHECK(trail_edit::point(1) == glm::vec3(4.0f, 5.0f, 6.0f));
+    CHECK(trail_edit::isOpen(state));
+    CHECK(trail_edit::path(state) == pack::normalizePath(renamed));
+    CHECK(trail_edit::pointCount(state) == 2);
+    CHECK(trail_edit::point(state, 1) == glm::vec3(4.0f, 5.0f, 6.0f));
 
     trail_edit::close(state);
 }
@@ -297,7 +283,7 @@ TEST_CASE("pointing a trail at existing data leaves that data alone", "[trail]")
     REQUIRE(second != pack::kNoIndex);
 
     frame(state);
-    REQUIRE(trail_edit::pathable() == second);
+    REQUIRE(trail_edit::pathable(state) == second);
     trail_edit::insertPoint(state, pack::kNoIndex, glm::vec3(7.0f, 8.0f, 9.0f));
 
     const std::string first_path = trailDataOf(state, first);
@@ -337,7 +323,7 @@ TEST_CASE("undo takes a traildata rename and its .trl back together", "[trail]")
         pathable_edit::attributeRenamed(state, node, "traildata", old_path);
     }
 
-    REQUIRE(undo::canUndo());
+    REQUIRE(undo::canUndo(state));
     undo::undo(state);
 
     CHECK(trailDataOf(state, first) == old_path);
@@ -345,8 +331,8 @@ TEST_CASE("undo takes a traildata rename and its .trl back together", "[trail]")
     CHECK(state.pack.findAddedAsset(renamed) == nullptr);
 
     frame(state);
-    CHECK(trail_edit::isOpen());
-    CHECK(trail_edit::pointCount() == 1);
+    CHECK(trail_edit::isOpen(state));
+    CHECK(trail_edit::pointCount(state) == 1);
 
     trail_edit::close(state);
 }
@@ -396,19 +382,19 @@ private:
 TEST_CASE("a new source does not wait behind the old one's queued reads", "[trail][regression]") {
     Reads reads;
     std::promise<void> disk;
-    resources::setPendingAssets(nullptr);
-    resources::setSource(std::make_unique<HeldSource>(disk.get_future().share(), &reads));
+    resources::Cache cache(nullptr);
+    cache.setSource(std::make_unique<HeldSource>(disk.get_future().share(), &reads));
 
     // The first read holds the worker, so the rest are still queued when the pack goes.
     bool deferred = false;
-    resources::trail("first.trl", &deferred);
+    cache.trail("first.trl", &deferred);
     REQUIRE(deferred);
     reads.first.get_future().wait();
-    resources::trail("second.trl");
-    resources::trailColour("icon.png");
-    resources::setSource(nullptr);
+    cache.trail("second.trl");
+    cache.trailColour("icon.png");
+    cache.setSource(nullptr);
     disk.set_value();
-    resources::waitForReads();
+    cache.waitForReads();
 
     std::lock_guard<std::mutex> lock(reads.mutex);
     CHECK(reads.paths == std::vector<std::string>{"first.trl"});

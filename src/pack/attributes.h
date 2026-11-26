@@ -4,6 +4,7 @@
 
 #include <array>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -84,15 +85,15 @@ std::string attributeKey(std::string_view name);
 bool isAttributeKey(std::string_view name);
 
 // ── Value parsing ─────────────────────────────────────────────────────────────
-// All are permissive in the same places the reference implementations are, and all
-// leave *out untouched and return false when the text does not parse.
+// All are permissive in the same places the reference implementations are, and all answer
+// nothing when the text does not parse.
 
-bool parseInt(std::string_view text, int* out);
-bool parseFloat(std::string_view text, float* out);
-bool parseBool(std::string_view text, bool* out);
-bool parseColor(std::string_view text, uint32_t* out_argb);
-bool parseVec3(std::string_view text, glm::vec3* out);
-bool parseGuid(std::string_view text, std::array<uint8_t, 16>* out);
+[[nodiscard]] std::optional<int> parseInt(std::string_view text);
+[[nodiscard]] std::optional<float> parseFloat(std::string_view text);
+[[nodiscard]] std::optional<bool> parseBool(std::string_view text);
+[[nodiscard]] std::optional<uint32_t> parseColor(std::string_view text); // ARGB
+[[nodiscard]] std::optional<glm::vec3> parseVec3(std::string_view text);
+[[nodiscard]] std::optional<std::array<uint8_t, 16>> parseGuid(std::string_view text);
 
 std::string guidToBase64(const std::array<uint8_t, 16>& guid);
 

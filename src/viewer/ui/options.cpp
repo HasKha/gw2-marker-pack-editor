@@ -2,6 +2,7 @@
 
 #include <IconsFontAwesome7.h>
 #include <imgui.h>
+#include <imgui_stdlib.h>
 
 #include <algorithm>
 #include <iterator>
@@ -266,7 +267,7 @@ bool drawMaps(settings::Settings* settings, ImTextureID above, ImTextureID below
     return changed;
 }
 
-KeyAction drawApiKey(const std::string& registered, char* field, size_t field_size, bool checking, const std::string& status) {
+KeyAction drawApiKey(const std::string& registered, std::string* field, bool checking, const std::string& status) {
     KeyAction action = KeyAction::None;
 
     // How a key is made, the applications page's address a link. When the line has no room
@@ -312,7 +313,7 @@ KeyAction drawApiKey(const std::string& registered, char* field, size_t field_si
         std::max(ImGui::GetContentRegionAvail().x - button - ImGui::GetStyle().ItemSpacing.x, ImGui::GetFontSize() * 8.0f));
     if (registered.empty()) {
         const ImGuiInputTextFlags flags = ImGuiInputTextFlags_EnterReturnsTrue | (checking ? ImGuiInputTextFlags_ReadOnly : 0);
-        const bool entered = ImGui::InputText("##api_key", field, field_size, flags);
+        const bool entered = ImGui::InputText("##api_key", field, flags);
         ImGui::SameLine();
         if ((ImGui::Button("Register", ImVec2(button, 0.0f)) || entered) && !checking) action = KeyAction::Register;
     } else {

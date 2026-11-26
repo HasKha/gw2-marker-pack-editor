@@ -48,6 +48,25 @@ Each step is a short block under a comment saying what it does.
   null check that returns.
 - **No early returns or `continue` where a branch does the job**, unless the alternative reads worse.
 
+## C++
+
+- **C++20 on MSVC, at /W4 with warnings as errors.** A parameter a callback has to take but does not use
+  goes unnamed.
+- **No mutable state at file scope.** It belongs to the object whose lifetime it shares
+  ([architecture.md](architecture.md#who-holds-what), which lists the few exceptions). What crosses
+  threads is an atomic, with a comment naming the threads. A list kept only so a build does not allocate
+  goes with what is built, as `Scene::Workspace` does.
+- **Return a value, not an out-parameter.** A result that may be missing is `std::optional`. An
+  out-parameter is for a buffer the caller reuses, or an error string beside a `bool`.
+- **`[[nodiscard]]` on a function whose answer says whether it worked**, and on a parser. A failure that
+  really does not matter is dropped with `static_cast<void>` under a comment saying why.
+- **Text is `std::string`.** An imgui field takes one through `imgui_stdlib.h`, and text is put together
+  with `std::format`; `std::to_chars` into a stack buffer where the shortest round trip is the point. A fixed
+  buffer only where Win32 asks for one.
+- **A COM object is held in `Microsoft::WRL::ComPtr`**, never released by hand.
+- **Members are torn down in reverse declaration order**, so what other members' destructors still use is
+  declared first.
+
 ## UI
 
 - **imgui is 1.80**, Nexus's, and cannot be upgraded. It predates `BeginDisabled`, modern tables and much

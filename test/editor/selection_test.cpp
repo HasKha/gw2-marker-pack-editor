@@ -1,7 +1,7 @@
 // Selection: the rules every window shares about what a click means and what stops being
 // selected when the thing it named goes away. None of this needs imgui, Nexus or a real
-// pack — editor::State is plain data and the rules are plain functions over it, which is
-// the whole reason they were pulled out of the windows in the first place.
+// pack — the rules are plain functions over editor::State, which is the whole reason they
+// were pulled out of the windows in the first place.
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -35,8 +35,7 @@ std::vector<NodeRef> rowsBetween(const std::vector<NodeRef>& rows, NodeRef ancho
 
 // A pack with one root category and three markers under it, which is enough for every
 // question here: a tombstone keeps its slot, so what matters is that indexes stay put.
-editor::State threeMarkers() {
-    editor::State state;
+void threeMarkers(editor::State& state) {
     state.pack = pack::createPack("test.xml", "test", "Test");
     REQUIRE(!state.pack.categories.empty());
 
@@ -49,7 +48,6 @@ editor::State threeMarkers() {
 
     state.rebuildIndex();
     state.loaded = true;
-    return state;
 }
 
 } // namespace
@@ -156,7 +154,8 @@ TEST_CASE("clickMods reads shift ahead of ctrl") {
 }
 
 TEST_CASE("deleting a marker drops only that marker from the selection") {
-    editor::State state = threeMarkers();
+    editor::State state;
+    threeMarkers(state);
     state.selection.setAll({path(0), path(1), path(2)});
 
     state.pack.removePathable(1);
@@ -169,7 +168,8 @@ TEST_CASE("deleting a marker drops only that marker from the selection") {
 }
 
 TEST_CASE("deleting a category takes its markers out of the selection with it") {
-    editor::State state = threeMarkers();
+    editor::State state;
+    threeMarkers(state);
     state.selection.setAll({cat(0), path(0), path(1), path(2)});
 
     std::vector<size_t> gone;
@@ -219,7 +219,8 @@ TEST_CASE("pruning points drops the ones past the end of the trail") {
 
 TEST_CASE("points and nodes are separate selections") {
     // Selecting a point must not evict its trail from the details window.
-    editor::State state = threeMarkers();
+    editor::State state;
+    threeMarkers(state);
     const NodeRef trail = path(0);
 
     state.selection.set(trail);

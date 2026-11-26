@@ -28,7 +28,8 @@ goal.
 
 ```
 src/viewer/
-  viewer.*       lifecycle, the frame's order, the options page's sections, EditorHooks
+  viewer.*       the Session, load to unload: the frame's order, the options page's sections,
+                 EditorHooks; its members' order is its teardown
   settings.*     viewer.json: menu places, and Pathing's settings by its names
   store.*        category toggles, script Storage
   guid.*         Pathing's Guid: the pack's base64, or an MD5 of other text

@@ -30,7 +30,7 @@ Loaded loadPath(const std::filesystem::path& path) {
     std::string error;
     out.source = pack::open(path, &error);
     REQUIRE(out.source != nullptr);
-    REQUIRE(pack::loadPack(*out.source, &out.model, &error));
+    out.model = pack::loadPack(*out.source);
     return out;
 }
 

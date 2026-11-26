@@ -4,7 +4,7 @@
 # who never turns editing on runs none of the editor's code. markus_viewer_test linking without
 # the editor holds that at the link, viewer_layering in the source.
 add_library(markus_viewer STATIC)
-markus_target_sources(markus_viewer)
+markus_target(markus_viewer)
 
 target_include_directories(markus_viewer PUBLIC "${PROJECT_SOURCE_DIR}/src")
 target_link_libraries(markus_viewer PUBLIC

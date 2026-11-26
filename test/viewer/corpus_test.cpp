@@ -34,7 +34,7 @@ Loaded load(const std::filesystem::path& path) {
     std::string error;
     out.source = pack::open(path, &error);
     REQUIRE(out.source != nullptr);
-    REQUIRE(pack::loadPack(*out.source, &out.model, &error));
+    out.model = pack::loadPack(*out.source);
 
     return out;
 }
@@ -189,8 +189,7 @@ TEST_CASE("every pack in the corpus holds its invariants", "[corpus]") {
             size_t placeable = 0;
             size_t trails = 0;
             for (const pack::Pathable& pathable : model.pathables) {
-                viewer::MarkerTransform transform;
-                if (viewer::markerTransform(model, pathable, &transform)) ++placeable;
+                if (viewer::markerTransform(model, pathable)) ++placeable;
                 if (pathable.type == pack::PathableType::Trail) ++trails;
             }
             CHECK(baked.markers.size() == placeable);

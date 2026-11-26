@@ -55,8 +55,7 @@ Check ask(std::string_view key, const http::Cancel& cancel);
 class Registration
 {
 public:
-    char* field() { return field_; }
-    size_t fieldSize() const { return sizeof(field_); }
+    std::string* field() { return &field_; }
     bool checking() const { return check_ != nullptr; }
     const std::string& status() const { return status_; }
     void setStatus(std::string status) { status_ = std::move(status); }
@@ -81,7 +80,7 @@ private:
         Check check;
     };
 
-    char field_[128] = {};
+    std::string field_;
     std::unique_ptr<http::Background<Checked>> check_;
     std::string status_;
     std::future<bool> saved_;

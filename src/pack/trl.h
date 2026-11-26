@@ -37,7 +37,7 @@ struct Trail {
 //
 // A file shorter than the 8-byte header yields an empty trail rather than an error, and a
 // trailing partial point is ignored -- both match what the reference reader does.
-bool read(const std::vector<uint8_t>& data, Trail* out, std::string* error);
+[[nodiscard]] bool read(const std::vector<uint8_t>& data, Trail* out, std::string* error);
 
 // Writes the layout above, re-emitting a (0,0,0) terminator between segments.
 std::vector<uint8_t> write(const Trail& trail);

@@ -191,18 +191,18 @@ bool readXmlFile(Pack* pack, size_t file_index) {
     return true;
 }
 
-bool loadPack(const DataSource& source, Pack* out, std::string* error) {
-    *out = Pack{};
+Pack loadPack(const DataSource& source) {
+    Pack loaded;
 
-    out->source_path = source.root();
-    out->from_directory = source.isDirectory();
+    loaded.source_path = source.root();
+    loaded.from_directory = source.isDirectory();
 
     std::vector<std::string> xml_entries = source.entriesWithExtension(".xml");
     // Deterministic order matters: a category declared in two files merges in load order,
     // and neither zip order nor directory-iteration order is guaranteed stable.
     std::sort(xml_entries.begin(), xml_entries.end());
 
-    out->files.reserve(xml_entries.size());
+    loaded.files.reserve(xml_entries.size());
     for (const std::string& entry : xml_entries) {
         XmlFile file;
         file.path = entry;
@@ -212,7 +212,7 @@ bool loadPack(const DataSource& source, Pack* out, std::string* error) {
         std::string text;
         std::string read_error;
         if (!source.readText(entry, &text, &read_error)) {
-            out->addWarning(entry, "Could not read: " + read_error);
+            loaded.addWarning(entry, "Could not read: " + read_error);
             continue;
         }
 
@@ -222,20 +222,20 @@ bool loadPack(const DataSource& source, Pack* out, std::string* error) {
         file.document = std::make_unique<pugi::xml_document>();
         pugi::xml_parse_result result = file.document->load_buffer(text.data(), text.size(), kParseFlags);
         if (!result) {
-            out->addWarning(
+            loaded.addWarning(
                 entry,
                 std::string("XML parse failed: ") + result.description() + " at offset " + std::to_string(result.offset));
             continue;
         }
 
-        out->files.push_back(std::move(file));
+        loaded.files.push_back(std::move(file));
     }
 
-    for (size_t i = 0; i < out->files.size(); ++i) readXmlFile(out, i);
+    for (size_t i = 0; i < loaded.files.size(); ++i) readXmlFile(&loaded, i);
 
-    resolveCategories(out);
+    resolveCategories(&loaded);
 
-    return true;
+    return loaded;
 }
 
 } // namespace pack

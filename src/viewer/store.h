@@ -45,7 +45,7 @@ public:
     void load(const std::filesystem::path& file);
     // The choices as the file holds them, and that written to `file`.
     std::string text() const;
-    bool save(const std::filesystem::path& file) const;
+    [[nodiscard]] bool save(const std::filesystem::path& file) const;
 
 private:
     std::unordered_map<std::string, bool> states_;
@@ -71,7 +71,7 @@ public:
     void load(const std::filesystem::path& file);
     // The values as the file holds them, and that written to `file`.
     std::string text() const;
-    bool save(const std::filesystem::path& file) const;
+    [[nodiscard]] bool save(const std::filesystem::path& file) const;
 
 private:
     std::unordered_map<std::string, std::string> values_;

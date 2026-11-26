@@ -67,16 +67,10 @@ struct Player {
 };
 
 Player playerOf(const MumbleState& mumble) {
-    static std::string last_name;
-    static Guid last_guid = md5Guid("");
-    if (mumble.name != last_name) {
-        last_name = mumble.name;
-        last_guid = md5Guid(last_name);
-    }
     Player player;
     // Blish's (x, z, y) back to the file's (x, y, z).
     player.position = glm::vec3(mumble.player_position.x, mumble.player_position.z, mumble.player_position.y);
-    player.character = last_guid;
+    player.character = md5Guid(mumble.name);
     player.instance = instanceKey(mumble.map_id, mumble.shard_id);
     return player;
 }

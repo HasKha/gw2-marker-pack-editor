@@ -33,7 +33,7 @@ Loaded load(const std::filesystem::path& path) {
     out.source = pack::open(path, &error);
     INFO("opening " << util::pathText(path) << ": " << error);
     REQUIRE(out.source != nullptr);
-    REQUIRE(pack::loadPack(*out.source, &out.model, &error));
+    out.model = pack::loadPack(*out.source);
 
     return out;
 }
@@ -262,7 +262,9 @@ TEST_CASE("a pack saves into a folder with a non-ASCII name", "[save][regression
     // miniz opens a name as UTF-8. "Jörg Łódź": ö in the ANSI code page is not UTF-8, and Ł is
     // in no Western code page, where path::string() throws.
     const corpus::TempDir temp("non_ascii_folder");
-    const std::filesystem::path folder = temp.path() / util::pathFromText("J\xC3\xB6rg \xC5\x81\xC3\xB3" "d\xC5\xBA");
+    const std::filesystem::path folder = temp.path() / util::pathFromText(
+                                                           "J\xC3\xB6rg \xC5\x81\xC3\xB3"
+                                                           "d\xC5\xBA");
     std::filesystem::create_directories(folder);
     const std::filesystem::path target = folder / "pack.zip";
 

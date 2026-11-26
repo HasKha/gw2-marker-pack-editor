@@ -53,8 +53,9 @@ editor uses `viewer/` for the camera, textures and drawing; nothing in `viewer/`
 | `markus_probe` | exe | `test/probe/` — prints and lints a pack |
 | `markus_{http,pack,viewer,editor}_test` | exe | `test/<library>/` — Catch2, linking that library and nothing above it |
 
-One folder per target, defined by its own `CMakeLists.txt`; `markus_target_sources()` in
-`cmake/markus.cmake` takes every source under the folder.
+One folder per target, defined by its own `CMakeLists.txt`; `markus_target()` in
+`cmake/markus.cmake` takes every source under the folder and builds it at /W4 with warnings as errors;
+dependency headers are left out.
 
 **The libraries are layered**: `util` < `http`, `pack` < `viewer` < `editor` < `addon`. Every library has
 all of `src/` as its include root, so `markus_layering()` adds a ctest case per folder, `<folder>_layering`,
@@ -82,14 +83,16 @@ src/
     trl.*              .trl read/write, byte-exact
   viewer/
   editor/
-    marker_editor.*    lifecycle, menu bar, open/save, WndProc, drawing the open pack
-    editor_state.*     State: the open Pack, the two selections, visibility, settings
+    marker_editor.*    Editor: lifecycle, menu bar, open/save, WndProc, drawing the open pack
+    editor_state.*     State: the open Pack, the two selections, visibility, settings, and the
+                       history, open trail and resource cache below
+    node_ref.h         a node of the tree
     pathable_edit.*    creating and deleting markers and categories
-    trail_edit.*       the open trail's working copy
-    undo.*             the undo stack
-    file_dialog.*      NFD on a worker
-    resources.*        icons and .trl read from the pack on demand, on a worker of its own
-    settings.*         settings.json
+    trail_edit.*       the open trail's working copy (open_trail.h) and what changes it
+    undo.*             the undo stack (history.h) and what opens and applies its steps
+    file_dialog.*      FileDialog: NFD on a worker
+    resources.*        Cache: icons and .trl read from the pack on demand, on a worker of its own
+    settings.*         File: settings.json
     ui/                windows.* (the window table), tree_window, property_panel, resource_window,
                        trail_editor
     world/             overlay.* (picking, outlines, point handles), gizmo.*
@@ -97,13 +100,43 @@ test/
   corpus/ probe/ http/ pack/ viewer/ editor/
 ```
 
+## Who holds what
+
+Nexus's callbacks are plain function pointers, so each library is one object behind a static pointer, made
+at load and dropped at unload, with forwarding functions for its callbacks: the viewer's `Session` in
+`viewer.cpp`, the `Editor` in `marker_editor.cpp`. Each owns everything it keeps between frames.
+
+The editor's:
+
+- `editor::State`, what belongs to the open pack: the `Pack`, the selections, the undo `History`, the
+  `OpenTrail`, and the `resources::Cache` that reads the pack's files. The cache points at `State::pack`, so
+  a State cannot be copied or moved; `State::reset` clears all of it but the cache for the next pack.
+- What a window keeps of its own between frames, as a `View` (`property_panel`, `trail_editor`) or as the
+  window itself (`resource_window::Window`). The tree's reveal lives one frame, so `tree_window::update`
+  returns it.
+- The settings file, the file dialog, which windows are shown.
+
+The viewer's `Session` holds, beside its packs and stores, the font atlas (`ui::fonts::Fonts`, current
+while it lives as an ImGui context is, since windows in both libraries draw with it), the GoodRender
+`Subscription`, what a window keeps between frames as its `View` (`pack_catalog`, `map_menu`), and the
+recycled scenes, each with the `Workspace` its build works in.
+
+What is left at file scope is one of three things, each commented as such:
+
+- what crosses threads, as atomics (see `onWndProc` below);
+- what a callback that is handed nothing else has to reach: RTAPI's events' `AddonAPI*`, GoodRender's
+  MumbleLink, the current fonts;
+- what the two libraries share, and so outlives a session: the editor's hooks, `TextureUploads`.
+
+A new piece of state goes with the thing it belongs to.
+
 ## Easy to get wrong
 
 **The open pack is baked per `State::revision`.** Resolving inherited attributes per marker per frame is
 too slow on a 56k-marker pack. Every edit calls `State::touch()`; visibility toggles do not, since they are
 view state and `viewer/live/edited.*` compares the flags itself.
 
-**`resources` decodes a few assets per frame**, so arriving on a map with hundreds of new icons does not
+**`resources::Cache` decodes a few assets per frame**, so arriving on a map with hundreds of new icons does not
 hitch. A miss is cached only when the file is absent; caching "Nexus could not make a texture yet" would
 leave a marker a dot until reload.
 
@@ -123,18 +156,21 @@ it is the window's own (the tree's pending reveal, which is dropped if the tree 
 so an edit active when the selection changes commits onto the new node. `ui::property_panel::draw` pushes
 the primary selection's kind and index; any panel drawing per-selection fields needs the same.
 
-**`onWndProc` runs on the game's message thread.** It hands clicks to the render thread through atomics
-(`pending_select`, `pending_select_point`, the overlay's `hovered_pathable`). What it reads (`state.loaded`,
-`select_in_viewport`, `io.WantCaptureMouse`) is plain: single words that change between frames, where a
-race costs a click one frame late. Anything new read there needs the same look.
+**`onWndProc` runs on the game's message thread**, and the undo and redo binds on one of Nexus's. Neither
+touches the `Editor`: they read and write static atomics in `marker_editor.cpp`, which outlive it. Clicks go
+to the frame (`pending_select`, `pending_select_point`), and what the handler needs of the frame is published
+at its end (`picking`, from the open pack and Select in Viewport, and `mouse_over_ui`, imgui's
+`WantCaptureMouse`, which only the render thread may read), as is the overlay's `hovered_pathable`. Anything
+new the handler reads has to be published the same way.
 
-**`file_dialog::shutdown` joins with the mutex released**: the worker takes it to store its result.
+**`FileDialog`'s destructor joins with the mutex released**: the worker takes it to store its result.
 
 ## Windows
 
 Five, each closable, so the gizmo is never under a big panel: Tree, Details, Toolbar, Trail editor,
 Resources. `editor/ui/windows.*` is a table with a row per window; the View menu and settings come from it.
-The Tree is the main window: closing it ends the session.
+`ui::windows::Shown` is which are on screen, held by the `Editor`. The Tree is the main window: closing it
+ends the session.
 
 - **The menu bar is drawn in each large window** from one `drawMenuBar`. The Toolbar has none; the Trail
   menu is only in the trail editor, since it acts on its state.
@@ -143,7 +179,7 @@ The Tree is the main window: closing it ends the session.
 
 ## Settings compare rather than notify
 
-`settings::update` runs every frame and writes only when a persisted field moved, so no caller has to
+`settings::File::update` runs every frame and writes only when a persisted field moved, so no caller has to
 announce a change. It holds the Settings menu toggles, the gizmo mode, which windows are open and where the
 file browsers start. Nothing about a pack: those belong to the pack, not the editor. Window positions are
 imgui's `imgui.ini`.
@@ -182,9 +218,9 @@ hidden flags, the bake and the trail editor.
 
 The `DataSource` is read-only, so `Pack::added_assets` and `removed_assets` hold changes until a save.
 
-- **`resources` looks at pending adds first.** Nexus returns the existing texture for an identifier it has
-  seen, so changing a path's bytes goes through `resources::forget`, which bumps the generation for a fresh
-  name.
+- **`resources::Cache` looks at pending adds first.** Nexus returns the existing texture for an identifier
+  it has seen, so changing a path's bytes goes through `Cache::forget`, which bumps the generation for a
+  fresh name.
 - **An added file takes its folder's existing spelling**, or a lowercase path would create `data/icons/`
   beside `Data/icons/`.
 - **Only the selected image is previewed**: Nexus never releases a texture.
@@ -192,11 +228,11 @@ The `DataSource` is read-only, so `Pack::added_assets` and `removed_assets` hold
 
 ## The open trail
 
-`trail_edit` holds the open trail's `.trl` as a working copy shared by its window, the gizmo and the
-overlay's handles.
+`State::open_trail` is the open trail's `.trl` as a working copy shared by its window, the gizmo and the
+overlay's handles, read and written through `trail_edit`.
 
 - Points are addressed by a flat index across segments.
-- Every change writes the whole trail into `Pack::added_assets` and calls `resources::forget`; there is no
+- Every change writes the whole trail into `Pack::added_assets` and calls `Cache::forget`; there is no
   separate dirty state.
 - Selecting a trail opens it; selecting anything else or closing the trail editor closes it.
 - `reindex` runs on every shape change and prunes the point selection.

@@ -41,19 +41,20 @@ GridVertex quadVertex(const Camera& camera, const ClippedQuad& quad, const ImVec
 
 } // namespace
 
-bool clipAndProject(const Camera& camera, const glm::vec3 world[4], ClippedQuad* out) {
-    for (int i = 0; i < 4; ++i) out->world[i] = world[i];
-    camera.quadNearDepths(world, out->corner_depth);
+std::optional<ClippedQuad> clipAndProject(const Camera& camera, const glm::vec3 world[4]) {
+    ClippedQuad out;
+    for (int i = 0; i < 4; ++i) out.world[i] = world[i];
+    camera.quadNearDepths(world, out.corner_depth);
 
     glm::vec2 parameter[5]; // where each surviving corner sits in the quad's own (u,v)
-    out->count = clipQuadRegion(out->corner_depth, glm::vec2(0.0f), glm::vec2(1.0f), parameter);
-    if (out->count < 3) return false;
+    out.count = clipQuadRegion(out.corner_depth, glm::vec2(0.0f), glm::vec2(1.0f), parameter);
+    if (out.count < 3) return std::nullopt;
 
-    for (int i = 0; i < out->count; ++i) {
+    for (int i = 0; i < out.count; ++i) {
         // Everything here is at or past the near plane, so the projection cannot fail.
-        if (!camera.project(bilinearPoint(world, parameter[i]), &out->screen[i], &out->depth[i])) return false;
+        if (!camera.project(bilinearPoint(world, parameter[i]), &out.screen[i], &out.depth[i])) return std::nullopt;
     }
-    return true;
+    return out;
 }
 
 int screenCorners(const ClippedQuad& quad, ImVec2 out[5]) {
@@ -184,9 +185,9 @@ void drawScene(ImDrawList* list, const Camera& camera, const Scene& scene, bool 
         if (!item.texture || !(item.occlusion != Occlusion::None ? occluded : over)) continue;
         glm::vec3 corners[4];
         const ImVec2* uv = nullptr;
-        ClippedQuad quad;
-        if (itemCorners(camera, item, corners, &uv) && clipAndProject(camera, corners, &quad)) {
-            drawTexturedQuad(list, camera, item.texture, quad, uv, item.colour);
+        if (!itemCorners(camera, item, corners, &uv)) continue;
+        if (const std::optional<ClippedQuad> quad = clipAndProject(camera, corners)) {
+            drawTexturedQuad(list, camera, item.texture, *quad, uv, item.colour);
         }
     }
 }

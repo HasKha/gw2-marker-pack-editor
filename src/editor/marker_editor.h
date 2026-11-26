@@ -3,6 +3,7 @@
 #include <Mumble.h>
 #include <Nexus.h>
 
+#include "editor/ui/windows.h"
 #include "viewer/viewer.h"
 
 namespace marker_editor {
@@ -20,6 +21,10 @@ void unload();
 
 // Whether the editor runs now.
 bool running();
+
+// Which of the editor's windows are on screen, as the View menu toggles them. Between load and
+// unload only.
+ui::windows::Shown& windows();
 
 // What the viewer drives the editor through: starting it, its frame and its share of the game's
 // messages. Nothing else passes between them.

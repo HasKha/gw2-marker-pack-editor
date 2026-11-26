@@ -3,7 +3,7 @@
 # at all is the proof the viewer stands without the editor. Also the corpus sweep, which
 # checks the format and the bake in one pass over every pack.
 add_executable(markus_viewer_test)
-markus_target_sources(markus_viewer_test)
+markus_target(markus_viewer_test)
 
 target_link_libraries(markus_viewer_test PRIVATE
     markus_viewer

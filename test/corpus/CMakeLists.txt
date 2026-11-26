@@ -12,7 +12,7 @@ set(MARKUS_TEST_FOLDER_PACK "$ENV{USERPROFILE}/Documents/git/gw2-markers"
     CACHE PATH "An unzipped pack, to check a folder source matches the zip built from it")
 
 add_library(markus_corpus STATIC)
-markus_target_sources(markus_corpus)
+markus_target(markus_corpus)
 
 target_include_directories(markus_corpus PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 target_compile_definitions(markus_corpus PRIVATE

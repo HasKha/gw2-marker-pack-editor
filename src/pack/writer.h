@@ -16,7 +16,7 @@ constexpr const char* kIndent = "  ";
 // still holds everything else, and the BOM and CRLF reapplied from FileFormat. Whitespace inside
 // tags is lost, so a pack reformats once on its first save; a serializer rather than a splice into
 // the original bytes is what lets nodes be added and removed.
-bool writeXmlFile(const Pack& pack, size_t file_index, std::string* out, std::string* error);
+[[nodiscard]] bool writeXmlFile(const Pack& pack, size_t file_index, std::string* out, std::string* error);
 
 struct SaveResult {
     bool ok = false;
@@ -35,7 +35,7 @@ struct SaveResult {
 SaveResult buildZip(const Pack& pack, const DataSource* source, const std::filesystem::path& target);
 
 // Moves `<target>.writing` over `target`, keeping any previous file as `<target>.bak`.
-bool commitZip(const std::filesystem::path& target, std::string* error);
+[[nodiscard]] bool commitZip(const std::filesystem::path& target, std::string* error);
 
 // Throws away a build that will not be committed.
 void abortZip(const std::filesystem::path& target);

@@ -141,9 +141,10 @@ void State::reset() {
     pack = pack::Pack{};
     loaded = false;
     dirty = false;
-    status.clear();
     selection.clear();
     points.close();
+    history = undo::History{};
+    open_trail = trail_edit::OpenTrail{};
     reveal_pending = false;
     reveal_target = NodeRef{};
     pathables_by_category.clear();

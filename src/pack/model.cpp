@@ -101,25 +101,19 @@ const std::string* Pack::effectiveValue(const Category& category, std::string_vi
 float Pack::effectiveFloat(const Pathable& pathable, std::string_view key) const {
     const float fallback = defaultFloat(key);
     const std::string* text = effectiveValue(pathable, key);
-    float value = fallback;
-    if (text && parseFloat(*text, &value)) return value;
-    return fallback;
+    return text ? parseFloat(*text).value_or(fallback) : fallback;
 }
 
 bool Pack::effectiveBool(const Pathable& pathable, std::string_view key) const {
     const bool fallback = defaultBool(key);
     const std::string* text = effectiveValue(pathable, key);
-    bool value = fallback;
-    if (text && parseBool(*text, &value)) return value;
-    return fallback;
+    return text ? parseBool(*text).value_or(fallback) : fallback;
 }
 
 int Pack::effectiveInt(const Pathable& pathable, std::string_view key) const {
     const int fallback = defaultInt(key);
     const std::string* text = effectiveValue(pathable, key);
-    int value = fallback;
-    if (text && parseInt(*text, &value)) return value;
-    return fallback;
+    return text ? parseInt(*text).value_or(fallback) : fallback;
 }
 
 size_t Pack::countByType(PathableType type) const {

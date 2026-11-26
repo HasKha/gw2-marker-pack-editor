@@ -2,81 +2,34 @@
 
 #include <nlohmann/json.hpp>
 
-#include "editor/ui/windows.h"
 #include "util/json_file.h"
 #include "util/path_text.h"
-#include "viewer/settings.h"
 #include "viewer/viewer.h"
 
 namespace settings {
 
 namespace {
 
-constexpr size_t kWindowCount = static_cast<size_t>(ui::windows::Id::Count);
-
-std::filesystem::path file;
-
-// What was last written. `update` compares against this rather than being told when
-// something changes: a setting added later cannot forget to announce itself, and there is
-// no call site to instrument.
-struct Snapshot {
-    bool valid = false;
-
-    bool highlight_3d = false;
-    bool select_in_viewport = false;
-    int gizmo = 0;
-    bool windows[kWindowCount] = {};
-    std::filesystem::path last_folder;
-    std::filesystem::path last_image_folder;
-};
-
-Snapshot written;
-
 ui::windows::Id windowId(size_t index) {
     return static_cast<ui::windows::Id>(index);
 }
 
-Snapshot capture(const editor::Settings& editor, const std::filesystem::path& last_folder, const std::filesystem::path& last_image_folder) {
-    Snapshot out;
-    out.valid = true;
-    out.highlight_3d = editor.highlight_3d;
-    out.select_in_viewport = editor.select_in_viewport;
-    out.gizmo = static_cast<int>(editor.gizmo);
-    for (size_t i = 0; i < kWindowCount; ++i) out.windows[i] = ui::windows::visible(windowId(i));
-    out.last_folder = last_folder;
-    out.last_image_folder = last_image_folder;
-    return out;
-}
-
-// Field by field rather than building a snapshot to compare: this runs every frame, and a
-// snapshot would allocate two paths each time to almost always conclude nothing happened.
-bool differs(const editor::Settings& editor, const std::filesystem::path& last_folder, const std::filesystem::path& last_image_folder) {
-    if (!written.valid) return true;
-    if (written.highlight_3d != editor.highlight_3d) return true;
-    if (written.select_in_viewport != editor.select_in_viewport) return true;
-    if (written.gizmo != static_cast<int>(editor.gizmo)) return true;
-    for (size_t i = 0; i < kWindowCount; ++i) {
-        if (written.windows[i] != ui::windows::visible(windowId(i))) return true;
-    }
-    if (written.last_folder != last_folder) return true;
-    if (written.last_image_folder != last_image_folder) return true;
-    return false;
-}
-
 } // namespace
 
-void init(AddonAPI* api) {
+File::File(AddonAPI* api) {
     if (!api) return;
 
     // Nexus makes the directory; the file is ours.
     const char* directory = api->Paths.GetAddonDirectory(viewer::ADDON_FOLDER);
-    if (directory) file = std::filesystem::path(directory) / FILE_NAME;
+    if (directory) path_ = std::filesystem::path(directory) / FILE_NAME;
 }
 
-void load(editor::Settings* editor, std::filesystem::path* last_folder, std::filesystem::path* last_image_folder) {
-    if (!editor || !last_folder || !last_image_folder) return;
-
-    const std::optional<nlohmann::json> read = util::json_file::readObject(file);
+void File::load(
+    editor::Settings* editor,
+    ui::windows::Shown* windows,
+    std::filesystem::path* last_folder,
+    std::filesystem::path* last_image_folder) {
+    const std::optional<nlohmann::json> read = util::json_file::readObject(path_);
     if (!read) return;
     const nlohmann::json& parsed = *read;
 
@@ -88,32 +41,42 @@ void load(editor::Settings* editor, std::filesystem::path* last_folder, std::fil
         editor->gizmo = static_cast<editor::GizmoMode>(gizmo);
     }
 
-    const auto windows = parsed.find("windows");
-    if (windows != parsed.end() && windows->is_object()) {
-        for (size_t i = 0; i < kWindowCount; ++i) {
-            bool& shown = ui::windows::visible(windowId(i));
-            shown = util::json_file::readBool(*windows, ui::windows::key(windowId(i)), shown);
+    const auto shown = parsed.find("windows");
+    if (shown != parsed.end() && shown->is_object()) {
+        for (size_t i = 0; i < ui::windows::kCount; ++i) {
+            bool& visible = (*windows)[windowId(i)];
+            visible = util::json_file::readBool(*shown, ui::windows::key(windowId(i)), visible);
         }
     }
 
     *last_folder = util::pathFromText(util::json_file::readString(parsed, "last_folder"));
     *last_image_folder = util::pathFromText(util::json_file::readString(parsed, "last_image_folder"));
 
-    written = capture(*editor, *last_folder, *last_image_folder);
+    written_ = Snapshot{*editor, *windows, *last_folder, *last_image_folder};
 }
 
-void update(const editor::Settings& editor, const std::filesystem::path& last_folder, const std::filesystem::path& last_image_folder) {
-    if (file.empty() || !differs(editor, last_folder, last_image_folder)) return;
+void File::update(
+    const editor::Settings& editor,
+    const ui::windows::Shown& windows,
+    const std::filesystem::path& last_folder,
+    const std::filesystem::path& last_image_folder) {
+    if (path_.empty()) return;
+    // Part by part rather than against a Snapshot built to compare: this runs every frame, and
+    // building one would copy two paths each time to almost always conclude nothing happened.
+    if (written_ && written_->editor == editor && written_->windows == windows && written_->last_folder == last_folder &&
+        written_->last_image_folder == last_image_folder) {
+        return;
+    }
 
     nlohmann::json out;
     out["highlight_3d"] = editor.highlight_3d;
     out["select_in_viewport"] = editor.select_in_viewport;
     out["gizmo"] = static_cast<int>(editor.gizmo);
-    for (size_t i = 0; i < kWindowCount; ++i) out["windows"][ui::windows::key(windowId(i))] = ui::windows::visible(windowId(i));
+    for (size_t i = 0; i < ui::windows::kCount; ++i) out["windows"][ui::windows::key(windowId(i))] = windows[windowId(i)];
     out["last_folder"] = util::pathText(last_folder);
     out["last_image_folder"] = util::pathText(last_image_folder);
 
-    if (util::json_file::write(file, out)) written = capture(editor, last_folder, last_image_folder);
+    if (util::json_file::write(path_, out)) written_ = Snapshot{editor, windows, last_folder, last_image_folder};
 }
 
 } // namespace settings

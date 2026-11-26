@@ -3,13 +3,18 @@ include_guard()
 # What every target of ours does the same way. Each folder under src/ and test/ is one target,
 # defined by the CMakeLists.txt in it; these keep those files to what differs between them.
 
-# Every .h and .cpp under the calling folder, into `target`. A folder is one target, so it is
-# described by where its files are rather than by a list kept beside them; a new file needs a
-# configure pass to be seen. Grouped in the IDE by their path from the repository root.
-function(markus_target_sources target)
+# Every .h and .cpp under the calling folder, into `target`, built with every warning as an error.
+# A folder is one target, so it is described by where its files are rather than by a list kept
+# beside them; a new file needs a configure pass to be seen. Grouped in the IDE by their path from
+# the repository root.
+#
+# The warnings are /W4 for our code alone: a header included with <> is a dependency's
+# (docs/code_style.md), and /external:anglebrackets keeps its warnings out.
+function(markus_target target)
     file(GLOB_RECURSE sources "${CMAKE_CURRENT_SOURCE_DIR}/*.h" "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp")
     target_sources(${target} PRIVATE ${sources})
     source_group(TREE "${PROJECT_SOURCE_DIR}" PREFIX "" FILES ${sources})
+    target_compile_options(${target} PRIVATE /W4 /WX /external:anglebrackets /external:W0)
 endfunction()
 
 # A ctest case, `<folder>_layering`, that fails when anything in the calling folder of src/

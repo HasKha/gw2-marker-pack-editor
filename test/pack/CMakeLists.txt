@@ -3,7 +3,7 @@
 # which is the proof it can. The sweep over every corpus pack is in markus_viewer_test, because
 # the same pass checks the viewer's bake.
 add_executable(markus_pack_test)
-markus_target_sources(markus_pack_test)
+markus_target(markus_pack_test)
 
 target_link_libraries(markus_pack_test PRIVATE
     markus_pack

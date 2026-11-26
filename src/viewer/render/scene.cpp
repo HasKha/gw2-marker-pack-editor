@@ -231,9 +231,7 @@ void appendLayer(
         markers->push_back(item);
     }
 
-    // Kept between calls: the pieces of one step are only needed until they are copied into
-    // the scene.
-    static std::vector<RibbonQuad> pieces;
+    std::vector<RibbonQuad>& pieces = out->workspace.pieces;
     for (const runtime::LiveTrail& live_trail : live.trails) {
         const BakedTrail& trail = live_trail.trail;
         if (live_trail.removed || !trail.in_game_visibility || !trail.geometry || !runtime::nodeVisible(live_trail.node, visible)) continue;
@@ -322,9 +320,8 @@ void buildScene(const std::vector<SceneLayer>& layers, const Camera& camera, flo
 
     const float settings_opacity = options.max_opacity * (options.combat_fade && options.in_combat ? 0.5f : 1.0f);
     const ViewBounds bounds(camera);
-    // Kept between frames, as the scene's own items are: the markers until they are sorted, and their sort keys.
-    static std::vector<SceneItem> markers;
-    static std::vector<DepthKey> keys;
+    std::vector<SceneItem>& markers = out->workspace.markers;
+    std::vector<DepthKey>& keys = out->workspace.keys;
     markers.clear();
     for (const SceneLayer& layer : layers) appendLayer(layer, camera, seconds, options, settings_opacity, bounds, &markers, out);
 

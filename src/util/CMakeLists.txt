@@ -3,7 +3,7 @@
 # JSON files kept between sessions, the queue that does the frame's file work. Knows nothing
 # of packs, the game or the addon, and includes nothing else of ours.
 add_library(markus_util STATIC)
-markus_target_sources(markus_util)
+markus_target(markus_util)
 
 target_include_directories(markus_util PUBLIC "${PROJECT_SOURCE_DIR}/src")
 target_link_libraries(markus_util PUBLIC nlohmann_json::nlohmann_json)

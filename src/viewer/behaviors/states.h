@@ -77,7 +77,7 @@ public:
 
     // The timers as the file holds them, and that written to `file`.
     std::string text() const;
-    bool save(const std::filesystem::path& file) const;
+    [[nodiscard]] bool save(const std::filesystem::path& file) const;
 
 private:
     std::unordered_set<Guid, GuidHash> until_map_change_;

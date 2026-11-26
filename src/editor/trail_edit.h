@@ -10,24 +10,24 @@
 #include "editor/editor_state.h"
 #include "pack/trl.h"
 
-// The open trail, as a working copy of its `.trl` shared by the trail editor, the gizmo and the
-// overlay. Every change writes the whole trail back as a pending asset. Points are addressed by a
-// flat index across segments.
+// The open trail, State::open_trail, as a working copy of its `.trl` shared by the trail editor,
+// the gizmo and the overlay. Every change writes the whole trail back as a pending asset. Points
+// are addressed by a flat index across segments.
 namespace trail_edit {
 
-bool isOpen();
-size_t pathable(); // pack::kNoIndex when nothing is open
-const std::string& path(); // the traildata path, normalized
-int32_t mapId();
+bool isOpen(const editor::State& state);
+size_t pathable(const editor::State& state); // pack::kNoIndex when nothing is open
+const std::string& path(const editor::State& state); // the traildata path, normalized
+int32_t mapId(const editor::State& state);
 
-size_t pointCount();
-glm::vec3 point(size_t index);
+size_t pointCount(const editor::State& state);
+glm::vec3 point(const editor::State& state, size_t index);
 
 // Which run of points `index` belongs to, and how many runs there are. A `.trl` is one or
 // more runs separated by (0,0,0) terminators, drawn as separate ribbons; the list shows
 // the number so a break in the trail is visible rather than implied.
-size_t segmentOf(size_t index);
-size_t segmentCount();
+size_t segmentOf(const editor::State& state, size_t index);
+size_t segmentCount(const editor::State& state);
 
 // Opens the trail data of `pathable`, or keeps the current one when it is already open.
 // Returns false while the `.trl` is being read on the worker — the caller should simply try
@@ -66,6 +66,6 @@ bool reload(editor::State& state);
 bool refresh(editor::State& state);
 
 // Writes the working copy to a `.trl` outside the pack.
-bool exportToFile(const std::filesystem::path& file, std::string* error);
+bool exportToFile(const editor::State& state, const std::filesystem::path& file, std::string* error);
 
 } // namespace trail_edit

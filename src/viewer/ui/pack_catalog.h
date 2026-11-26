@@ -2,6 +2,7 @@
 
 #include <optional>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 #include "viewer/packs/catalog.h"
@@ -42,8 +43,23 @@ struct Action {
     bool value = false; // KeepUpdated's new value
 };
 
+enum class Tab { None, Installed, Library };
+
+// What the window keeps between frames.
+struct View {
+    // Above the tabs, so it holds across both.
+    std::string filter;
+    // The tab drawn last frame, None while the window is closed or collapsed, and the packs it
+    // has shown since. A pack downloaded or deleted no longer belongs in its tab but stays
+    // there, rather than the list jumping under the player's mouse, until the player switches
+    // tabs or opens the window again.
+    Tab shown_tab = Tab::None;
+    std::unordered_set<std::string> shown;
+};
+
 // Draws the window while `*open`. `library_status` says how the catalog's list is coming
 // along, and with `can_retry` a button asks for it again, which sets `*retry`.
-std::vector<Action> draw(const std::vector<Row>& rows, const std::string& library_status, bool can_retry, bool* retry, bool* open);
+std::vector<Action>
+draw(View* view, const std::vector<Row>& rows, const std::string& library_status, bool can_retry, bool* retry, bool* open);
 
 } // namespace viewer::ui::pack_catalog

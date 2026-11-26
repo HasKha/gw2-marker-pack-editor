@@ -13,18 +13,30 @@
 // moment drew, the Nexus render draws instead.
 namespace viewer::good_render_sink {
 
-// Subscribes, whether or not the service is loaded yet: it calls once it is. The map is
-// placed by `mumble` as the moment finds it.
-void load(const Mumble::Data* mumble);
-
-// Unsubscribes and waits for a call in progress to return. Never from inside a moment.
-void unload();
-
 // Whether GoodRender is calling the moments: no service (not loaded, not loaded yet, or unable to
 // follow the frame), one that does not serve the Moment version this was built against, or one
 // that does.
 enum class Service { None, OtherVersion, Serving };
-Service service();
+
+// onMoment subscribed while this lives, whether or not the service is loaded yet: it calls once it
+// is. The map is placed by `mumble` as the moment finds it. One at a time: the callback has no
+// slot for which, so `mumble` is kept where it can find it.
+class Subscription
+{
+public:
+    explicit Subscription(const Mumble::Data* mumble);
+    // Unsubscribes and waits for a call in progress to return. Never from inside a moment.
+    ~Subscription();
+
+    Subscription(const Subscription&) = delete;
+    Subscription& operator=(const Subscription&) = delete;
+
+    Service service() const;
+
+private:
+    good_render::Link link_;
+    good_render::Slot* slot_ = nullptr;
+};
 
 // The milliseconds spent in our moments since the last call, for the slow-frame log.
 double takeMomentMilliseconds();
@@ -42,7 +54,7 @@ struct Drawn {
 };
 Drawn takeDrawn();
 
-// The callback load() subscribes: the published scenes into whichever moment this is. Apart so a
+// The callback a Subscription subscribes: the published scenes into whichever moment this is. Apart so a
 // test can run a frame's moments of its own.
 void onMoment(const good_render::Moment* moment);
 

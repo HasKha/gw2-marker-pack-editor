@@ -1,5 +1,6 @@
 #pragma once
 
+#include <memory>
 #include <string>
 
 struct ID3D11Device;
@@ -11,11 +12,28 @@ struct ID3D11Device;
 // with its own glyph ranges, which leave the icons out. The font and its licence are in assets/fonts/.
 namespace viewer::ui::fonts {
 
-// Keeps the device the atlas is uploaded to. Nothing is built until the first push(). Without a
-// device the windows keep the host's font, and label() leaves the icons out.
-void load(ID3D11Device* device);
+// The atlas and the fonts built into it, owned by the viewer's session. Current while it lives,
+// as an ImGui context is: the free functions below draw with the current one, since windows all
+// over the viewer and the editor call them, and with none they keep the host's font and leave the
+// icons out.
+class Fonts
+{
+public:
+    Fonts();
+    ~Fonts();
 
-void unload();
+    Fonts(const Fonts&) = delete;
+    Fonts& operator=(const Fonts&) = delete;
+
+    // The device the atlas is uploaded to, which outlives this. Nothing is built until the first
+    // push(). Without a device the windows keep the host's font.
+    void setDevice(ID3D11Device* device);
+
+    struct State;
+
+private:
+    std::unique_ptr<State> state_;
+};
 
 // Makes the windows' font, with the icons, the current font, at the size of the current one,
 // until pop(). Pushed before ImGui::Begin(), it holds for the title bar too. The first push builds
@@ -40,8 +58,5 @@ bool ready();
 // "<icon> <text>" while the icons draw, `text` alone otherwise: before the first push, or with no
 // device to build on.
 std::string label(const char* icon, const char* text);
-
-// Why the font is not built, or what it was built from.
-const char* status();
 
 } // namespace viewer::ui::fonts

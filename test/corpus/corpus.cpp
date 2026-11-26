@@ -4,6 +4,7 @@
 #include <cctype>
 #include <cstdlib>
 #include <fstream>
+#include <string>
 
 #ifndef MARKUS_TEST_PACK_DIR_DEFAULT
     #define MARKUS_TEST_PACK_DIR_DEFAULT ""
@@ -25,8 +26,14 @@ constexpr const char* kFolderEnvironmentVariable = "MARKUS_TEST_FOLDER_PACK";
 std::filesystem::path resolveDirectory(const char* variable, const char* baked) {
     std::error_code ec;
 
-    if (const char* override_path = std::getenv(variable)) {
-        const std::filesystem::path candidate(override_path);
+    // _wgetenv_s rather than getenv, which MSVC deprecates; wide, so a path outside the code page reads.
+    std::wstring wide_name(variable, variable + std::char_traits<char>::length(variable));
+    size_t length = 0;
+    if (_wgetenv_s(&length, nullptr, 0, wide_name.c_str()) == 0 && length > 0) {
+        std::wstring value(length, L'\0');
+        _wgetenv_s(&length, value.data(), value.size(), wide_name.c_str());
+        value.resize(length - 1); // without its terminator
+        const std::filesystem::path candidate(value);
         return std::filesystem::is_directory(candidate, ec) ? candidate : std::filesystem::path{};
     }
 

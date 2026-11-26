@@ -352,7 +352,7 @@ TEST_CASE("a large billboard centred behind the camera is still partly visible",
 TEST_CASE("project puts the view axis in the middle of the viewport", "[camera]") {
     const viewer::Camera camera = axisCamera();
 
-    glm::vec2 screen;
+    glm::vec2 screen(0.0f);
     REQUIRE(camera.project(glm::vec3(0.0f, 0.0f, 10.0f), &screen));
     CHECK(screen.x == Approx(kWidth * 0.5f).margin(0.01f));
     CHECK(screen.y == Approx(kHeight * 0.5f).margin(0.01f));
@@ -388,7 +388,7 @@ std::unique_ptr<Mumble::Data> mumbleAt(const glm::vec3& camera, const glm::vec3&
     mumble->CameraTop = Vector3{0.0f, 1.0f, 0.0f};
     mumble->AvatarPosition = Vector3{camera.x, camera.y - 2.0f, camera.z + 5.0f};
     mumble->Context.MapID = 15;
-    std::wcscpy(mumble->Identity, L"{\"fov\":0.9}");
+    wcscpy_s(mumble->Identity, L"{\"fov\":0.9}");
     return mumble;
 }
 

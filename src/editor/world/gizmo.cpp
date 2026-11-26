@@ -5,6 +5,7 @@
 // Must follow imgui.h: ImGuizmo.h uses ImDrawList and ImU32 without declaring them.
 #include <ImGuizmo.h>
 
+#include <optional>
 #include <vector>
 
 #define GLM_ENABLE_EXPERIMENTAL
@@ -76,12 +77,12 @@ struct Target {
 std::vector<Target> collectTargets(const editor::State& state) {
     std::vector<Target> targets;
 
-    if (!state.points.empty() && state.points.trail == trail_edit::pathable()) {
+    if (!state.points.empty() && state.points.trail == trail_edit::pathable(state)) {
         for (size_t index : state.points.indices.items()) {
             Target target;
             target.node = editor::NodeRef{editor::NodeKind::Pathable, state.points.trail};
             target.point = index;
-            target.position = trail_edit::point(index);
+            target.position = trail_edit::point(state, index);
             targets.push_back(target);
         }
         return targets;
@@ -93,14 +94,14 @@ std::vector<Target> collectTargets(const editor::State& state) {
 
         // The bake's own resolution, the one the viewer draws with, so the handles land
         // on the drawn icon.
-        viewer::MarkerTransform transform;
-        if (!viewer::markerTransform(state.pack, state.pack.pathables[node.index], &transform)) continue;
+        const std::optional<viewer::MarkerTransform> transform = viewer::markerTransform(state.pack, state.pack.pathables[node.index]);
+        if (!transform) continue;
 
         Target target;
         target.node = node;
-        target.position = transform.position;
-        target.rotation = transform.rotation;
-        target.height_offset = transform.height_offset;
+        target.position = transform->position;
+        target.rotation = transform->rotation;
+        target.height_offset = transform->height_offset;
         // Not transform.has_rotation: that says whether a rotate attribute is *there*, where
         // this says the node is a kind that can carry one. Every POI can.
         target.has_rotation = true;
@@ -125,13 +126,10 @@ void writePosition(editor::State& state, const Target& target, const glm::vec3& 
     state.touch();
 }
 
-// Applied once, on first use. Defaults are tuned for a desktop editor viewport; over a
-// game scene the thinner lines are hard to pick out.
-void applyStyleOnce() {
-    static bool done = false;
-    if (done) return;
-    done = true;
-
+// Set every frame, which costs a few stores, rather than once behind a flag of our own beside
+// ImGuizmo's. Defaults are tuned for a desktop editor viewport; over a game scene the thinner
+// lines are hard to pick out.
+void applyStyle() {
     ImGuizmo::Style& style = ImGuizmo::GetStyle();
     style.TranslationLineThickness = 5.0f; // default 3
     style.TranslationLineArrowSize = 9.0f; // default 6
@@ -168,7 +166,7 @@ bool draw(editor::State& state, const viewer::Camera& camera) {
     if (targets.empty()) return false;
     const Target& anchor = targets.front();
 
-    applyStyleOnce();
+    applyStyle();
     ImGuizmo::BeginFrame();
     ImGuizmo::SetOrthographic(false);
     // The same list the markers go into, called after them, so the gizmo sits on top of

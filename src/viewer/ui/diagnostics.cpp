@@ -4,7 +4,7 @@
 #include <imgui.h>
 
 #include <algorithm>
-#include <cstdio>
+#include <format>
 
 #include "viewer/live/bake.h"
 #include "viewer/ui/fonts.h"
@@ -15,9 +15,7 @@ namespace viewer::ui::diagnostics {
 namespace {
 
 std::string milliseconds(double value) {
-    char text[32];
-    std::snprintf(text, sizeof(text), "%.2f ms", value);
-    return text;
+    return std::format("{:.2f} ms", value);
 }
 
 // "1 marker", "2 markers".
@@ -106,9 +104,7 @@ std::vector<Line> describe(const Figures& figures) {
     for (const PackFigures& pack : figures.packs) {
         if (!pack.error.empty()) text(pack.name + ": " + pack.error, Line::Kind::Error);
     }
-    char lua[48];
-    std::snprintf(lua, sizeof(lua), "Lua heap: %.1f MB", static_cast<double>(figures.lua_bytes) / (1024.0 * 1024.0));
-    text(lua);
+    text(std::format("Lua heap: {:.1f} MB", static_cast<double>(figures.lua_bytes) / (1024.0 * 1024.0)));
 
     heading(ICON_FA_IMAGE, "Images");
     size_t ready = 0;

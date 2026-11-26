@@ -7,11 +7,10 @@
 
 namespace pack {
 
-// Loads every .xml in the source into a Pack. Works the same for a zip and for an
-// unzipped folder. Never fails on a bad node: unparseable files and dangling category
-// references become warnings so the rest of a pack still opens. Returns false only when
-// the source itself cannot be read.
-bool loadPack(const DataSource& source, Pack* out, std::string* error);
+// Every .xml in the source as a Pack. Works the same for a zip and for an unzipped folder.
+// Never fails: a file that cannot be read or parsed, and a dangling category reference, become
+// warnings so the rest of a pack still opens.
+Pack loadPack(const DataSource& source);
 
 // Parses one already-read XML document into an existing Pack. `file_index` is the index
 // of the matching entry in Pack::files.

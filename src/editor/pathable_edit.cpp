@@ -54,7 +54,7 @@ bool assetBytes(const editor::State& state, const std::string& path, std::vector
 
     if (state.pack.isAssetRemoved(path)) return false;
 
-    const pack::DataSource* source = resources::source();
+    const pack::DataSource* source = state.resources.source();
     if (!source) return false;
 
     const std::string key = pack::normalizePath(path);
@@ -86,7 +86,7 @@ std::string newTrailPath(const editor::State& state, const std::string& stem) {
 
     // Wherever the existing trails live. Dropping a new one somewhere else would work but
     // would leave the pack looking like two packs.
-    const pack::DataSource* source = resources::source();
+    const pack::DataSource* source = state.resources.source();
     if (source) {
         for (const std::string& entry : source->entriesWithExtension(".trl")) {
             const size_t slash = entry.find_last_of('/');
@@ -302,7 +302,7 @@ size_t addTrail(editor::State& state, int32_t map_id) {
     empty.map_id = map_id;
     undo::asset(state, path);
     state.pack.addAsset(path, pack::trl::write(empty));
-    resources::forget(path);
+    state.resources.forget(path);
 
     pack::AttributeCollection attributes;
     set(&attributes, "type", state.pack.categories[category].id);
@@ -410,14 +410,14 @@ void attributeRenamed(editor::State& state, editor::NodeRef node, const std::str
 
     undo::asset(state, new_path);
     state.pack.addAsset(new_path, bytes);
-    resources::forget(new_path);
+    state.resources.forget(new_path);
 
     // Anything that shipped in the pack stays where it is: a rename is not a delete, and
     // the resources window is where a file gets removed on purpose.
     if (state.pack.findAddedAsset(previous) && !trailDataSharedWith(state, node.index, previous)) {
         undo::asset(state, previous);
         state.pack.dropAddedAsset(previous);
-        resources::forget(previous);
+        state.resources.forget(previous);
     }
 }
 

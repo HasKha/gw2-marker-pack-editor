@@ -5,7 +5,7 @@
 #include <algorithm>
 #include <charconv>
 #include <cmath>
-#include <cstdio>
+#include <format>
 
 #include "viewer/script/api.h"
 #include "viewer/script/context.h"
@@ -56,7 +56,7 @@ const Member<Vector3> kVector3Members[] = {
     // The instance method normalizes in place and returns nothing, as MonoGame's does.
     {.name = "Normalize",
      .call =
-         [](sol::state_view lua, Vector3& self, sol::variadic_args) {
+         [](sol::state_view, Vector3& self, sol::variadic_args) {
              const float length = glm::length(self.v);
              if (length > 0.0f) self.v /= length;
              return sol::object(sol::lua_nil);
@@ -238,12 +238,11 @@ std::string TimeSpan::toString(const TimeSpan& value) {
     const int seconds = static_cast<int>(ticks / 10000000LL);
     const int fraction = static_cast<int>(ticks % 10000000LL);
 
-    char buffer[64];
-    int length = std::snprintf(buffer, sizeof(buffer), "%s", negative ? "-" : "");
-    if (days > 0) length += std::snprintf(buffer + length, sizeof(buffer) - length, "%lld.", static_cast<long long>(days));
-    length += std::snprintf(buffer + length, sizeof(buffer) - length, "%02d:%02d:%02d", hours, minutes, seconds);
-    if (fraction > 0) std::snprintf(buffer + length, sizeof(buffer) - length, ".%07d", fraction);
-    return buffer;
+    std::string text = negative ? "-" : "";
+    if (days > 0) text += std::format("{}.", days);
+    text += std::format("{:02}:{:02}:{:02}", hours, minutes, seconds);
+    if (fraction > 0) text += std::format(".{:07}", fraction);
+    return text;
 }
 
 std::span<const Member<GameTime>> GameTime::members() {

@@ -154,10 +154,10 @@ TEST_CASE("every corpus script loads and ticks on every map of its pack without 
 
         // Each distinct error once, by its first line: one broken function fails on every map.
         std::set<std::string> distinct;
-        for (const std::string& error : errors)
-            distinct.insert(error.substr(error.find(": ") + 2, error.find('\n') - error.find(": ") - 2));
+        for (const std::string& failure : errors)
+            distinct.insert(failure.substr(failure.find(": ") + 2, failure.find('\n') - failure.find(": ") - 2));
         std::string listed;
-        for (const std::string& error : distinct) listed += "\n  " + error;
+        for (const std::string& failure : distinct) listed += "\n  " + failure;
         INFO(file << ": " << errors.size() << " errors:" << listed);
         CHECK(errors.empty());
 

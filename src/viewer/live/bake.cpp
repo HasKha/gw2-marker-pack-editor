@@ -12,11 +12,10 @@ namespace {
 constexpr float kDegreesToRadians = 3.14159265358979323846f / 180.0f;
 
 ImU32 tintOf(const pack::Pack& pack, const pack::Pathable& pathable) {
-    uint32_t argb = 0xFFFFFFFFu;
     // `tint` and `color` are aliases; whichever the author used wins.
     const std::string* text = pack.effectiveValue(pathable, "color");
     if (!text) text = pack.effectiveValue(pathable, "tint");
-    if (text) pack::parseColor(*text, &argb);
+    const uint32_t argb = text ? pack::parseColor(*text).value_or(0xFFFFFFFFu) : 0xFFFFFFFFu;
 
     return IM_COL32((argb >> 16) & 0xFF, (argb >> 8) & 0xFF, argb & 0xFF, (argb >> 24) & 0xFF);
 }
@@ -41,8 +40,9 @@ void applyRotateList(std::string_view text, glm::vec3* out) {
         const size_t comma = text.find(',', begin);
         const std::string_view part = text.substr(begin, comma == std::string_view::npos ? std::string_view::npos : comma - begin);
 
-        float degrees = 0.0f;
-        if (pack::parseFloat(part, &degrees)) (*out)[static_cast<glm::length_t>(component)] = degrees * kDegreesToRadians;
+        if (const std::optional<float> degrees = pack::parseFloat(part)) {
+            (*out)[static_cast<glm::length_t>(component)] = *degrees * kDegreesToRadians;
+        }
 
         ++component;
         if (comma == std::string_view::npos) break;
@@ -68,8 +68,7 @@ bool resolveRotation(const pack::Pack& pack, const pack::Pathable& pathable, glm
     static constexpr const char* kAxisKeys[3] = {"rotate-x", "rotate-y", "rotate-z"};
     for (int axis = 0; axis < 3; ++axis) {
         if (const std::string* text = pack.effectiveValue(pathable, kAxisKeys[axis])) {
-            float degrees = 0.0f;
-            if (pack::parseFloat(*text, &degrees)) (*out)[axis] = degrees * kDegreesToRadians;
+            if (const std::optional<float> degrees = pack::parseFloat(*text)) (*out)[axis] = *degrees * kDegreesToRadians;
             present = true;
         }
     }
@@ -111,39 +110,41 @@ std::optional<Occlusion> parseOcclusion(std::string_view value) {
 const ImVec2 kRotatedMarkerUv[4] = {{1, 1}, {0, 1}, {0, 0}, {1, 0}};
 const ImVec2 kBillboardUv[4] = {{0, 1}, {1, 1}, {1, 0}, {0, 0}};
 
-bool markerTransform(const pack::Pack& pack, const pack::Pathable& pathable, MarkerTransform* out) {
-    if (pathable.type != pack::PathableType::Poi) return false;
+std::optional<MarkerTransform> markerTransform(const pack::Pack& pack, const pack::Pathable& pathable) {
+    if (pathable.type != pack::PathableType::Poi) return std::nullopt;
 
     // A POI without a position is an invisible anchor; the loader drops those and so do we.
     // See docs/format.md.
     const std::string* x = pathable.attributes.value("xpos");
     const std::string* y = pathable.attributes.value("ypos");
     const std::string* z = pathable.attributes.value("zpos");
-    if (!x || !y || !z) return false;
+    if (!x || !y || !z) return std::nullopt;
 
-    glm::vec3 position(0.0f);
-    if (!pack::parseFloat(*x, &position.x)) return false;
-    if (!pack::parseFloat(*y, &position.y)) return false;
-    if (!pack::parseFloat(*z, &position.z)) return false;
+    const std::optional<float> px = pack::parseFloat(*x);
+    const std::optional<float> py = pack::parseFloat(*y);
+    const std::optional<float> pz = pack::parseFloat(*z);
+    if (!px || !py || !pz) return std::nullopt;
 
-    out->height_offset = pack.effectiveFloat(pathable, "heightoffset");
+    MarkerTransform out;
+    out.height_offset = pack.effectiveFloat(pathable, "heightoffset");
     // Where it is drawn, not its bare coordinate — which is what the gizmo has to sit on.
-    position.y += out->height_offset;
-    out->position = position;
-    out->has_rotation = resolveRotation(pack, pathable, &out->rotation);
-    return true;
+    out.position = glm::vec3(*px, *py + out.height_offset, *pz);
+    out.has_rotation = resolveRotation(pack, pathable, &out.rotation);
+    return out;
 }
 
-bool bakeMarker(const pack::Pack& pack, const pack::Pathable& pathable, BakedMarker* out) {
-    MarkerTransform transform;
-    if (!markerTransform(pack, pathable, &transform)) return false;
+std::optional<BakedMarker> bakeMarker(const pack::Pack& pack, const pack::Pathable& pathable) {
+    const std::optional<MarkerTransform> transform = markerTransform(pack, pathable);
+    if (!transform) return std::nullopt;
 
+    BakedMarker baked;
+    BakedMarker* out = &baked;
     out->category = pathable.category;
     out->map_id = pack.effectiveInt(pathable, "mapid");
-    out->position = transform.position;
-    out->height_offset = transform.height_offset;
-    out->has_rotation = transform.has_rotation;
-    out->rotation = transform.rotation;
+    out->position = transform->position;
+    out->height_offset = transform->height_offset;
+    out->has_rotation = transform->has_rotation;
+    out->rotation = transform->rotation;
     out->icon_size = pack.effectiveFloat(pathable, "iconsize");
     out->alpha = pack.effectiveFloat(pathable, "alpha");
     out->min_size = pack.effectiveFloat(pathable, "minsize");
@@ -170,11 +171,13 @@ bool bakeMarker(const pack::Pack& pack, const pack::Pathable& pathable, BakedMar
     // inforange is an alias, taken only while triggerrange is still the default.
     out->trigger_range = pack.effectiveFloat(pathable, "triggerrange");
     if (out->trigger_range == pack::defaultFloat("triggerrange")) {
-        if (const std::string* info_range = pack.effectiveValue(pathable, "inforange")) pack::parseFloat(*info_range, &out->trigger_range);
+        if (const std::string* info_range = pack.effectiveValue(pathable, "inforange")) {
+            out->trigger_range = pack::parseFloat(*info_range).value_or(out->trigger_range);
+        }
     }
     out->reset_length = pack.effectiveFloat(pathable, "resetlength");
     out->behaviors = behaviors::bakeBehaviors(pack, pathable, true);
-    return true;
+    return baked;
 }
 
 BakedPathables bake(const pack::Pack& pack) {
@@ -186,10 +189,10 @@ BakedPathables bake(const pack::Pack& pack) {
         if (pathable.type == pack::PathableType::Route) continue; // deprecated, never drawn
 
         if (pathable.type == pack::PathableType::Poi) {
-            BakedMarker marker;
-            if (!bakeMarker(pack, pathable, &marker)) continue;
-            marker.pathable = i;
-            out.markers.push_back(std::move(marker));
+            std::optional<BakedMarker> marker = bakeMarker(pack, pathable);
+            if (!marker) continue;
+            marker->pathable = i;
+            out.markers.push_back(std::move(*marker));
         } else {
             BakedTrail trail;
             trail.pathable = i;
@@ -215,8 +218,8 @@ BakedPathables bake(const pack::Pack& pack) {
             // marker defaults cannot be used here. See docs/format.md.
             const std::string* near_text = pack.effectiveValue(pathable, "fadenear");
             const std::string* far_text = pack.effectiveValue(pathable, "fadefar");
-            if (!near_text || !pack::parseFloat(*near_text, &trail.fade_near)) trail.fade_near = 700.0f;
-            if (!far_text || !pack::parseFloat(*far_text, &trail.fade_far)) trail.fade_far = 900.0f;
+            trail.fade_near = near_text ? pack::parseFloat(*near_text).value_or(700.0f) : 700.0f;
+            trail.fade_far = far_text ? pack::parseFloat(*far_text).value_or(900.0f) : 900.0f;
 
             out.trails.push_back(std::move(trail));
         }
@@ -247,14 +250,13 @@ std::vector<BakedCategory> bakeCategories(const pack::Pack& pack) {
         baked.default_toggle = flag(category, "defaulttoggle", false, "0");
         baked.is_hidden = flag(category, "ishidden", false, "0");
 
-        int number = 0;
-        if (const std::string* id = category.attributes.value("achievementid"); id && pack::parseInt(*id, &number)) {
-            baked.achievement_id = number;
+        if (const std::string* id = category.attributes.value("achievementid")) {
+            if (const std::optional<int> number = pack::parseInt(*id)) baked.achievement_id = *number;
         }
         // The nearest declaration's, this one's first; one that will not parse is none.
         for (size_t at = out.size(); at != pack::kNoIndex; at = pack.categories[at].parent) {
             if (const std::string* bit = pack.categories[at].attributes.value("achievementbit")) {
-                if (pack::parseInt(*bit, &number)) baked.achievement_bit = number;
+                if (const std::optional<int> number = pack::parseInt(*bit)) baked.achievement_bit = *number;
                 break;
             }
         }

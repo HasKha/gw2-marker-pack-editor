@@ -68,7 +68,7 @@ std::optional<std::string> Registration::takeAccepted() {
     check_.reset();
     switch (done.check.outcome) {
     case Outcome::Valid:
-        std::fill(std::begin(field_), std::end(field_), char{});
+        field_.clear();
         status_ = "Key added.";
         return done.key;
     case Outcome::MissingPermissions:

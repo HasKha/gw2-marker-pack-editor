@@ -126,7 +126,7 @@ MumbleState mumbleState(const Mumble::Data* data) {
     MumbleState state = contextState(data);
     if (!state.available) return state;
 
-    const Identity& identity = parseIdentity(data->Identity);
+    const Identity identity = parseIdentity(data->Identity);
     state.name = identity.name;
     state.profession = identity.profession;
     state.race = identity.race;

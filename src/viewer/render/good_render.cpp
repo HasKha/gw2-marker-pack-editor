@@ -12,9 +12,8 @@ namespace viewer::good_render_sink {
 
 namespace {
 
-good_render::Link link;
-good_render::Slot* slot = nullptr;
-
+// The Subscription's, for onMoment, which GoodRender hands nothing else: set before it subscribes,
+// cleared after it unsubscribes.
 const Mumble::Data* mumble_link = nullptr;
 
 // Set by the moments, taken by the Nexus render that ends the same frame.
@@ -77,22 +76,22 @@ void onMoment(const good_render::Moment* moment) {
     }
 }
 
-void load(const Mumble::Data* mumble) {
+Subscription::Subscription(const Mumble::Data* mumble)
+    : link_(good_render::open()) {
     mumble_link = mumble;
-    link = good_render::open();
     // Order 0, as GoodRender's README asks of anyone without a reason to draw over others.
-    if (link.block) slot = good_render::subscribe(*link.block, onMoment, 0);
+    if (link_.block) slot_ = good_render::subscribe(*link_.block, onMoment, 0);
 }
 
-void unload() {
-    if (slot) good_render::unsubscribe(*slot);
-    slot = nullptr;
-    good_render::close(link);
+Subscription::~Subscription() {
+    if (slot_) good_render::unsubscribe(*slot_);
+    good_render::close(link_);
+    mumble_link = nullptr;
 }
 
-Service service() {
-    if (!link.block || link.block->newest_served.load() == 0) return Service::None;
-    return good_render::served(*link.block) ? Service::Serving : Service::OtherVersion;
+Service Subscription::service() const {
+    if (!link_.block || link_.block->newest_served.load() == 0) return Service::None;
+    return good_render::served(*link_.block) ? Service::Serving : Service::OtherVersion;
 }
 
 double takeMomentMilliseconds() {

@@ -84,8 +84,7 @@ ScriptArg scriptArg(std::string_view value) {
 // The bool attributes' reading in Pathing, InternalGetValueAsBool: a positive integer, or
 // "true" in any case. Not pack::parseBool, which takes "yes" and negative numbers too.
 bool pathingBool(std::string_view text) {
-    int value = 0;
-    return (pack::parseInt(text, &value) && value > 0) || equalsIgnoringCase(text, "true");
+    return pack::parseInt(text).value_or(0) > 0 || equalsIgnoringCase(text, "true");
 }
 
 class Reader
@@ -103,9 +102,7 @@ public:
 
     float number(std::string_view key, float fallback) const {
         const std::string* text = value(key);
-        float out = fallback;
-        if (text) pack::parseFloat(*text, &out);
-        return out;
+        return text ? pack::parseFloat(*text).value_or(fallback) : fallback;
     }
 
     // GetValueAsEnums: each part looked up by name, an unknown one standing for 0.
@@ -179,7 +176,7 @@ void readFilters(const Reader& read, Behaviors* out) {
 }
 
 void readModifiers(const Reader& read, Behaviors* out) {
-    if (const std::string* text = read.value("behavior")) pack::parseInt(*text, &out->mode);
+    if (const std::string* text = read.value("behavior")) out->mode = pack::parseInt(*text).value_or(out->mode);
     if (const std::string* text = read.value("invertbehavior")) out->invert = pathingBool(*text);
     if (const std::string* text = read.value("autotrigger")) out->auto_trigger = pathingBool(*text);
 

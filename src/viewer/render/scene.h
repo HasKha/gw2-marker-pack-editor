@@ -14,6 +14,7 @@
 #include "viewer/game/camera.h"
 #include "viewer/live/bake.h"
 #include "viewer/live/runtime.h"
+#include "viewer/render/ribbon.h"
 
 // This frame's world: everything that will be drawn, decided at Present and drawn by a sink.
 //
@@ -68,8 +69,24 @@ struct SceneItem {
     bool is_trail = false;
 };
 
+// Where one of a list of items goes when they are drawn back to front: its depth, larger first, and where it is in the
+// list, which breaks a tie, so that equals keep the order they were given in.
+struct DepthKey {
+    float depth;
+    uint32_t index;
+};
+
 struct Scene {
     std::vector<SceneItem> items; // back to front: with no depth between our own quads, order is all there is
+
+    // What building it works in, kept with it so that a recycled scene builds without allocating.
+    // Never read once it is built.
+    struct Workspace {
+        std::vector<SceneItem> markers; // until they are sorted
+        std::vector<DepthKey> keys; // their sort
+        std::vector<RibbonQuad> pieces; // one trail step's, until they are copied into `items`
+    };
+    Workspace workspace;
 };
 
 // Pathing's pack settings that change how the world is drawn (ModuleSettings.InitPackSettings),
@@ -106,13 +123,6 @@ inline ImTextureID keptImage(const TextureLookup& lookup, bool edited, size_t pa
     if (!edited) *kept = image;
     return image;
 }
-
-// Where one of a list of items goes when they are drawn back to front: its depth, larger first, and where it is in the
-// list, which breaks a tie, so that equals keep the order they were given in.
-struct DepthKey {
-    float depth;
-    uint32_t index;
-};
 
 // `items`' keys in the order to draw them, back to front by `depth`. Keys are sorted rather than the items, which are many
 // times larger, and `keys` keeps its memory from one frame to the next.

@@ -5,6 +5,8 @@
 #include <glm/vec2.hpp>
 #include <glm/vec3.hpp>
 
+#include <optional>
+
 #include "viewer/game/camera.h"
 #include "viewer/render/scene.h"
 
@@ -29,9 +31,9 @@ struct ClippedQuad {
     float depth[5] = {}; // the clip w each surviving corner was divided by
 };
 
-// Clips `world` against the near plane and projects what survives. False when no part of
+// Clips `world` against the near plane and projects what survives. Nothing when no part of
 // the quad is in front of the camera.
-bool clipAndProject(const Camera& camera, const glm::vec3 world[4], ClippedQuad* out);
+[[nodiscard]] std::optional<ClippedQuad> clipAndProject(const Camera& camera, const glm::vec3 world[4]);
 
 // The visible corners in ImGui's type, for outlines, fills and hit tests. Returns the count.
 int screenCorners(const ClippedQuad& quad, ImVec2 out[5]);

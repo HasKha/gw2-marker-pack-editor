@@ -6,19 +6,13 @@
 #include <string>
 #include <vector>
 
+#include "editor/history.h"
+#include "editor/node_ref.h"
+#include "editor/open_trail.h"
+#include "editor/resources.h"
 #include "pack/model.h"
 
 namespace editor {
-
-enum class NodeKind { Category, Pathable };
-
-// A selectable node of the tree. `index` is into Pack::categories or Pack::pathables.
-struct NodeRef {
-    NodeKind kind = NodeKind::Category;
-    size_t index = pack::kNoIndex;
-
-    bool operator==(const NodeRef& other) const { return kind == other.kind && index == other.index; }
-};
 
 // An ordered set of selected things, so bulk edits apply in a predictable sequence and the first and
 // last clicked can be the anchor and the primary. Used for tree nodes and trail points alike.
@@ -157,13 +151,22 @@ struct Settings {
     bool highlight_3d = true;
     bool select_in_viewport = true;
     GizmoMode gizmo = GizmoMode::Disabled;
+
+    bool operator==(const Settings& other) const = default;
 };
 
+// Everything the editor knows about the open pack. It stays put, between packs too: the resource
+// cache reads the pack's pending assets through a pointer to `pack`.
 struct State {
+    State()
+        : resources(&pack) {}
+
+    State(const State&) = delete;
+    State& operator=(const State&) = delete;
+
     pack::Pack pack;
     bool loaded = false;
     bool dirty = false;
-    std::string status;
 
     Settings settings;
 
@@ -172,6 +175,13 @@ struct State {
     // Points of the trail open in the editor. Independent of `selection`: a trail stays
     // selected, and stays in the details window, while its points are picked over.
     PointSelection points;
+
+    // Undo and redo, through undo.h.
+    undo::History history;
+    // The trail whose points are being edited, through trail_edit.h.
+    trail_edit::OpenTrail open_trail;
+    // The pack's files as they are read for drawing.
+    resources::Cache resources;
 
     // A click in the world asks the tree to open down to the node and scroll to it; the tree
     // consumes it next frame, since only it knows which rows it draws.
@@ -216,6 +226,8 @@ struct State {
     // vectors.
     void categoryAdded(size_t index);
 
+    // Back to no pack: the history, the open trail and the selection go with it. The resource
+    // cache stays, and is handed its next source by whoever opens the next pack.
     void reset();
 
     // Marks the pack edited and bumps the revision. Every mutation goes through here.

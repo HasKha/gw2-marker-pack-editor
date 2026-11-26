@@ -23,9 +23,9 @@ struct Identity {
     int ui_size = 1; // "uisz", Mumble::EUIScale; Normal when absent
 };
 
-// The identity in `json`. The last text parsed is kept, so calling this every frame with
-// the same text costs a comparison: the game rewrites it only when something in it changes.
-// Malformed or missing text is the empty identity; it never throws.
-const Identity& parseIdentity(const wchar_t* json);
+// The identity in `json`. Parsed on every call, which is about 2 us for the game's text, so a
+// few calls a frame need no cache. Malformed or missing text is the empty identity; it never
+// throws.
+Identity parseIdentity(const wchar_t* json);
 
 } // namespace viewer

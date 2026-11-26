@@ -9,6 +9,7 @@
 #include <filesystem>
 #include <map>
 #include <memory>
+#include <optional>
 #include <set>
 #include <string>
 #include <vector>
@@ -375,12 +376,12 @@ void lintPack(const pack::Pack& loaded, const pack::DataSource& archive) {
 
         // The .trl header wins: UnpackTrailPoi overwrites the XML mapid with it. So a
         // disagreement is a dead attribute, not a broken trail.
-        int xml_map = 0;
         const std::string* map = pathable.attributes.value("mapid");
-        if (map && pack::parseInt(*map, &xml_map) && trail.map_id != 0 && xml_map != trail.map_id) {
+        const std::optional<int> xml_map = map ? pack::parseInt(*map) : std::nullopt;
+        if (xml_map && trail.map_id != 0 && *xml_map != trail.map_id) {
             report(
                 "trail mapid is ignored",
-                *data + " header says " + std::to_string(trail.map_id) + ", xml says " + std::to_string(xml_map) + " — the header wins");
+                *data + " header says " + std::to_string(trail.map_id) + ", xml says " + std::to_string(*xml_map) + " — the header wins");
         }
     }
 
@@ -415,12 +416,7 @@ void lintPack(const pack::Pack& loaded, const pack::DataSource& archive) {
 // pack author would want flagged: dangling category references, resources referenced but
 // not present in the archive, and .trl files that do not read.
 int probeModel(const pack::DataSource& archive) {
-    pack::Pack loaded;
-    std::string error;
-    if (!pack::loadPack(archive, &loaded, &error)) {
-        std::printf("  LOAD FAILED: %s\n", error.c_str());
-        return 1;
-    }
+    pack::Pack loaded = pack::loadPack(archive);
 
     std::printf(
         "  model: %zu categories (%zu roots), %zu POIs, %zu trails, %zu routes\n",
@@ -561,11 +557,7 @@ int probeSaveRoundTrip(const pack::Pack& loaded, const pack::DataSource& source,
         return 1;
     }
 
-    pack::Pack reloaded;
-    if (!pack::loadPack(*reopened, &reloaded, &error)) {
-        std::printf("  RELOAD FAIL  %s\n", error.c_str());
-        return 1;
-    }
+    pack::Pack reloaded = pack::loadPack(*reopened);
 
     int failures = 0;
 
@@ -591,10 +583,9 @@ int probeSaveRoundTrip(const pack::Pack& loaded, const pack::DataSource& source,
         std::string before;
         std::string after;
         std::string ignored;
-        pack::writeXmlFile(loaded, i, &before, &ignored);
-        pack::writeXmlFile(reloaded, match, &after, &ignored);
+        const bool written = pack::writeXmlFile(loaded, i, &before, &ignored) && pack::writeXmlFile(reloaded, match, &after, &ignored);
 
-        if (before == after) {
+        if (written && before == after) {
             ++identical;
         } else {
             std::printf("  SAVE: %s differs after a round trip\n", loaded.files[i].path.c_str());
@@ -759,11 +750,11 @@ int probeAddPathable(pack::Pack& loaded, const pack::DataSource& source, const s
     }
 
     std::unique_ptr<pack::DataSource> reopened = pack::open(target, &error);
-    pack::Pack reloaded;
-    if (!reopened || !pack::loadPack(*reopened, &reloaded, &error)) {
+    if (!reopened) {
         std::printf("  ADD REOPEN FAIL  %s\n", error.c_str());
         return 1;
     }
+    pack::Pack reloaded = pack::loadPack(*reopened);
 
     if (reloaded.pathables.size() != before + 1) {
         std::printf("  ADD: %zu pathables after reload, expected %zu\n", reloaded.pathables.size(), before + 1);
@@ -830,10 +821,12 @@ int probeRemove(pack::Pack& loaded, const pack::DataSource& source, const std::f
 
     // Every file as it stands now, to compare against after the delete is undone. Putting
     // an element back in the wrong place would show up here and nowhere else.
-    std::vector<std::string> before_delete(loaded.files.size());
+    // A file that will not write stays nullopt, and so never matches after the undo.
+    std::vector<std::optional<std::string>> before_delete(loaded.files.size());
     for (size_t i = 0; i < loaded.files.size(); ++i) {
+        std::string text;
         std::string error;
-        pack::writeXmlFile(loaded, i, &before_delete[i], &error);
+        if (pack::writeXmlFile(loaded, i, &text, &error)) before_delete[i] = std::move(text);
     }
 
     size_t expected_pathables = 0;
@@ -870,11 +863,11 @@ int probeRemove(pack::Pack& loaded, const pack::DataSource& source, const std::f
     }
 
     std::unique_ptr<pack::DataSource> reopened = pack::open(target, &error);
-    pack::Pack reloaded;
-    if (!reopened || !pack::loadPack(*reopened, &reloaded, &error)) {
+    if (!reopened) {
         std::printf("  REMOVE REOPEN FAIL  %s\n", error.c_str());
         return 1;
     }
+    pack::Pack reloaded = pack::loadPack(*reopened);
 
     int failures = 0;
 
@@ -911,9 +904,8 @@ int probeRemove(pack::Pack& loaded, const pack::DataSource& source, const std::f
     size_t identical = 0;
     for (size_t i = 0; i < loaded.files.size(); ++i) {
         std::string after;
-        std::string error;
-        pack::writeXmlFile(loaded, i, &after, &error);
-        if (after == before_delete[i]) {
+        std::string write_error;
+        if (pack::writeXmlFile(loaded, i, &after, &write_error) && after == before_delete[i]) {
             ++identical;
         } else {
             std::printf("  REMOVE: %s differs after delete + undo\n", loaded.files[i].path.c_str());
@@ -982,11 +974,11 @@ int probeAddCategory(pack::Pack& loaded, const pack::DataSource& source, const s
     }
 
     std::unique_ptr<pack::DataSource> reopened = pack::open(target, &error);
-    pack::Pack reloaded;
-    if (!reopened || !pack::loadPack(*reopened, &reloaded, &error)) {
+    if (!reopened) {
         std::printf("  ADD CATEGORY REOPEN FAIL  %s\n", error.c_str());
         return 1;
     }
+    pack::Pack reloaded = pack::loadPack(*reopened);
 
     int failures = 0;
 
@@ -1090,11 +1082,11 @@ int probeNewPack(const std::filesystem::path& out_dir) {
     }
 
     std::unique_ptr<pack::DataSource> reopened = pack::open(target, &error);
-    pack::Pack reloaded;
-    if (!reopened || !pack::loadPack(*reopened, &reloaded, &error)) {
+    if (!reopened) {
         std::printf("  NEW PACK REOPEN FAIL  %s\n", error.c_str());
         return 1;
     }
+    pack::Pack reloaded = pack::loadPack(*reopened);
 
     int failures = 0;
     if (reloaded.categories.size() != 2 || reloaded.pathables.size() != 1) {

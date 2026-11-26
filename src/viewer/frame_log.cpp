@@ -1,6 +1,6 @@
 #include "viewer/frame_log.h"
 
-#include <cstdio>
+#include <format>
 
 #include "viewer/live/bake.h"
 
@@ -9,9 +9,7 @@ namespace viewer::frame_log {
 namespace {
 
 std::string milliseconds(double value) {
-    char text[32];
-    std::snprintf(text, sizeof(text), "%.1f", value);
-    return text;
+    return std::format("{:.1f}", value);
 }
 
 } // namespace
@@ -49,9 +47,7 @@ std::string line(const Frame& frame) {
     text += ". Map " + (frame.map_id == kMapUnknown ? std::string("none") : std::to_string(frame.map_id));
     text += ", " + std::to_string(frame.quads) + " quads";
     if (frame.lua_bytes > 0) {
-        char lua[32];
-        std::snprintf(lua, sizeof(lua), ", Lua %.1f MB", static_cast<double>(frame.lua_bytes) / (1024.0 * 1024.0));
-        text += lua;
+        text += std::format(", Lua {:.1f} MB", static_cast<double>(frame.lua_bytes) / (1024.0 * 1024.0));
     }
     if (frame.jobs > 0) text += ", " + std::to_string(frame.jobs) + " jobs";
     if (frame.uploads > 0) {

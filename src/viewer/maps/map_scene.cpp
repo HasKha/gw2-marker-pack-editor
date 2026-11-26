@@ -395,10 +395,10 @@ void build(
             out->icons.push_back(icon);
         }
     }
-    // Farthest first, so the nearest lands on top, the packs' order kept between equals. Gathered into a list kept
-    // between frames, and swapped in, so neither allocates once grown.
-    static std::vector<DepthKey> keys;
-    static std::vector<Icon> sorted;
+    // Farthest first, so the nearest lands on top, the packs' order kept between equals. Gathered into a list of the
+    // workspace's, and swapped in, so neither allocates once grown.
+    std::vector<DepthKey>& keys = out->workspace.keys;
+    std::vector<Icon>& sorted = out->workspace.sorted;
     backToFront(out->icons, &keys);
     sorted.clear();
     for (const DepthKey& key : keys) sorted.push_back(out->icons[key.index]);

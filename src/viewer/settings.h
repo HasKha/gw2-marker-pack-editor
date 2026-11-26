@@ -93,6 +93,6 @@ enum class DpiScaling {
 Settings load(const std::filesystem::path& folder);
 
 // False when the file could not be written.
-bool save(const std::filesystem::path& folder, const Settings& settings);
+[[nodiscard]] bool save(const std::filesystem::path& folder, const Settings& settings);
 
 } // namespace viewer::settings

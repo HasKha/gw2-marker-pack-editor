@@ -39,8 +39,7 @@ pack::Pack editedPack(const corpus::TempDir& temp) {
     std::string error;
     const std::unique_ptr<pack::DataSource> source = pack::open(temp.path(), &error);
     REQUIRE(source != nullptr);
-    pack::Pack model;
-    REQUIRE(pack::loadPack(*source, &model, &error));
+    pack::Pack model = pack::loadPack(*source);
     REQUIRE(model.pathables.size() == 4);
     return model;
 }

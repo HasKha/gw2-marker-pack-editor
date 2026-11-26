@@ -13,20 +13,6 @@ namespace ui::tree_window {
 
 namespace {
 
-// ── Reveal ────────────────────────────────────────────────────────────────────
-// A node picked in the world has to be shown in the tree, which means opening every
-// category above it. A parent chain is only walkable upwards, so it is collected once in
-// update() and consulted on the way down. Valid for the one frame that consumes
-// State::reveal_pending.
-bool reveal_active = false;
-editor::NodeRef reveal_target;
-std::vector<size_t> reveal_ancestors; // categories to force open, root-first
-bool reveal_orphans = false; // the target is a pathable with no resolvable category
-
-bool revealOpens(size_t category_index) {
-    return reveal_active && std::find(reveal_ancestors.begin(), reveal_ancestors.end(), category_index) != reveal_ancestors.end();
-}
-
 // Label for a pathable. Packs rarely give markers a title, so fall back to whatever
 // identifies it: the trail's data file, the marker's icon, then its position.
 std::string pathableLabel(const pack::Pack& pack, size_t index) {
@@ -222,6 +208,7 @@ bool drawVisibilityToggle(editor::State& state, editor::NodeRef node) {
 // otherwise be swallowed by the row.
 void drawRow(
     editor::State& state,
+    const Reveal& reveal,
     editor::NodeRef node,
     ImGuiTreeNodeFlags flags,
     const std::string& label,
@@ -249,12 +236,12 @@ void drawRow(
 
     // The ancestors were forced open above, so the row exists this frame and can be
     // scrolled to straight away.
-    if (reveal_active && node == reveal_target) ImGui::SetScrollHereY(0.5f);
+    if (reveal.active && node == reveal.target) ImGui::SetScrollHereY(0.5f);
 
     if (out_open) *out_open = open;
 }
 
-void drawPathableRow(editor::State& state, size_t pathable_index) {
+void drawPathableRow(editor::State& state, const Reveal& reveal, size_t pathable_index) {
     if (state.pack.pathables[pathable_index].grave.deleted) return;
 
     const editor::NodeRef node{editor::NodeKind::Pathable, pathable_index};
@@ -266,11 +253,11 @@ void drawPathableRow(editor::State& state, size_t pathable_index) {
     const ImVec4 trail_colour(0.60f, 0.80f, 1.00f, 1.00f);
 
     ImGui::PushID(static_cast<int>(pathable_index));
-    drawRow(state, node, flags, pathableLabel(state.pack, pathable_index), is_trail ? &trail_colour : nullptr, 0, nullptr);
+    drawRow(state, reveal, node, flags, pathableLabel(state.pack, pathable_index), is_trail ? &trail_colour : nullptr, 0, nullptr);
     ImGui::PopID();
 }
 
-void drawCategoryRow(editor::State& state, size_t category_index) {
+void drawCategoryRow(editor::State& state, const Reveal& reveal, size_t category_index) {
     const pack::Category& category = state.pack.categories[category_index];
     if (category.grave.deleted) return;
 
@@ -295,15 +282,15 @@ void drawCategoryRow(editor::State& state, size_t category_index) {
     // Categories and pathables share an id space here, so keep them apart.
     ImGui::PushID(-1 - static_cast<int>(category_index));
 
-    if (revealOpens(category_index)) ImGui::SetNextItemOpen(true);
+    if (reveal.opens(category_index)) ImGui::SetNextItemOpen(true);
 
     bool open = false;
-    drawRow(state, node, flags, category.displayName(), nullptr, own_pathables, &open);
+    drawRow(state, reveal, node, flags, category.displayName(), nullptr, own_pathables, &open);
 
     if (open && has_children) {
-        for (size_t child : category.children) drawCategoryRow(state, child);
+        for (size_t child : category.children) drawCategoryRow(state, reveal, child);
         for (size_t pathable_index : state.pathables_by_category[category_index]) {
-            drawPathableRow(state, pathable_index);
+            drawPathableRow(state, reveal, pathable_index);
         }
         ImGui::TreePop();
     }
@@ -323,35 +310,38 @@ std::string nodePath(const pack::Pack& pack, editor::NodeRef node) {
     return type.empty() ? "(no type)" : type;
 }
 
-void update(editor::State& state) {
-    reveal_active = false;
-    reveal_orphans = false;
-    reveal_ancestors.clear();
-    if (!state.reveal_pending) return;
+bool Reveal::opens(size_t category) const {
+    return active && std::find(ancestors.begin(), ancestors.end(), category) != ancestors.end();
+}
+
+Reveal update(editor::State& state) {
+    Reveal reveal;
+    if (!state.reveal_pending) return reveal;
 
     state.reveal_pending = false;
-    reveal_target = state.reveal_target;
-    reveal_active = true;
+    reveal.target = state.reveal_target;
+    reveal.active = true;
 
     size_t category = pack::kNoIndex;
-    if (reveal_target.kind == editor::NodeKind::Category) {
-        category = reveal_target.index;
-    } else if (reveal_target.index < state.pack.pathables.size()) {
-        category = state.pack.pathables[reveal_target.index].category;
+    if (reveal.target.kind == editor::NodeKind::Category) {
+        category = reveal.target.index;
+    } else if (reveal.target.index < state.pack.pathables.size()) {
+        category = state.pack.pathables[reveal.target.index].category;
     }
 
     if (category == pack::kNoIndex || category >= state.pack.categories.size()) {
-        reveal_orphans = reveal_target.kind == editor::NodeKind::Pathable;
-        return;
+        reveal.orphans = reveal.target.kind == editor::NodeKind::Pathable;
+        return reveal;
     }
 
     while (category != pack::kNoIndex && category < state.pack.categories.size()) {
-        reveal_ancestors.push_back(category);
+        reveal.ancestors.push_back(category);
         category = state.pack.categories[category].parent;
     }
+    return reveal;
 }
 
-void draw(editor::State& state) {
+void draw(editor::State& state, const Reveal& reveal) {
     if (!state.loaded) {
         ImGui::TextDisabled("No pack open.");
         return;
@@ -359,7 +349,7 @@ void draw(editor::State& state) {
 
     ImGui::BeginChild("##tree", ImVec2(0, 0), false);
 
-    for (size_t root : state.pack.roots) drawCategoryRow(state, root);
+    for (size_t root : state.pack.roots) drawCategoryRow(state, reveal, root);
 
     size_t orphans = 0;
     for (size_t index : state.orphan_pathables) {
@@ -368,11 +358,11 @@ void draw(editor::State& state) {
 
     if (orphans > 0) {
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.00f, 0.70f, 0.30f, 1.00f));
-        if (reveal_orphans) ImGui::SetNextItemOpen(true);
+        if (reveal.orphans) ImGui::SetNextItemOpen(true);
         const bool open = ImGui::TreeNodeEx("##orphans", ImGuiTreeNodeFlags_SpanFullWidth, "Unresolved (%zu)", orphans);
         ImGui::PopStyleColor();
         if (open) {
-            for (size_t pathable_index : state.orphan_pathables) drawPathableRow(state, pathable_index);
+            for (size_t pathable_index : state.orphan_pathables) drawPathableRow(state, reveal, pathable_index);
             ImGui::TreePop();
         }
     }

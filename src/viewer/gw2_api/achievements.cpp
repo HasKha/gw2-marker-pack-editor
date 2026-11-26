@@ -147,7 +147,8 @@ void Catalog::update(Clock::time_point now) {
                 const auto at = found->find(id);
                 known[id] = at == found->end() ? std::nullopt : std::optional<Details>(std::move(at->second));
             }
-            if (!file.empty()) util::json_file::write(file, toCache(known));
+            // A cache that could not be written is asked of the API again next time.
+            if (!file.empty()) static_cast<void>(util::json_file::write(file, toCache(known)));
             return known;
         });
 }

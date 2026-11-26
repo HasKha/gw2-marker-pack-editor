@@ -22,8 +22,11 @@ set(SOURCES
     "${imgui_SOURCE_DIR}/imstb_rectpack.h"
     "${imgui_SOURCE_DIR}/imstb_textedit.h"
     "${imgui_SOURCE_DIR}/imstb_truetype.h"
+    # InputText over a std::string, so a text field needs no fixed buffer.
+    "${imgui_SOURCE_DIR}/misc/cpp/imgui_stdlib.h"
+    "${imgui_SOURCE_DIR}/misc/cpp/imgui_stdlib.cpp"
 )
 source_group(TREE "${imgui_SOURCE_DIR}" FILES ${SOURCES})
 target_sources(imgui PRIVATE ${SOURCES})
-target_include_directories(imgui PUBLIC "${imgui_SOURCE_DIR}")
+target_include_directories(imgui PUBLIC "${imgui_SOURCE_DIR}" "${imgui_SOURCE_DIR}/misc/cpp")
 

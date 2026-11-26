@@ -8,7 +8,6 @@
 #include <string>
 
 #include "editor/marker_editor.h"
-#include "editor/ui/windows.h"
 
 namespace {
 
@@ -79,13 +78,13 @@ TEST_CASE("the editor binds nothing until it starts, and lets go once closed", "
     hooks.start();
     CHECK(marker_editor::running());
     CHECK(bound == std::set<std::string>{marker_editor::KEYBIND_UNDO_ID, marker_editor::KEYBIND_REDO_ID});
-    CHECK(ui::windows::visible(ui::windows::Id::Tree));
+    CHECK(marker_editor::windows()[ui::windows::Id::Tree]);
     frames.run(hooks);
     CHECK(marker_editor::running()); // its tree is on screen
 
     // Its main window gone, the editor is closed, whatever else was open.
-    ui::windows::visible(ui::windows::Id::Tree) = false;
-    REQUIRE(ui::windows::visible(ui::windows::Id::Details));
+    marker_editor::windows()[ui::windows::Id::Tree] = false;
+    REQUIRE(marker_editor::windows()[ui::windows::Id::Details]);
     frames.run(hooks);
     CHECK_FALSE(marker_editor::running());
     CHECK(bound.empty());
@@ -93,7 +92,7 @@ TEST_CASE("the editor binds nothing until it starts, and lets go once closed", "
     // And starts again, with the tree back.
     hooks.start();
     CHECK(marker_editor::running());
-    CHECK(ui::windows::visible(ui::windows::Id::Tree));
+    CHECK(marker_editor::windows()[ui::windows::Id::Tree]);
     CHECK(bound.size() == 2);
 
     marker_editor::unload();

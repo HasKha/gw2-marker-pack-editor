@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <cctype>
 #include <charconv>
-#include <cstdio>
+#include <format>
 
 #include "http/http.h"
 #include "util/json_file.h"
@@ -21,9 +21,7 @@ std::string fingerprint(std::string_view key) {
         hash ^= static_cast<unsigned char>(c);
         hash *= 1099511628211ull;
     }
-    char text[17];
-    std::snprintf(text, sizeof(text), "%016llx", static_cast<unsigned long long>(hash));
-    return text;
+    return std::format("{:016x}", hash);
 }
 
 } // namespace
@@ -186,7 +184,8 @@ void Fetcher::update(Clock::time_point now, UtcMillis utc_now) {
             }
         }
         if (!answered) return std::nullopt;
-        if (!file.empty()) util::json_file::write(file, toCache(progress, key));
+        // A cache that could not be written is asked of the API again next time.
+        if (!file.empty()) static_cast<void>(util::json_file::write(file, toCache(progress, key)));
         return progress;
     });
 }

@@ -46,7 +46,7 @@ Guid guidFromText(std::string_view text) {
         // Convert.FromBase64String would throw on a bad digit, which Pathing catches and turns
         // into the empty Guid; parseGuid failing leaves the bytes zero the same way.
         Guid guid;
-        pack::parseGuid(text, &guid.bytes);
+        if (const auto bytes = pack::parseGuid(text)) guid.bytes = *bytes;
         return guid;
     }
     return md5Guid(text);

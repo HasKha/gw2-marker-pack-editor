@@ -1,7 +1,5 @@
 #pragma once
 
-#include <windows.h>
-
 #include <atomic>
 #include <cstdint>
 #include <filesystem>
@@ -22,8 +20,8 @@ public:
     void read();
 
     // Whether `key`, just pressed, is one of the binds, with exactly its modifiers held: Ctrl+F
-    // is not F, and is likely some other action's.
-    bool matches(WPARAM key) const;
+    // is not F, and is likely some other action's. `key` is the message's WPARAM.
+    bool matches(uintptr_t key) const;
 
     // The first bind's key as the keyboard writes it, for the prompt. With no key the prompt is
     // still clicked, so that is what it says.

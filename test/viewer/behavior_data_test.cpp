@@ -46,7 +46,7 @@ Loaded loadMarker(const corpus::TempDir& temp, const std::string& attributes, co
     std::string error;
     out.source = pack::open(temp.path(), &error);
     REQUIRE(out.source != nullptr);
-    REQUIRE(pack::loadPack(*out.source, &out.model, &error));
+    out.model = pack::loadPack(*out.source);
     return out;
 }
 
@@ -325,7 +325,7 @@ TEST_CASE("a trail takes filters and scripts, and no modifier", "[behaviors][att
     Loaded loaded;
     std::string error;
     loaded.source = pack::open(temp.path(), &error);
-    REQUIRE(pack::loadPack(*loaded.source, &loaded.model, &error));
+    loaded.model = pack::loadPack(*loaded.source);
     const auto behaviors = bakeBehaviors(loaded.model, loaded.model.pathables.at(0), false);
     REQUIRE(behaviors);
     CHECK(behaviors->mounts);

@@ -4,7 +4,7 @@
 #include <imgui.h>
 
 #include <algorithm>
-#include <cstdio>
+#include <format>
 #include <string>
 #include <vector>
 
@@ -16,19 +16,6 @@
 namespace ui::trail_editor {
 
 namespace {
-
-// Kept between invocations on purpose: the whole point of "add circle" is to place several
-// of the same circle, so only the centre is refreshed each time the dialog opens.
-struct CircleParams {
-    glm::vec3 centre{0.0f};
-    float radius = 4.0f;
-    int segments = 72; // 5 degrees a step, what make_circle uses
-    float angle_start = 0.0f;
-    float angle_end = 360.0f;
-};
-
-CircleParams circle;
-bool open_circle_popup = false;
 
 const pack::Pathable* selectedTrail(const editor::State& state) {
     const editor::NodeRef node = state.selection.primary();
@@ -56,7 +43,7 @@ void selectPoint(editor::State& state, size_t index) {
 }
 
 void drawHeader(editor::State& state, const viewer::Camera& camera) {
-    int map_id = trail_edit::mapId();
+    int map_id = trail_edit::mapId(state);
 
     ImGui::PushItemWidth(120.0f);
     ImGui::InputInt("Map id", &map_id, 0);
@@ -74,8 +61,8 @@ void drawHeader(editor::State& state, const viewer::Camera& camera) {
 }
 
 void drawPointList(editor::State& state) {
-    const size_t count = trail_edit::pointCount();
-    const size_t segments = trail_edit::segmentCount();
+    const size_t count = trail_edit::pointCount(state);
+    const size_t segments = trail_edit::segmentCount(state);
 
     // A .trl can hold several runs of points, drawn as separate ribbons. When it does, each
     // row says which run it is in; when it does not, the column would be a constant.
@@ -93,16 +80,14 @@ void drawPointList(editor::State& state) {
     while (clipper.Step()) {
         for (int row = clipper.DisplayStart; row < clipper.DisplayEnd; ++row) {
             const size_t index = static_cast<size_t>(row);
-            const glm::vec3 position = trail_edit::point(index);
+            const glm::vec3 position = trail_edit::point(state, index);
 
-            char segment[24] = "";
-            if (show_segment) std::snprintf(segment, sizeof(segment), "s%zu ", trail_edit::segmentOf(index));
+            const std::string segment = show_segment ? std::format("s{} ", trail_edit::segmentOf(state, index)) : std::string();
 
-            char label[96];
-            std::snprintf(label, sizeof(label), "%s%4zu   %8.2f, %8.2f, %8.2f", segment, index, position.x, position.y, position.z);
+            const std::string label = std::format("{}{:4}   {:8.2f}, {:8.2f}, {:8.2f}", segment, index, position.x, position.y, position.z);
 
             ImGui::PushID(row);
-            if (ImGui::Selectable(label, state.points.indices.contains(index))) selectPoint(state, index);
+            if (ImGui::Selectable(label.c_str(), state.points.indices.contains(index))) selectPoint(state, index);
             ImGui::PopID();
         }
     }
@@ -137,7 +122,7 @@ void drawSelectedPoint(editor::State& state, const viewer::Camera& camera) {
         return;
     }
 
-    glm::vec3 position = trail_edit::point(index);
+    glm::vec3 position = trail_edit::point(state, index);
     bool changed = false;
 
     // Drag fields rather than sliders: a coordinate has no range to slide between, and
@@ -161,16 +146,17 @@ void drawSelectedPoint(editor::State& state, const viewer::Camera& camera) {
     ImGui::TextDisabled("%zu selected", selected.size());
 }
 
-void drawCirclePopup(editor::State& state, const viewer::Camera& camera) {
+void drawCirclePopup(editor::State& state, View& view, const viewer::Camera& camera) {
     constexpr const char* kTitle = "Add Circle";
 
-    if (open_circle_popup) {
+    if (view.open_circle_popup) {
         ImGui::OpenPopup(kTitle);
-        open_circle_popup = false;
+        view.open_circle_popup = false;
     }
 
     if (!ImGui::BeginPopupModal(kTitle, nullptr, ImGuiWindowFlags_AlwaysAutoResize)) return;
 
+    View::Circle& circle = view.circle;
     ImGui::PushItemWidth(220.0f);
     ImGui::DragFloat3("Centre", &circle.centre.x, 0.05f);
     if (ImGui::Button(viewer::ui::fonts::label(ICON_FA_CROSSHAIRS, "Use Character Position").c_str())) circle.centre = camera.player;
@@ -199,11 +185,11 @@ void drawCirclePopup(editor::State& state, const viewer::Camera& camera) {
 
 } // namespace
 
-Request drawMenu(editor::State& state, const viewer::Camera& camera) {
+Request drawMenu(editor::State& state, View& view, const viewer::Camera& camera) {
     Request request = Request::None;
     if (!ImGui::BeginMenu("Trail")) return request;
 
-    const bool open = trail_edit::isOpen();
+    const bool open = trail_edit::isOpen(state);
 
     if (ImGui::MenuItem(viewer::ui::fonts::label(ICON_FA_ROTATE_RIGHT, "Reload from File").c_str(), nullptr, false, open))
         trail_edit::reload(state);
@@ -217,15 +203,15 @@ Request drawMenu(editor::State& state, const viewer::Camera& camera) {
 
     if (ImGui::MenuItem(viewer::ui::fonts::label(ICON_FA_CIRCLE_NOTCH, "Add Circle...").c_str(), nullptr, false, open)) {
         // Only the centre follows the character; the rest is whatever was used last.
-        circle.centre = camera.player;
-        open_circle_popup = true;
+        view.circle.centre = camera.player;
+        view.open_circle_popup = true;
     }
 
     ImGui::EndMenu();
     return request;
 }
 
-void draw(editor::State& state, const viewer::Camera& camera) {
+void draw(editor::State& state, View& view, const viewer::Camera& camera) {
     if (!state.loaded) {
         ImGui::TextDisabled("No pack open.");
         return;
@@ -233,7 +219,7 @@ void draw(editor::State& state, const viewer::Camera& camera) {
 
     // Not followSelection: that runs from marker_editor every frame, because this body does
     // not when the window is collapsed.
-    if (!trail_edit::isOpen()) {
+    if (!trail_edit::isOpen(state)) {
         // trail_edit closes rather than keeping the last trail up when a .trl cannot be
         // read, so a trail selected with nothing open is one whose data is missing. Saying
         // "select a trail" there would make a broken traildata look like an empty trail.
@@ -250,9 +236,9 @@ void draw(editor::State& state, const viewer::Camera& camera) {
         return;
     }
 
-    ImGui::TextDisabled("%s", trail_edit::path().c_str());
+    ImGui::TextDisabled("%s", trail_edit::path(state).c_str());
     drawHeader(state, camera);
-    drawCirclePopup(state, camera);
+    drawCirclePopup(state, view, camera);
     ImGui::Separator();
 
     // The point being edited is a fixed strip at the bottom, so the list above it does not
@@ -273,7 +259,7 @@ void exportTo(editor::State& state, const std::filesystem::path& file, std::stri
     (void)state;
 
     std::string error;
-    if (trail_edit::exportToFile(file, &error)) {
+    if (trail_edit::exportToFile(state, file, &error)) {
         if (status) *status = "Wrote " + util::pathText(file.filename());
     } else if (status) {
         *status = error.empty() ? "No trail open" : error;

@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cmath>
+#include <optional>
 
 #include "editor/trail_edit.h"
 #include "viewer/live/bake.h"
@@ -18,15 +19,9 @@ namespace {
 // reads it from the game's message thread.
 std::atomic<size_t> hovered_pathable{pack::kNoIndex};
 
-// What to outline as hovered this frame. The live value is only complete once every marker
-// has been tested, so the highlight uses the previous frame's result — a frame of latency
-// nobody can see, and it makes picking visible instead of a guess.
-size_t hover_highlight = pack::kNoIndex;
-
 // The same, for the points of the trail open in the editor. They are drawn as handles because
 // a coordinate has nothing to click otherwise.
 std::atomic<size_t> hovered_trail_point{pack::kNoIndex};
-size_t hover_point_highlight = pack::kNoIndex;
 
 bool pointInPolygon(const ImVec2& p, const ImVec2* polygon, int count) {
     // Sign of the cross product against each edge; consistent sign means inside. Works for
@@ -63,29 +58,29 @@ void drawMissingImage(ImDrawList* list, const viewer::SceneItem& item, const vie
 // Handles for the trail open in the editor, drawn over the ribbon: one small dot per point, so
 // a point can be aimed at and dragged the way a marker can. Only the open trail gets them —
 // every trail at once would be an unreadable field of dots.
-void drawTrailPoints(editor::State& state, const viewer::Camera& camera, ImDrawList* list) {
+void drawTrailPoints(editor::State& state, const viewer::Camera& camera, ImDrawList* list, size_t highlight) {
     constexpr float kHandleRadius = 4.0f;
     constexpr float kPickRadius = 9.0f; // px; a dot is small, so pick with some slack
 
-    if (!trail_edit::isOpen()) return;
+    if (!trail_edit::isOpen(state)) return;
     // Culled with the trail they belong to, so the handles cannot outlive the ribbon.
-    if (!state.isVisible(editor::NodeRef{editor::NodeKind::Pathable, trail_edit::pathable()})) return;
-    if (trail_edit::mapId() != static_cast<int32_t>(camera.map_id)) return;
+    if (!state.isVisible(editor::NodeRef{editor::NodeKind::Pathable, trail_edit::pathable(state)})) return;
+    if (trail_edit::mapId(state) != static_cast<int32_t>(camera.map_id)) return;
 
     const ImVec2 mouse = ImGui::GetIO().MousePos;
     float best_distance = kPickRadius;
     size_t best_point = pack::kNoIndex;
 
-    for (size_t i = 0; i < trail_edit::pointCount(); ++i) {
+    for (size_t i = 0; i < trail_edit::pointCount(state); ++i) {
         glm::vec2 screen(0.0f);
-        if (!camera.project(trail_edit::point(i), &screen)) continue;
+        if (!camera.project(trail_edit::point(state, i), &screen)) continue;
         if (screen.x < 0.0f || screen.y < 0.0f || screen.x > camera.viewport.x || screen.y > camera.viewport.y) continue;
 
         const ImVec2 at(screen.x, screen.y);
         const bool selected = state.points.indices.contains(i);
 
         list->AddCircleFilled(at, kHandleRadius, selected ? IM_COL32(255, 210, 60, 255) : IM_COL32(60, 140, 255, 200));
-        if (selected || i == hover_point_highlight) {
+        if (selected || i == highlight) {
             list->AddCircle(at, kHandleRadius + 2.0f, IM_COL32(255, 255, 255, selected ? 255 : 160), 12, 1.5f);
         }
 
@@ -115,8 +110,11 @@ size_t hoveredTrailPoint() {
 }
 
 void draw(editor::State& state, const viewer::Camera& camera, const viewer::Scene& scene) {
-    hover_highlight = state.settings.select_in_viewport ? hovered_pathable.load() : pack::kNoIndex;
-    hover_point_highlight = state.settings.select_in_viewport ? hovered_trail_point.load() : pack::kNoIndex;
+    // What to outline as hovered. The live value is only complete once every marker has been
+    // tested, so the highlight uses the previous frame's result — a frame of latency nobody can
+    // see, and it makes picking visible instead of a guess.
+    const size_t hover_highlight = state.settings.select_in_viewport ? hovered_pathable.load() : pack::kNoIndex;
+    const size_t hover_point_highlight = state.settings.select_in_viewport ? hovered_trail_point.load() : pack::kNoIndex;
     clearHovered();
     if (!state.loaded) return;
 
@@ -137,8 +135,10 @@ void draw(editor::State& state, const viewer::Camera& camera, const viewer::Scen
 
         glm::vec3 world[4];
         const ImVec2* uv = nullptr;
-        viewer::overlay::ClippedQuad visible;
-        if (!viewer::itemCorners(camera, item, world, &uv) || !viewer::overlay::clipAndProject(camera, world, &visible)) continue;
+        if (!viewer::itemCorners(camera, item, world, &uv)) continue;
+        const std::optional<viewer::overlay::ClippedQuad> clipped = viewer::overlay::clipAndProject(camera, world);
+        if (!clipped) continue;
+        const viewer::overlay::ClippedQuad& visible = *clipped;
         ImVec2 corners[5];
         viewer::overlay::screenCorners(visible, corners);
 
@@ -158,7 +158,7 @@ void draw(editor::State& state, const viewer::Camera& camera, const viewer::Scen
     }
     hovered_pathable.store(hovered);
 
-    drawTrailPoints(state, camera, list);
+    drawTrailPoints(state, camera, list, hover_point_highlight);
 }
 
 } // namespace world::overlay

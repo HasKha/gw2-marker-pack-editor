@@ -82,7 +82,7 @@ public:
     void set(const std::string& package, bool on);
 
     void load(const std::filesystem::path& file);
-    bool save(const std::filesystem::path& file) const;
+    [[nodiscard]] bool save(const std::filesystem::path& file) const;
 
 private:
     std::set<std::string> off_;

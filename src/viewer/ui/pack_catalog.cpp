@@ -2,11 +2,12 @@
 
 #include <IconsFontAwesome7.h>
 #include <imgui.h>
+#include <imgui_stdlib.h>
 
 #include <algorithm>
 #include <cctype>
-#include <cstdio>
-#include <unordered_set>
+#include <format>
+#include <string_view>
 
 #include "util/path_text.h"
 #include "viewer/ui/fonts.h"
@@ -16,7 +17,7 @@ namespace viewer::ui::pack_catalog {
 
 namespace {
 
-bool containsIgnoringCase(const std::string& text, const char* needle) {
+bool containsIgnoringCase(const std::string& text, std::string_view needle) {
     const std::string_view wanted(needle);
     if (wanted.empty()) return true;
     const auto it = std::search(text.begin(), text.end(), wanted.begin(), wanted.end(), [](char a, char b) {
@@ -38,7 +39,7 @@ std::string ago(UtcMillis time) {
 
 // Whether the filter keeps `row`: its name, author or categories hold the text, or its file
 // name does, which is all a pack the catalog does not list has.
-bool matchesFilter(const Row& row, const char* filter) {
+bool matchesFilter(const Row& row, std::string_view filter) {
     if (const catalog::Package* package = row.package) {
         if (containsIgnoringCase(package->name, filter) || containsIgnoringCase(package->author, filter) ||
             containsIgnoringCase(package->categories, filter)) {
@@ -76,9 +77,7 @@ bool drawRow(const Row& row, Action* action) {
             details += part;
         };
         if (package->size_mb > 0.0f) {
-            char size[32];
-            std::snprintf(size, sizeof(size), "%.1f MB", package->size_mb);
-            add(size);
+            add(std::format("{:.1f} MB", package->size_mb));
         }
         if (package->total_downloads > 0) add("About " + std::to_string(package->total_downloads) + " downloads a day");
         if (!details.empty()) ImGui::TextColored(style::muted(), "%s", details.c_str());
@@ -101,13 +100,9 @@ bool drawRow(const Row& row, Action* action) {
     if (const catalog::Package* package = row.package) {
         if (running) {
             const float progress = row.download->progress;
-            char label[32];
-            std::snprintf(
-                label,
-                sizeof(label),
-                progress < 0.0f ? "Downloading..." : "%d%%",
-                static_cast<int>(std::min(progress, 0.99f) * 100.0f));
-            ImGui::ProgressBar(progress < 0.0f ? 0.0f : progress, ImVec2(ImGui::GetFontSize() * 10.0f, 0.0f), label);
+            const std::string label =
+                progress < 0.0f ? std::string("Downloading...") : std::format("{}%", static_cast<int>(std::min(progress, 0.99f) * 100.0f));
+            ImGui::ProgressBar(progress < 0.0f ? 0.0f : progress, ImVec2(ImGui::GetFontSize() * 10.0f, 0.0f), label.c_str());
         } else if (row.state == catalog::State::Current) {
             ImGui::AlignTextToFramePadding();
             ImGui::TextColored(style::muted(), "%s", fonts::label(ICON_FA_CHECK, "Up to date").c_str());
@@ -163,27 +158,18 @@ bool drawRow(const Row& row, Action* action) {
     return acted;
 }
 
-enum class Tab { None, Installed, Library };
-
-// The tab drawn last frame, None while the window is closed or collapsed, and the packs it has
-// shown since. A pack downloaded or deleted no longer belongs in its tab but stays there, rather
-// than the list jumping under the player's mouse, until the player switches tabs or opens the
-// window again.
-Tab shown_tab = Tab::None;
-std::unordered_set<std::string> shown;
-
 // The rows of `tab`: the packs on disk under Installed, the rest under Library, and those that
 // belonged there since the tab was shown.
-void drawTab(Tab tab, const std::vector<Row>& rows, const char* filter, std::vector<Action>* actions) {
-    if (shown_tab != tab) shown.clear();
-    shown_tab = tab;
+void drawTab(View* view, Tab tab, const std::vector<Row>& rows, std::vector<Action>* actions) {
+    if (view->shown_tab != tab) view->shown.clear();
+    view->shown_tab = tab;
     if (ImGui::BeginChild("##packages")) {
         size_t drawn = 0;
         for (size_t i = 0; i < rows.size(); ++i) {
             const Row& row = rows[i];
             const std::string key = row.package ? row.package->file_name : util::pathText(row.local->path.filename());
-            if ((row.local != nullptr) == (tab == Tab::Installed)) shown.insert(key);
-            if (shown.count(key) && matchesFilter(row, filter)) {
+            if ((row.local != nullptr) == (tab == Tab::Installed)) view->shown.insert(key);
+            if (view->shown.count(key) && matchesFilter(row, view->filter)) {
                 ImGui::PushID(static_cast<int>(i));
                 Action action;
                 if (drawRow(row, &action)) actions->push_back(action);
@@ -194,7 +180,7 @@ void drawTab(Tab tab, const std::vector<Row>& rows, const char* filter, std::vec
                 ++drawn;
             }
         }
-        if (drawn == 0 && filter[0] != '\0') ImGui::Text("No pack matches \"%s\".", filter);
+        if (drawn == 0 && !view->filter.empty()) ImGui::Text("No pack matches \"%s\".", view->filter.c_str());
     }
     ImGui::EndChild();
 }
@@ -237,19 +223,18 @@ Listing list(const catalog::Library& library, const std::vector<catalog::LocalPa
     return listing;
 }
 
-std::vector<Action> draw(const std::vector<Row>& rows, const std::string& library_status, bool can_retry, bool* retry, bool* open) {
+std::vector<Action>
+draw(View* view, const std::vector<Row>& rows, const std::string& library_status, bool can_retry, bool* retry, bool* open) {
     std::vector<Action> actions;
     if (!*open) {
-        shown_tab = Tab::None;
+        view->shown_tab = Tab::None;
         return actions;
     }
 
     ImGui::SetNextWindowSize(ImVec2(ImGui::GetFontSize() * 36.0f, ImGui::GetFontSize() * 30.0f), ImGuiCond_FirstUseEver);
     if (ImGui::Begin("Marker Pack Library", open)) {
-        // The filter, above the tabs, so it holds across both.
-        static char filter[128] = "";
         ImGui::SetNextItemWidth(-1.0f);
-        ImGui::InputTextWithHint("##filter", "Filter by name, author or category", filter, sizeof(filter));
+        ImGui::InputTextWithHint("##filter", "Filter by name, author or category", &view->filter);
 
         if (ImGui::BeginTabBar("##tabs")) {
             // The tab's ID after ###, so it stays selected as its count changes.
@@ -263,7 +248,7 @@ std::vector<Action> draw(const std::vector<Row>& rows, const std::string& librar
                 } else if (stale > 0) {
                     ImGui::Text("%zu with an update", stale);
                 }
-                drawTab(Tab::Installed, rows, filter, &actions);
+                drawTab(view, Tab::Installed, rows, &actions);
                 ImGui::EndTabItem();
             }
             if (ImGui::BeginTabItem("Library")) {
@@ -272,13 +257,13 @@ std::vector<Action> draw(const std::vector<Row>& rows, const std::string& librar
                     ImGui::SameLine();
                     if (ImGui::SmallButton(fonts::label(ICON_FA_ROTATE_RIGHT, "Retry").c_str())) *retry = true;
                 }
-                drawTab(Tab::Library, rows, filter, &actions);
+                drawTab(view, Tab::Library, rows, &actions);
                 ImGui::EndTabItem();
             }
             ImGui::EndTabBar();
         }
     } else {
-        shown_tab = Tab::None; // collapsed
+        view->shown_tab = Tab::None; // collapsed
     }
     ImGui::End();
     return actions;

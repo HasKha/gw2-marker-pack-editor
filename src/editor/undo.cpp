@@ -11,60 +11,6 @@ namespace {
 // `.trl` carries its bytes twice, so the stack is bounded rather than unbounded.
 constexpr size_t kMaxSteps = 100;
 
-struct AttributeRecord {
-    editor::NodeRef node;
-    pack::AttributeCollection before;
-    pack::AttributeCollection after;
-};
-
-struct ExistenceRecord {
-    editor::NodeRef node;
-    bool before_deleted = false;
-    bool after_deleted = false;
-};
-
-// Everything the pack knows about one file that is not in the DataSource: pending add,
-// pending removal, or neither.
-struct AssetState {
-    bool added = false;
-    std::string original_path;
-    std::vector<uint8_t> bytes;
-    bool removed = false;
-
-    bool operator==(const AssetState& other) const {
-        return added == other.added && removed == other.removed && bytes == other.bytes && original_path == other.original_path;
-    }
-};
-
-struct AssetRecord {
-    std::string path;
-    AssetState before;
-    AssetState after;
-};
-
-struct Entry {
-    std::string label;
-    std::string merge_key;
-    uint64_t last_frame = 0;
-
-    std::vector<AttributeRecord> attributes;
-    std::vector<ExistenceRecord> existence;
-    std::vector<AssetRecord> assets;
-
-    bool empty() const { return attributes.empty() && existence.empty() && assets.empty(); }
-};
-
-std::vector<Entry> steps;
-
-// How many steps are applied. steps[0, position) are done; steps[position, end) are redo.
-size_t position = 0;
-
-// The step being filled in, while a Step guard is alive.
-size_t open_index = 0;
-int open_depth = 0;
-
-uint64_t frame = 0;
-
 // Attribute order and spelling are part of what round-trips, so "unchanged" has to mean
 // the same attributes in the same order under the same names.
 bool sameAttributes(const pack::AttributeCollection& a, const pack::AttributeCollection& b) {
@@ -115,14 +61,15 @@ void setDeleted(editor::State& state, editor::NodeRef node, bool deleted) {
     }
 }
 
-Entry* openEntry() {
-    return open_depth > 0 && open_index < steps.size() ? &steps[open_index] : nullptr;
+Entry* openEntry(History& history) {
+    return history.open_depth > 0 && history.open_index < history.steps.size() ? &history.steps[history.open_index] : nullptr;
 }
 
 // Reading the after-images is what closes a step. Records that turn out to change nothing
 // are dropped, so a click that edits nothing does not land on the stack.
 void closeEntry(editor::State& state) {
-    Entry& entry = steps[open_index];
+    History& history = state.history;
+    Entry& entry = history.steps[history.open_index];
 
     for (AttributeRecord& record : entry.attributes) {
         const pack::AttributeCollection* current = editor::attributesOf(state, record.node);
@@ -149,12 +96,12 @@ void closeEntry(editor::State& state) {
         entry.assets.end());
 
     if (entry.empty()) {
-        steps.erase(steps.begin() + static_cast<long long>(open_index));
-        position = steps.size();
+        history.steps.erase(history.steps.begin() + static_cast<long long>(history.open_index));
+        history.position = history.steps.size();
         return;
     }
 
-    entry.last_frame = frame;
+    entry.last_frame = history.frame;
 }
 
 void applyEntry(editor::State& state, Entry& entry, bool undoing) {
@@ -178,32 +125,33 @@ void applyEntry(editor::State& state, Entry& entry, bool undoing) {
 
 } // namespace
 
-void beginFrame() {
-    ++frame;
+void beginFrame(editor::State& state) {
+    ++state.history.frame;
 }
 
-void clear() {
-    steps.clear();
-    position = 0;
-    open_depth = 0;
+void clear(editor::State& state) {
+    state.history = History{};
 }
 
 Step::Step(editor::State& state, std::string label, std::string merge_key)
-    : state_(&state) {
-    if (open_depth > 0) {
+    : state_(state) {
+    History& history = state.history;
+    if (history.open_depth > 0) {
         // Nested: an operation built out of smaller ones is still one undo step.
-        ++open_depth;
+        ++history.open_depth;
         return;
     }
 
     // Still holding the same handle, still the same interaction: keep filling in the step
     // that is already there rather than starting a new one per frame.
+    std::vector<Entry>& steps = history.steps;
+    const size_t position = history.position;
     const bool merges = !merge_key.empty() && position > 0 && position == steps.size() && steps[position - 1].merge_key == merge_key &&
-                        steps[position - 1].last_frame + 1 >= frame;
+                        steps[position - 1].last_frame + 1 >= history.frame;
 
     if (merges) {
-        open_index = position - 1;
-        open_depth = 1;
+        history.open_index = position - 1;
+        history.open_depth = 1;
         return;
     }
 
@@ -215,22 +163,23 @@ Step::Step(editor::State& state, std::string label, std::string merge_key)
     Entry entry;
     entry.label = std::move(label);
     entry.merge_key = std::move(merge_key);
-    entry.last_frame = frame;
+    entry.last_frame = history.frame;
     steps.push_back(std::move(entry));
 
-    open_index = steps.size() - 1;
-    position = steps.size();
-    open_depth = 1;
+    history.open_index = steps.size() - 1;
+    history.position = steps.size();
+    history.open_depth = 1;
 }
 
 Step::~Step() {
-    if (open_depth == 0) return;
-    if (--open_depth > 0) return; // an inner guard; the outermost one closes the step
-    if (open_index < steps.size()) closeEntry(*state_);
+    History& history = state_.history;
+    if (history.open_depth == 0) return;
+    if (--history.open_depth > 0) return; // an inner guard; the outermost one closes the step
+    if (history.open_index < history.steps.size()) closeEntry(state_);
 }
 
 void attributes(editor::State& state, editor::NodeRef node) {
-    Entry* entry = openEntry();
+    Entry* entry = openEntry(state.history);
     if (!entry) return;
 
     for (const AttributeRecord& record : entry->attributes) {
@@ -247,7 +196,7 @@ void attributes(editor::State& state, editor::NodeRef node) {
 }
 
 void existence(editor::State& state, editor::NodeRef node) {
-    Entry* entry = openEntry();
+    Entry* entry = openEntry(state.history);
     if (!entry) return;
 
     for (const ExistenceRecord& record : entry->existence) {
@@ -261,9 +210,7 @@ void existence(editor::State& state, editor::NodeRef node) {
 }
 
 void created(editor::State& state, editor::NodeRef node) {
-    (void)state;
-
-    Entry* entry = openEntry();
+    Entry* entry = openEntry(state.history);
     if (!entry) return;
 
     for (const ExistenceRecord& record : entry->existence) {
@@ -279,7 +226,7 @@ void created(editor::State& state, editor::NodeRef node) {
 }
 
 void asset(editor::State& state, const std::string& path) {
-    Entry* entry = openEntry();
+    Entry* entry = openEntry(state.history);
     if (!entry) return;
 
     for (const AssetRecord& record : entry->assets) {
@@ -292,34 +239,36 @@ void asset(editor::State& state, const std::string& path) {
     entry->assets.push_back(std::move(record));
 }
 
-bool canUndo() {
-    return position > 0;
+bool canUndo(const editor::State& state) {
+    return state.history.position > 0;
 }
 
-bool canRedo() {
-    return position < steps.size();
+bool canRedo(const editor::State& state) {
+    return state.history.position < state.history.steps.size();
 }
 
-std::string undoLabel() {
-    return canUndo() ? steps[position - 1].label : std::string();
+std::string undoLabel(const editor::State& state) {
+    return canUndo(state) ? state.history.steps[state.history.position - 1].label : std::string();
 }
 
-std::string redoLabel() {
-    return canRedo() ? steps[position].label : std::string();
+std::string redoLabel(const editor::State& state) {
+    return canRedo(state) ? state.history.steps[state.history.position].label : std::string();
 }
 
 void undo(editor::State& state) {
-    if (!canUndo() || open_depth > 0) return;
-    --position;
-    applyEntry(state, steps[position], true);
+    History& history = state.history;
+    if (!canUndo(state) || history.open_depth > 0) return;
+    --history.position;
+    applyEntry(state, history.steps[history.position], true);
     // A step that has been undone must not swallow the next edit.
-    steps[position].merge_key.clear();
+    history.steps[history.position].merge_key.clear();
 }
 
 void redo(editor::State& state) {
-    if (!canRedo() || open_depth > 0) return;
-    applyEntry(state, steps[position], false);
-    ++position;
+    History& history = state.history;
+    if (!canRedo(state) || history.open_depth > 0) return;
+    applyEntry(state, history.steps[history.position], false);
+    ++history.position;
 }
 
 } // namespace undo

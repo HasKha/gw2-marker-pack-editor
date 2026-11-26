@@ -164,26 +164,10 @@ TEST_CASE("declared defaults parse as their own kind", "[attributes]") {
         INFO("attribute " << def.key << " default '" << def.default_value << "'");
 
         switch (def.kind) {
-        case pack::ValueKind::Int: {
-            int value = 0;
-            CHECK(pack::parseInt(def.default_value, &value));
-            break;
-        }
-        case pack::ValueKind::Float: {
-            float value = 0.0f;
-            CHECK(pack::parseFloat(def.default_value, &value));
-            break;
-        }
-        case pack::ValueKind::Bool: {
-            bool value = false;
-            CHECK(pack::parseBool(def.default_value, &value));
-            break;
-        }
-        case pack::ValueKind::Color: {
-            uint32_t value = 0;
-            CHECK(pack::parseColor(def.default_value, &value));
-            break;
-        }
+        case pack::ValueKind::Int: CHECK(pack::parseInt(def.default_value).has_value()); break;
+        case pack::ValueKind::Float: CHECK(pack::parseFloat(def.default_value).has_value()); break;
+        case pack::ValueKind::Bool: CHECK(pack::parseBool(def.default_value).has_value()); break;
+        case pack::ValueKind::Color: CHECK(pack::parseColor(def.default_value).has_value()); break;
         default: break;
         }
     }
@@ -191,46 +175,37 @@ TEST_CASE("declared defaults parse as their own kind", "[attributes]") {
 
 TEST_CASE("value parsing matches what the references accept", "[attributes]") {
     SECTION("bools") {
-        bool value = false;
         for (const char* text : {"1", "true", "TRUE", "yes", "7"}) {
             INFO(text);
-            REQUIRE(pack::parseBool(text, &value));
-            CHECK(value);
+            CHECK(pack::parseBool(text) == true);
         }
         for (const char* text : {"0", "false", "no"}) {
             INFO(text);
-            REQUIRE(pack::parseBool(text, &value));
-            CHECK_FALSE(value);
+            CHECK(pack::parseBool(text) == false);
         }
-        CHECK_FALSE(pack::parseBool("maybe", &value));
+        CHECK_FALSE(pack::parseBool("maybe").has_value());
     }
 
     SECTION("colours") {
-        uint32_t argb = 0;
-        REQUIRE(pack::parseColor("FF8040", &argb));
         // Six digits is RRGGBB, so alpha is supplied as opaque.
-        CHECK(argb == 0xFFFF8040u);
+        CHECK(pack::parseColor("FF8040") == 0xFFFF8040u);
+        CHECK(pack::parseColor("#80FF8040") == 0x80FF8040u);
 
-        REQUIRE(pack::parseColor("#80FF8040", &argb));
-        CHECK(argb == 0x80FF8040u);
-
-        CHECK_FALSE(pack::parseColor("FF80", &argb));
-        CHECK_FALSE(pack::parseColor("GGGGGG", &argb));
+        CHECK_FALSE(pack::parseColor("FF80").has_value());
+        CHECK_FALSE(pack::parseColor("GGGGGG").has_value());
     }
 
     SECTION("floats are locale-independent") {
-        float value = 0.0f;
-        REQUIRE(pack::parseFloat("-118.300", &value));
-        CHECK(value == -118.3f);
-        CHECK_FALSE(pack::parseFloat("", &value));
-        CHECK_FALSE(pack::parseFloat("abc", &value));
+        CHECK(pack::parseFloat("-118.300") == -118.3f);
+        CHECK_FALSE(pack::parseFloat("").has_value());
+        CHECK_FALSE(pack::parseFloat("abc").has_value());
     }
 
     SECTION("guids round trip through base64") {
         const std::string generated = pack::generateGuid();
-        std::array<uint8_t, 16> bytes{};
-        REQUIRE(pack::parseGuid(generated, &bytes));
-        CHECK(pack::guidToBase64(bytes) == generated);
+        const std::optional<std::array<uint8_t, 16>> bytes = pack::parseGuid(generated);
+        REQUIRE(bytes);
+        CHECK(pack::guidToBase64(*bytes) == generated);
 
         // Two markers sharing a GUID would toggle each other away.
         CHECK(pack::generateGuid() != generated);

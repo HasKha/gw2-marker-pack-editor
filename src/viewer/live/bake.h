@@ -32,9 +32,9 @@ struct MarkerTransform {
     bool has_rotation = false;
 };
 
-// False for anything that cannot be placed: a trail, or a POI missing a coordinate. Those are
-// invisible anchors, and Pathing drops them too.
-bool markerTransform(const pack::Pack& pack, const pack::Pathable& pathable, MarkerTransform* out);
+// Nothing for anything that cannot be placed: a trail, or a POI missing a coordinate. Those
+// are invisible anchors, and Pathing drops them too.
+[[nodiscard]] std::optional<MarkerTransform> markerTransform(const pack::Pack& pack, const pack::Pathable& pathable);
 
 // What of the world in front of a marker or trail hides it, when GoodRender draws it: the
 // player's "Marker occlusion", in this order, and GoodRender's HiddenBehind. A pack chooses it
@@ -174,10 +174,10 @@ struct BakedCategory {
 // this list too.
 std::vector<BakedCategory> bakeCategories(const pack::Pack& pack);
 
-// The marker `pathable` describes, resolved through `pack`'s categories. False for one that
+// The marker `pathable` describes, resolved through `pack`'s categories. Nothing for one that
 // cannot be placed — see markerTransform. `pathable` need not be one of `pack.pathables`: a
 // marker a script creates is baked against its pack's categories the same way.
-bool bakeMarker(const pack::Pack& pack, const pack::Pathable& pathable, BakedMarker* out);
+[[nodiscard]] std::optional<BakedMarker> bakeMarker(const pack::Pack& pack, const pack::Pathable& pathable);
 
 // Every live marker and trail of `pack`, in Pack::pathables order. Deleted pathables, routes
 // and POIs without a position are left out.

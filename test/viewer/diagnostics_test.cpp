@@ -120,23 +120,22 @@ TEST_CASE("the diagnostics list a pack's error and the images it names that are 
 }
 
 TEST_CASE("the sink reports whether GoodRender serves the Moment version it was built against", "[diagnostics][good_render]") {
-    viewer::good_render_sink::load(nullptr);
+    const viewer::good_render_sink::Subscription subscription(nullptr);
     // The test stands in for the service: the block is this process's, shared with the sink.
     good_render::Link service = good_render::open();
     REQUIRE(service.block);
 
-    CHECK(viewer::good_render_sink::service() == viewer::good_render_sink::Service::None);
+    CHECK(subscription.service() == viewer::good_render_sink::Service::None);
 
     service.block->oldest_served = good_render::MOMENT_VERSION;
     service.block->newest_served = good_render::MOMENT_VERSION;
-    CHECK(viewer::good_render_sink::service() == viewer::good_render_sink::Service::Serving);
+    CHECK(subscription.service() == viewer::good_render_sink::Service::Serving);
 
     service.block->oldest_served = good_render::MOMENT_VERSION + 1;
     service.block->newest_served = good_render::MOMENT_VERSION + 1;
-    CHECK(viewer::good_render_sink::service() == viewer::good_render_sink::Service::OtherVersion);
+    CHECK(subscription.service() == viewer::good_render_sink::Service::OtherVersion);
 
     service.block->oldest_served = 0;
     service.block->newest_served = 0;
     good_render::close(service);
-    viewer::good_render_sink::unload();
 }

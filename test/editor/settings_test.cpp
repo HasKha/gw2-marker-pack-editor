@@ -26,16 +26,19 @@ TEST_CASE("the last folders survive a non-ASCII name", "[editor][settings]") {
     directory = temp.path().string();
     AddonAPI api{};
     api.Paths.GetAddonDirectory = addonDirectory;
-    settings::init(&api);
+    settings::File file(&api);
 
-    const std::filesystem::path folder = temp.path() / util::pathFromText("J\xC3\xB6rg \xC5\x81\xC3\xB3" "d\xC5\xBA");
+    const std::filesystem::path folder = temp.path() / util::pathFromText(
+                                                           "J\xC3\xB6rg \xC5\x81\xC3\xB3"
+                                                           "d\xC5\xBA");
     const std::filesystem::path images = folder / util::pathFromText("\xC3\xA9");
-    settings::update(editor::Settings{}, folder, images);
+    file.update(editor::Settings{}, ui::windows::Shown{}, folder, images);
 
     editor::Settings read_settings;
+    ui::windows::Shown read_windows;
     std::filesystem::path read_folder;
     std::filesystem::path read_images;
-    settings::load(&read_settings, &read_folder, &read_images);
+    file.load(&read_settings, &read_windows, &read_folder, &read_images);
     CHECK(read_folder == folder);
     CHECK(read_images == images);
 }

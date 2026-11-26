@@ -35,7 +35,7 @@ public:
     virtual std::string originalName(std::string_view path) const = 0;
     virtual bool contains(std::string_view path) const = 0;
     // Safe from several threads at once, as everything const here is.
-    virtual bool read(std::string_view path, std::vector<uint8_t>* out, std::string* error) const = 0;
+    [[nodiscard]] virtual bool read(std::string_view path, std::vector<uint8_t>* out, std::string* error) const = 0;
 
     // Where the pack came from: the .zip file, or the folder.
     virtual const std::filesystem::path& root() const = 0;
@@ -45,7 +45,7 @@ public:
     // so a folder is an editing convenience, not a shippable pack.
     virtual bool isDirectory() const = 0;
 
-    bool readText(std::string_view path, std::string* out, std::string* error) const;
+    [[nodiscard]] bool readText(std::string_view path, std::string* out, std::string* error) const;
 
     // Normalized names ending in the given lowercase extension, e.g. ".xml".
     std::vector<std::string> entriesWithExtension(std::string_view extension) const;

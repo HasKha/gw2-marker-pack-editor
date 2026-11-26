@@ -9,6 +9,7 @@ namespace viewer::rtapi {
 
 namespace {
 
+// For the event callbacks, which Nexus hands nothing else: set before they are subscribed.
 AddonAPI* addon_api = nullptr;
 
 // Written from Nexus's event callbacks, which need not run on the render thread.

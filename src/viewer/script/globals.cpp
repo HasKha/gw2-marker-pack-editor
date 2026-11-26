@@ -396,7 +396,8 @@ sol::object createMarker(sol::state_view lua, size_t pack_index, const sol::obje
     marker.pack = pack_index;
     marker.texture_pack = pack_index;
     marker.node = installed.tree.find(pathable.category_id);
-    bakeMarker(declared, pathable, &marker.marker);
+    // Made even when it cannot be placed, from a default bake.
+    marker.marker = bakeMarker(declared, pathable).value_or(BakedMarker{});
     if (!declared.effectiveValue(pathable, "mapid") || marker.marker.map_id < 0) marker.marker.map_id = mumble(lua).map_id;
 
     runtime::LiveMap& live = *ctx.host.live;

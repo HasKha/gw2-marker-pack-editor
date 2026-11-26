@@ -5,7 +5,7 @@
 # context; what does touch Nexus reaches it through an AddonAPI* that stays null, which
 # resources.cpp already has to handle.
 add_executable(markus_editor_test)
-markus_target_sources(markus_editor_test)
+markus_target(markus_editor_test)
 
 target_link_libraries(markus_editor_test PRIVATE
     markus_editor

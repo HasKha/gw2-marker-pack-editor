@@ -2,11 +2,12 @@
 
 #include <IconsFontAwesome7.h>
 #include <imgui.h>
+#include <imgui_stdlib.h>
 
 #include <algorithm>
 #include <cctype>
-#include <cstdio>
 #include <cstring>
+#include <format>
 #include <set>
 #include <string>
 #include <string_view>
@@ -87,8 +88,7 @@ bool editValue(const char* id, const pack::AttributeDef* def, const std::string&
 
     switch (kind) {
     case pack::ValueKind::Float: {
-        float value = 0.0f;
-        pack::parseFloat(current, &value);
+        float value = pack::parseFloat(current).value_or(0.0f);
         if (ImGui::DragFloat("##v", &value, 0.05f)) {
             *out = pack::formatFloat(value);
             changed = true;
@@ -96,8 +96,7 @@ bool editValue(const char* id, const pack::AttributeDef* def, const std::string&
         break;
     }
     case pack::ValueKind::Int: {
-        int value = 0;
-        pack::parseInt(current, &value);
+        int value = pack::parseInt(current).value_or(0);
         if (ImGui::DragInt("##v", &value)) {
             *out = std::to_string(value);
             changed = true;
@@ -105,8 +104,7 @@ bool editValue(const char* id, const pack::AttributeDef* def, const std::string&
         break;
     }
     case pack::ValueKind::Bool: {
-        bool value = false;
-        pack::parseBool(current, &value);
+        bool value = pack::parseBool(current).value_or(false);
         if (ImGui::Checkbox("##v", &value)) {
             *out = value ? "1" : "0";
             changed = true;
@@ -114,8 +112,7 @@ bool editValue(const char* id, const pack::AttributeDef* def, const std::string&
         break;
     }
     case pack::ValueKind::Color: {
-        uint32_t argb = 0xFFFFFFFFu;
-        pack::parseColor(current, &argb);
+        const uint32_t argb = pack::parseColor(current).value_or(0xFFFFFFFFu);
         float rgba[4] = {
             ((argb >> 16) & 0xFF) / 255.0f,
             ((argb >> 8) & 0xFF) / 255.0f,
@@ -123,21 +120,16 @@ bool editValue(const char* id, const pack::AttributeDef* def, const std::string&
             ((argb >> 24) & 0xFF) / 255.0f};
         if (ImGui::ColorEdit4("##v", rgba, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_AlphaBar)) {
             auto byte = [](float f) { return static_cast<unsigned>(std::clamp(f, 0.0f, 1.0f) * 255.0f + 0.5f); };
-            char buffer[16];
             // Keep the 6-digit form when the colour is opaque; that is what packs use.
-            if (byte(rgba[3]) == 255) {
-                std::snprintf(buffer, sizeof(buffer), "%02X%02X%02X", byte(rgba[0]), byte(rgba[1]), byte(rgba[2]));
-            } else {
-                std::snprintf(buffer, sizeof(buffer), "%02X%02X%02X%02X", byte(rgba[3]), byte(rgba[0]), byte(rgba[1]), byte(rgba[2]));
-            }
-            *out = buffer;
+            *out = byte(rgba[3]) == 255
+                       ? std::format("{:02X}{:02X}{:02X}", byte(rgba[0]), byte(rgba[1]), byte(rgba[2]))
+                       : std::format("{:02X}{:02X}{:02X}{:02X}", byte(rgba[3]), byte(rgba[0]), byte(rgba[1]), byte(rgba[2]));
             changed = true;
         }
         break;
     }
     case pack::ValueKind::Vec3: {
-        glm::vec3 value(0.0f);
-        pack::parseVec3(current, &value);
+        glm::vec3 value = pack::parseVec3(current).value_or(glm::vec3(0.0f));
         if (ImGui::DragFloat3("##v", &value.x, 0.5f)) {
             *out = pack::formatVec3(value);
             changed = true;
@@ -164,15 +156,11 @@ bool editValue(const char* id, const pack::AttributeDef* def, const std::string&
         [[fallthrough]];
     }
     default: {
-        // Sized to the value: packs ship tip-descriptions over a kilobyte, which a fixed buffer
-        // would truncate. The headroom is what can be typed before the next frame resizes it.
-        constexpr size_t kHeadroom = 256;
-        static std::vector<char> buffer;
-        buffer.assign(current.begin(), current.end());
-        buffer.resize(current.size() + kHeadroom, '\0');
-
-        if (ImGui::InputText("##v", buffer.data(), buffer.size())) {
-            *out = buffer.data();
+        // A std::string, which grows as it is typed into: packs ship tip-descriptions over a
+        // kilobyte, which a fixed buffer would truncate.
+        std::string text = current;
+        if (ImGui::InputText("##v", &text)) {
+            *out = std::move(text);
             changed = true;
         }
         break;
@@ -183,19 +171,14 @@ bool editValue(const char* id, const pack::AttributeDef* def, const std::string&
     return changed;
 }
 
-bool open_delete_popup = false;
-
-// What the active field held when it was clicked into. One field is active at a time.
-std::string edit_started_value;
-
 // A category takes its whole subtree with it, which is more than a single click should do
 // without saying so. Ctrl+Z takes it back — the delete is one undo step, subtree included.
-void drawDeletePopup(editor::State& state, editor::NodeRef node) {
+void drawDeletePopup(editor::State& state, View& view, editor::NodeRef node) {
     constexpr const char* kTitle = "Delete Category?";
 
-    if (open_delete_popup) {
+    if (view.open_delete_popup) {
         ImGui::OpenPopup(kTitle);
-        open_delete_popup = false;
+        view.open_delete_popup = false;
     }
 
     if (!ImGui::BeginPopupModal(kTitle, nullptr, ImGuiWindowFlags_AlwaysAutoResize)) return;
@@ -262,7 +245,7 @@ void drawHeader(editor::State& state, editor::NodeRef node, bool* out_confirm) {
 }
 
 // Attributes set on the node itself. Editable, removable.
-void drawExplicit(editor::State& state, editor::NodeRef node) {
+void drawExplicit(editor::State& state, View& view, editor::NodeRef node) {
     pack::AttributeCollection* attributes = attributesOf(state, node);
     if (!attributes) return;
 
@@ -328,12 +311,12 @@ void drawExplicit(editor::State& state, editor::NodeRef node) {
 
             // `rows` is this frame's copy, so on the frame the field is clicked into it
             // still holds the value being edited away from.
-            if (ImGui::IsItemActivated()) edit_started_value = attribute.value;
+            if (ImGui::IsItemActivated()) view.edit_started_value = attribute.value;
 
             // On commit, not per keystroke: attributeRenamed moves a file, and typing
             // "route-one.trl" is eighteen intermediate paths. Escape reverts the field
             // first, so an abandoned edit arrives here as previous == current and no-ops.
-            if (ImGui::IsItemDeactivatedAfterEdit() && !edit_started_value.empty()) {
+            if (ImGui::IsItemDeactivatedAfterEdit() && !view.edit_started_value.empty()) {
                 const pack::Attribute* settled = attributes->find(attribute.key);
                 const std::string settled_value = settled ? settled->value : std::string();
 
@@ -342,12 +325,12 @@ void drawExplicit(editor::State& state, editor::NodeRef node) {
                 // A pause while typing ends the step, so the move could land in one without the
                 // value. Restoring the old value for an instant gives it the right before-image;
                 // undo::attributes ignores it when the steps did merge.
-                attributes->set(attribute.name, edit_started_value);
+                attributes->set(attribute.name, view.edit_started_value);
                 undo::attributes(state, node);
                 attributes->set(attribute.name, settled_value);
 
-                pathable_edit::attributeRenamed(state, node, attribute.key, edit_started_value);
-                edit_started_value.clear();
+                pathable_edit::attributeRenamed(state, node, attribute.key, view.edit_started_value);
+                view.edit_started_value.clear();
             }
 
             ImGui::TableNextColumn();
@@ -450,7 +433,7 @@ void drawInherited(editor::State& state, editor::NodeRef node) {
 }
 
 // Everything from the table that can be set here and is not set yet.
-void drawAddAttribute(editor::State& state, const std::vector<editor::NodeRef>& targets) {
+void drawAddAttribute(editor::State& state, View& view, const std::vector<editor::NodeRef>& targets) {
     if (targets.empty()) return;
 
     // settableOn, not applies_to: a category consumes almost none of these itself but is the
@@ -468,12 +451,11 @@ void drawAddAttribute(editor::State& state, const std::vector<editor::NodeRef>& 
 
     if (!ImGui::BeginCombo("##add", "+ Add attribute")) return;
 
-    static char search[64] = {};
     ImGui::SetNextItemWidth(-1.0f);
-    ImGui::InputTextWithHint("##search", "Search...", search, sizeof(search));
+    ImGui::InputTextWithHint("##search", "Search...", &view.search);
 
     std::string needle;
-    for (const char* c = search; *c; ++c) needle.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(*c))));
+    for (const char c : view.search) needle.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
 
     for (const pack::AttributeDef& def : pack::attributeTable()) {
         if ((pack::settableOn(def) & mask) == 0) continue;
@@ -512,7 +494,7 @@ void drawAddAttribute(editor::State& state, const std::vector<editor::NodeRef>& 
 
 // Bulk edit: attributes present on every selected node. A differing value is shown as
 // such and only overwritten if the user actually edits the field.
-void drawMultiSelection(editor::State& state) {
+void drawMultiSelection(editor::State& state, View& view) {
     const std::vector<editor::NodeRef>& nodes = state.selection.items();
     ImGui::Text("%zu items selected", nodes.size());
     ImGui::Separator();
@@ -583,13 +565,13 @@ void drawMultiSelection(editor::State& state) {
     }
 
     ImGui::Separator();
-    drawAddAttribute(state, nodes);
+    drawAddAttribute(state, view, nodes);
 }
 
 // Drawn under an id scope that follows the selection — see draw().
-void drawSelection(editor::State& state) {
+void drawSelection(editor::State& state, View& view) {
     if (state.selection.size() > 1) {
-        drawMultiSelection(state);
+        drawMultiSelection(state, view);
         return;
     }
 
@@ -601,8 +583,8 @@ void drawSelection(editor::State& state) {
 
     bool confirm_delete = false;
     drawHeader(state, node, &confirm_delete);
-    if (confirm_delete) open_delete_popup = true;
-    drawDeletePopup(state, node);
+    if (confirm_delete) view.open_delete_popup = true;
+    drawDeletePopup(state, view, node);
 
     // The header's Delete button just fired. Its attributes are still in memory, but
     // offering to edit them would be offering to edit something that no longer exists.
@@ -610,17 +592,17 @@ void drawSelection(editor::State& state) {
 
     ImGui::Separator();
 
-    drawExplicit(state, node);
+    drawExplicit(state, view, node);
 
     ImGui::Separator();
-    drawAddAttribute(state, state.selection.items());
+    drawAddAttribute(state, view, state.selection.items());
 
     drawInherited(state, node);
 }
 
 } // namespace
 
-void draw(editor::State& state) {
+void draw(editor::State& state, View& view) {
     if (!state.loaded) {
         ImGui::TextDisabled("No pack open.");
         return;
@@ -639,7 +621,7 @@ void draw(editor::State& state) {
     ImGui::PushID(static_cast<int>(primary.kind));
     ImGui::PushID(static_cast<int>(primary.index));
 
-    drawSelection(state);
+    drawSelection(state, view);
 
     ImGui::PopID();
     ImGui::PopID();

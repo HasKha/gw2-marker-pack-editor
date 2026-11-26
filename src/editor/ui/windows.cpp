@@ -2,14 +2,9 @@
 
 #include <imgui.h>
 
-#include <array>
-#include <cstddef>
-
 namespace ui::windows {
 
 namespace {
-
-constexpr size_t kCount = static_cast<size_t>(Id::Count);
 
 struct Definition {
     const char* title; // with the ##id suffix
@@ -28,16 +23,6 @@ constexpr Definition kWindows[kCount] = {
     {"Pack Resources##Markus_Resources", "Pack Resources", "resources", false},
 };
 
-// Seeded from the table rather than spelled out per index: adding a window has to stay one
-// row, and a hand-written initializer would quietly leave the sixth one hidden.
-constexpr std::array<bool, kCount> defaultVisibility() {
-    std::array<bool, kCount> out{};
-    for (size_t i = 0; i < kCount; ++i) out[i] = kWindows[i].visible_by_default;
-    return out;
-}
-
-std::array<bool, kCount> shown = defaultVisibility();
-
 size_t indexOf(Id id) {
     return static_cast<size_t>(id);
 }
@@ -52,13 +37,16 @@ const char* key(Id id) {
     return kWindows[indexOf(id)].key;
 }
 
-bool& visible(Id id) {
-    return shown[indexOf(id)];
+// Seeded from the table rather than spelled out per index: adding a window has to stay one
+// row, and a hand-written initializer would quietly leave the sixth one hidden.
+Shown::Shown() {
+    for (size_t i = 0; i < kCount; ++i) shown_[i] = kWindows[i].visible_by_default;
 }
 
-void drawViewMenu() {
+void drawViewMenu(Shown& shown) {
     for (size_t i = 0; i < kCount; ++i) {
-        if (static_cast<Id>(i) != Id::Tree) ImGui::MenuItem(kWindows[i].label, nullptr, &shown[i]);
+        const Id id = static_cast<Id>(i);
+        if (id != Id::Tree) ImGui::MenuItem(kWindows[i].label, nullptr, &shown[id]);
     }
 }
 

@@ -3,6 +3,7 @@
 #include <IconsFontAwesome7.h>
 #include <d3d11.h>
 #include <imgui.h>
+#include <wrl/client.h>
 
 #include <cmath>
 #include <cstring>
@@ -11,21 +12,25 @@
 
 namespace viewer::ui::fonts {
 
+struct Fonts::State {
+    // Its vectors come from ImGui's allocator, which is Nexus's: it goes with the session, while
+    // Nexus is still there, not as the DLL detaches.
+    ImFontAtlas atlas;
+    Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> view;
+    ImFont* font = nullptr;
+    ImFont* heading = nullptr;
+    bool tried = false;
+    ID3D11Device* device = nullptr; // the viewer's, which holds it
+};
+
 namespace {
 
-// Its vectors come from ImGui's allocator, which is Nexus's, so unload() empties them rather than
-// leave them to a destructor that runs as the DLL detaches.
-ImFontAtlas atlas;
-ID3D11ShaderResourceView* atlas_view = nullptr;
-ImFont* font = nullptr;
-ImFont* heading = nullptr;
-bool tried = false;
+// The session's, while it lives. Read and written on the render thread only.
+Fonts::State* current = nullptr;
 
 // How much larger pushHeading()'s font is than the text: enough to stand out as a title in a
 // list, small enough that a long name still fits beside its author.
 constexpr float kHeadingScale = 1.2f;
-ID3D11Device* atlas_device = nullptr;
-std::string status_text = "not built yet";
 
 constexpr ImWchar kIconRanges[] = {ICON_MIN_FA, ICON_MAX_16_FA, 0};
 
@@ -37,15 +42,12 @@ constexpr ImWchar kTextRanges[] = {0x0020, 0x00FF, 0x0100, 0x024F, 0};
 // 512. Every icon spans that box.
 constexpr float kIconAscent = 448.0f / 512.0f;
 
-bool upload(ID3D11Device* device) {
+bool upload(Fonts::State& fonts) {
     unsigned char* pixels = nullptr;
     int width = 0;
     int height = 0;
-    atlas.GetTexDataAsRGBA32(&pixels, &width, &height);
-    if (!pixels) {
-        status_text = "the atlas did not build";
-        return false;
-    }
+    fonts.atlas.GetTexDataAsRGBA32(&pixels, &width, &height);
+    if (!pixels) return false;
 
     D3D11_TEXTURE2D_DESC description{};
     description.Width = static_cast<UINT>(width);
@@ -58,29 +60,15 @@ bool upload(ID3D11Device* device) {
     description.BindFlags = D3D11_BIND_SHADER_RESOURCE;
     const D3D11_SUBRESOURCE_DATA data{pixels, static_cast<UINT>(width) * 4, 0};
 
-    ID3D11Texture2D* texture = nullptr;
-    if (FAILED(device->CreateTexture2D(&description, &data, &texture))) {
-        status_text = "could not create the atlas texture";
+    // The view holds the texture, so ours goes when this returns.
+    Microsoft::WRL::ComPtr<ID3D11Texture2D> texture;
+    if (FAILED(fonts.device->CreateTexture2D(&description, &data, &texture))) return false;
+    if (FAILED(fonts.device->CreateShaderResourceView(texture.Get(), nullptr, &fonts.view))) {
+        fonts.view.Reset();
         return false;
     }
-    const HRESULT viewed = device->CreateShaderResourceView(texture, nullptr, &atlas_view);
-    texture->Release();
-    if (FAILED(viewed)) {
-        atlas_view = nullptr;
-        status_text = "could not create the atlas view";
-        return false;
-    }
-    atlas.TexID = static_cast<ImTextureID>(atlas_view);
+    fonts.atlas.TexID = static_cast<ImTextureID>(fonts.view.Get());
     return true;
-}
-
-void clear() {
-    atlas.Clear();
-    atlas.TexID = nullptr;
-    if (atlas_view) {
-        atlas_view->Release();
-        atlas_view = nullptr;
-    }
 }
 
 // Moves the icons so that Font Awesome's line box lies on the text's, from the top of the line to
@@ -98,16 +86,10 @@ void alignIcons(ImFont* built) {
 
 // A copy of `source`'s font file at its size, with the icons merged into it. The copy is ours
 // because Nexus frees its own when the player picks another font.
-void build(const ImFont* source) {
+void build(Fonts::State& fonts, const ImFont* source) {
+    // Without a device, or with a host font that holds no font file, the windows keep the host's.
     const ImFontConfig* config = source->ConfigData;
-    if (!atlas_device) {
-        status_text = "no device";
-        return;
-    }
-    if (!config || !config->FontData) {
-        status_text = "the host's window font holds no font file";
-        return;
-    }
+    if (!fonts.device || !config || !config->FontData) return;
 
     ImFontConfig text = *config;
     text.FontData = IM_ALLOC(static_cast<size_t>(config->FontDataSize));
@@ -116,12 +98,12 @@ void build(const ImFont* source) {
     text.GlyphRanges = kTextRanges;
     text.MergeMode = false;
     text.DstFont = nullptr;
-    ImFont* built = atlas.AddFont(&text);
+    ImFont* built = fonts.atlas.AddFont(&text);
 
     ImFontConfig icons;
     icons.MergeMode = true;
     icons.GlyphMinAdvanceX = config->SizePixels;
-    atlas.AddFontFromMemoryCompressedTTF(
+    fonts.atlas.AddFontFromMemoryCompressedTTF(
         font_awesome_solid_compressed_data,
         static_cast<int>(font_awesome_solid_compressed_size),
         config->SizePixels,
@@ -137,49 +119,50 @@ void build(const ImFont* source) {
     large.GlyphRanges = kTextRanges;
     large.MergeMode = false;
     large.DstFont = nullptr;
-    ImFont* built_heading = atlas.AddFont(&large);
+    ImFont* built_heading = fonts.atlas.AddFont(&large);
 
-    const bool uploaded = upload(atlas_device);
+    const bool uploaded = upload(fonts);
     // The glyphs are all that is drawn from; the font files and the pixels were only for building.
-    atlas.ClearInputData();
-    atlas.ClearTexData();
+    fonts.atlas.ClearInputData();
+    fonts.atlas.ClearTexData();
     if (!uploaded) {
-        clear();
+        fonts.atlas.Clear();
+        fonts.atlas.TexID = nullptr;
         return;
     }
     alignIcons(built);
-    font = built;
-    heading = built_heading;
-    status_text = std::string("built from ") + config->Name;
+    fonts.font = built;
+    fonts.heading = built_heading;
 }
 
 } // namespace
 
-void load(ID3D11Device* device) {
-    atlas_device = device;
+Fonts::Fonts()
+    : state_(std::make_unique<State>()) {
+    current = state_.get();
 }
 
-void unload() {
-    clear();
-    font = nullptr;
-    heading = nullptr;
-    tried = false;
-    status_text = "not built yet";
-    atlas_device = nullptr;
+Fonts::~Fonts() {
+    if (current == state_.get()) current = nullptr;
+}
+
+void Fonts::setDevice(ID3D11Device* device) {
+    state_->device = device;
 }
 
 void push() {
-    const ImFont* current = ImGui::GetFont();
-    if (!tried) {
-        tried = true;
-        build(current);
+    const ImFont* host = ImGui::GetFont();
+    if (current && !current->tried) {
+        current->tried = true;
+        build(*current, host);
     }
+    ImFont* font = current ? current->font : nullptr;
     if (!font) {
         ImGui::PushFont(ImGui::GetFont());
         return;
     }
     // The host's font may since have been resized, and a window's scale applies on top of a font's.
-    font->Scale = current->FontSize * current->Scale / font->FontSize;
+    font->Scale = host->FontSize * host->Scale / font->FontSize;
     ImGui::PushFont(font);
 }
 
@@ -188,26 +171,23 @@ void pop() {
 }
 
 void pushHeading() {
-    const ImFont* current = ImGui::GetFont();
+    const ImFont* host = ImGui::GetFont();
+    ImFont* heading = current ? current->heading : nullptr;
     if (!heading) {
         ImGui::PushFont(ImGui::GetFont());
         return;
     }
-    heading->Scale = current->FontSize * current->Scale * kHeadingScale / heading->FontSize;
+    heading->Scale = host->FontSize * host->Scale * kHeadingScale / heading->FontSize;
     ImGui::PushFont(heading);
 }
 
 bool ready() {
-    return font != nullptr;
+    return current && current->font;
 }
 
 std::string label(const char* icon, const char* text) {
-    if (!font) return text;
+    if (!ready()) return text;
     return std::string(icon) + "  " + text;
-}
-
-const char* status() {
-    return status_text.c_str();
 }
 
 } // namespace viewer::ui::fonts

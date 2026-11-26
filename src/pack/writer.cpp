@@ -150,6 +150,8 @@ SaveResult buildZip(const Pack& pack, const DataSource* source, const std::files
     // Build beside the target so a failure never leaves a half-written pack in its place.
     const std::filesystem::path temporary = pendingPath(target);
 
+    // miniz's levels are an unnamed enum of int, and its writer takes an mz_uint.
+    constexpr mz_uint kCompression = static_cast<mz_uint>(MZ_DEFAULT_COMPRESSION);
     mz_zip_archive zip{};
     // miniz takes the name as UTF-8, and opens it with _wfopen on Windows.
     if (!mz_zip_writer_init_file(&zip, util::pathText(temporary).c_str(), 0)) {
@@ -217,7 +219,7 @@ SaveResult buildZip(const Pack& pack, const DataSource* source, const std::files
             size = bytes.size();
         }
 
-        if (!mz_zip_writer_add_mem(&zip, name.c_str(), data, size, MZ_DEFAULT_COMPRESSION)) {
+        if (!mz_zip_writer_add_mem(&zip, name.c_str(), data, size, kCompression)) {
             result.error = "Could not write " + name + " to the archive";
             failed = true;
             break;
@@ -232,7 +234,7 @@ SaveResult buildZip(const Pack& pack, const DataSource* source, const std::files
         if (it == pending_files.end()) continue;
 
         const std::string& name = file.original_path.empty() ? file.path : file.original_path;
-        if (!mz_zip_writer_add_mem(&zip, name.c_str(), it->second->data(), it->second->size(), MZ_DEFAULT_COMPRESSION)) {
+        if (!mz_zip_writer_add_mem(&zip, name.c_str(), it->second->data(), it->second->size(), kCompression)) {
             result.error = "Could not write " + name + " to the archive";
             failed = true;
             break;
@@ -247,7 +249,7 @@ SaveResult buildZip(const Pack& pack, const DataSource* source, const std::files
         if (pending_adds.find(asset.path) == pending_adds.end()) continue;
 
         const std::string& name = asset.original_path.empty() ? asset.path : asset.original_path;
-        if (!mz_zip_writer_add_mem(&zip, name.c_str(), asset.bytes.data(), asset.bytes.size(), MZ_DEFAULT_COMPRESSION)) {
+        if (!mz_zip_writer_add_mem(&zip, name.c_str(), asset.bytes.data(), asset.bytes.size(), kCompression)) {
             result.error = "Could not write " + name + " to the archive";
             failed = true;
             break;

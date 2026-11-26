@@ -1,5 +1,7 @@
 #include "viewer/game/interact_key.h"
 
+#include <windows.h>
+
 #include <algorithm>
 #include <iterator>
 #include <vector>
@@ -32,7 +34,7 @@ void InteractKey::read() {
     binds_[1] = keys.size() > 1 ? pack(keys[1]) : 0;
 }
 
-bool InteractKey::matches(WPARAM key) const {
+bool InteractKey::matches(uintptr_t key) const {
     const auto held = [](int virtual_key) { return (GetKeyState(virtual_key) & 0x8000) != 0; };
     const uint32_t mods = (held(VK_SHIFT) ? 1u : 0u) | (held(VK_CONTROL) ? 2u : 0u) | (held(VK_MENU) ? 4u : 0u);
     return std::any_of(std::begin(binds_), std::end(binds_), [&](const std::atomic<uint32_t>& bind) {

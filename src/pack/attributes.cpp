@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <cctype>
 #include <charconv>
-#include <cstdio>
+#include <format>
 #include <random>
 #include <unordered_map>
 
@@ -234,67 +234,52 @@ bool isAttributeKey(std::string_view name) {
     return true;
 }
 
-bool parseInt(std::string_view text, int* out) {
+std::optional<int> parseInt(std::string_view text) {
     text = trim(text);
-    if (text.empty()) return false;
+    if (text.empty()) return std::nullopt;
     int value = 0;
-    const char* begin = text.data();
-    const char* end = text.data() + text.size();
-    auto [ptr, ec] = std::from_chars(begin, end, value);
-    if (ec != std::errc{}) return false;
-    *out = value;
-    return true;
+    auto [ptr, ec] = std::from_chars(text.data(), text.data() + text.size(), value);
+    if (ec != std::errc{}) return std::nullopt;
+    return value;
 }
 
-bool parseFloat(std::string_view text, float* out) {
+std::optional<float> parseFloat(std::string_view text) {
     text = trim(text);
-    if (text.empty()) return false;
+    if (text.empty()) return std::nullopt;
     // from_chars on float is locale-independent, which matters: packs are authored all
     // over the world but always use '.' as the decimal separator.
     float value = 0.0f;
     auto [ptr, ec] = std::from_chars(text.data(), text.data() + text.size(), value);
-    if (ec != std::errc{}) return false;
-    *out = value;
-    return true;
+    if (ec != std::errc{}) return std::nullopt;
+    return value;
 }
 
-bool parseBool(std::string_view text, bool* out) {
+std::optional<bool> parseBool(std::string_view text) {
     const std::string key = attributeKey(text);
-    if (key == "1" || key == "true" || key == "yes") {
-        *out = true;
-        return true;
-    }
-    if (key == "0" || key == "false" || key == "no") {
-        *out = false;
-        return true;
-    }
+    if (key == "1" || key == "true" || key == "yes") return true;
+    if (key == "0" || key == "false" || key == "no") return false;
     // TacO wrote plain integers here too; anything non-zero counts as true.
-    int value = 0;
-    if (parseInt(key, &value)) {
-        *out = value != 0;
-        return true;
-    }
-    return false;
+    if (const std::optional<int> value = parseInt(key)) return *value != 0;
+    return std::nullopt;
 }
 
-bool parseColor(std::string_view text, uint32_t* out_argb) {
+std::optional<uint32_t> parseColor(std::string_view text) {
     text = trim(text);
     if (!text.empty() && text.front() == '#') text.remove_prefix(1);
-    if (text.size() != 6 && text.size() != 8) return false;
+    if (text.size() != 6 && text.size() != 8) return std::nullopt;
 
     uint32_t value = 0;
     for (char c : text) {
         const int digit = hexDigit(c);
-        if (digit < 0) return false;
+        if (digit < 0) return std::nullopt;
         value = (value << 4) | static_cast<uint32_t>(digit);
     }
 
     // 6 digits is RRGGBB, so supply an opaque alpha.
-    *out_argb = text.size() == 6 ? (0xFF000000u | value) : value;
-    return true;
+    return text.size() == 6 ? (0xFF000000u | value) : value;
 }
 
-bool parseVec3(std::string_view text, glm::vec3* out) {
+std::optional<glm::vec3> parseVec3(std::string_view text) {
     glm::vec3 value(0.0f);
     size_t component = 0;
     size_t begin = 0;
@@ -302,20 +287,21 @@ bool parseVec3(std::string_view text, glm::vec3* out) {
     while (component < 3) {
         const size_t comma = text.find(',', begin);
         const std::string_view part = text.substr(begin, comma == std::string_view::npos ? std::string_view::npos : comma - begin);
-        if (!parseFloat(part, &value[static_cast<glm::length_t>(component)])) return false;
+        const std::optional<float> parsed = parseFloat(part);
+        if (!parsed) return std::nullopt;
+        value[static_cast<glm::length_t>(component)] = *parsed;
         ++component;
         if (comma == std::string_view::npos) break;
         begin = comma + 1;
     }
 
-    if (component != 3) return false;
-    *out = value;
-    return true;
+    if (component != 3) return std::nullopt;
+    return value;
 }
 
-bool parseGuid(std::string_view text, std::array<uint8_t, 16>* out) {
+std::optional<std::array<uint8_t, 16>> parseGuid(std::string_view text) {
     text = trim(text);
-    if (text.empty()) return false;
+    if (text.empty()) return std::nullopt;
 
     std::array<uint8_t, 16> bytes{};
     size_t written = 0;
@@ -325,20 +311,19 @@ bool parseGuid(std::string_view text, std::array<uint8_t, 16>* out) {
     for (char c : text) {
         if (c == '=') break;
         const size_t digit = kBase64Alphabet.find(c);
-        if (digit == std::string_view::npos) return false;
+        if (digit == std::string_view::npos) return std::nullopt;
 
         accumulator = (accumulator << 6) | static_cast<uint32_t>(digit);
         bits += 6;
         if (bits >= 8) {
             bits -= 8;
-            if (written >= bytes.size()) return false;
+            if (written >= bytes.size()) return std::nullopt;
             bytes[written++] = static_cast<uint8_t>((accumulator >> bits) & 0xFF);
         }
     }
 
-    if (written != bytes.size()) return false;
-    *out = bytes;
-    return true;
+    if (written != bytes.size()) return std::nullopt;
+    return bytes;
 }
 
 std::string guidToBase64(const std::array<uint8_t, 16>& guid) {
@@ -375,9 +360,7 @@ std::string generateGuid() {
 std::string formatFloat(float value) {
     // %g rather than %f: no trailing-zero noise, and enough precision to survive a
     // parse/format cycle without drifting.
-    char buffer[64];
-    std::snprintf(buffer, sizeof(buffer), "%.6g", static_cast<double>(value));
-    return buffer;
+    return std::format("{:.6g}", static_cast<double>(value));
 }
 
 std::string formatVec3(const glm::vec3& value) {
@@ -386,23 +369,17 @@ std::string formatVec3(const glm::vec3& value) {
 
 int defaultInt(std::string_view key, int fallback) {
     const AttributeDef* def = findAttribute(key);
-    int value = fallback;
-    if (def && parseInt(def->default_value, &value)) return value;
-    return fallback;
+    return def ? parseInt(def->default_value).value_or(fallback) : fallback;
 }
 
 float defaultFloat(std::string_view key, float fallback) {
     const AttributeDef* def = findAttribute(key);
-    float value = fallback;
-    if (def && parseFloat(def->default_value, &value)) return value;
-    return fallback;
+    return def ? parseFloat(def->default_value).value_or(fallback) : fallback;
 }
 
 bool defaultBool(std::string_view key, bool fallback) {
     const AttributeDef* def = findAttribute(key);
-    bool value = fallback;
-    if (def && parseBool(def->default_value, &value)) return value;
-    return fallback;
+    return def ? parseBool(def->default_value).value_or(fallback) : fallback;
 }
 
 } // namespace pack

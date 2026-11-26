@@ -7,6 +7,7 @@
 #include <imgui.h>
 
 #include <cmath>
+#include <optional>
 
 #include "draw_list.h"
 #include "test_camera.h"
@@ -70,10 +71,10 @@ TEST_CASE("a trail step running past the camera foreshortens smoothly", "[overla
     SECTION("wholly in front") {
         const glm::vec3 world[4] = {{-1.5f, -1.5f, 30.0f}, {-0.5f, -1.5f, 30.0f}, {-0.5f, -1.5f, 0.3f}, {-1.5f, -1.5f, 0.3f}};
         DrawListFixture fixture;
-        viewer::overlay::ClippedQuad quad;
-        REQUIRE(viewer::overlay::clipAndProject(camera, world, &quad));
-        REQUIRE(quad.count == 4);
-        viewer::overlay::drawTexturedQuad(&fixture.list(), camera, fakeTexture(), quad, kParameterUv, IM_COL32_WHITE);
+        const std::optional<viewer::overlay::ClippedQuad> quad = viewer::overlay::clipAndProject(camera, world);
+        REQUIRE(quad);
+        REQUIRE(quad->count == 4);
+        viewer::overlay::drawTexturedQuad(&fixture.list(), camera, fakeTexture(), *quad, kParameterUv, IM_COL32_WHITE);
         checkBufferConsistent(fixture.list());
         CHECK(worstTextureError(fixture.list(), camera, world) < 2.0f);
     }
@@ -81,9 +82,9 @@ TEST_CASE("a trail step running past the camera foreshortens smoothly", "[overla
     SECTION("running on behind it") {
         const glm::vec3 world[4] = {{-1.5f, -1.5f, 30.0f}, {-0.5f, -1.5f, 30.0f}, {-0.5f, -1.5f, -10.0f}, {-1.5f, -1.5f, -10.0f}};
         DrawListFixture fixture;
-        viewer::overlay::ClippedQuad quad;
-        REQUIRE(viewer::overlay::clipAndProject(camera, world, &quad));
-        viewer::overlay::drawTexturedQuad(&fixture.list(), camera, fakeTexture(), quad, kParameterUv, IM_COL32_WHITE);
+        const std::optional<viewer::overlay::ClippedQuad> quad = viewer::overlay::clipAndProject(camera, world);
+        REQUIRE(quad);
+        viewer::overlay::drawTexturedQuad(&fixture.list(), camera, fakeTexture(), *quad, kParameterUv, IM_COL32_WHITE);
         checkBufferConsistent(fixture.list());
         CHECK(worstTextureError(fixture.list(), camera, world) < 2.0f);
     }
@@ -96,11 +97,11 @@ TEST_CASE("a quad wholly in front and square on is one AddImageQuad", "[overlay]
     glm::vec3 world[4];
     REQUIRE(camera.billboardQuad(glm::vec3(0.0f, 0.0f, 50.0f), 4.0f, world));
 
-    viewer::overlay::ClippedQuad quad;
-    REQUIRE(viewer::overlay::clipAndProject(camera, world, &quad));
-    CHECK(quad.count == 4);
+    const std::optional<viewer::overlay::ClippedQuad> quad = viewer::overlay::clipAndProject(camera, world);
+    REQUIRE(quad);
+    CHECK(quad->count == 4);
 
-    viewer::overlay::drawTexturedQuad(&fixture.list(), camera, fakeTexture(), quad, kUv, IM_COL32_WHITE);
+    viewer::overlay::drawTexturedQuad(&fixture.list(), camera, fakeTexture(), *quad, kUv, IM_COL32_WHITE);
     CHECK(fixture.list().VtxBuffer.Size == 4);
     CHECK(fixture.list().IdxBuffer.Size == 6);
     checkBufferConsistent(fixture.list());
@@ -114,11 +115,11 @@ TEST_CASE("a quad running away from the camera is subdivided in one draw command
     // different depths, which is what affine interpolation gets wrong.
     const glm::vec3 world[4] = {{-1.0f, -1.0f, 1.0f}, {1.0f, -1.0f, 1.0f}, {1.0f, -1.0f, 50.0f}, {-1.0f, -1.0f, 50.0f}};
 
-    viewer::overlay::ClippedQuad quad;
-    REQUIRE(viewer::overlay::clipAndProject(camera, world, &quad));
+    const std::optional<viewer::overlay::ClippedQuad> quad = viewer::overlay::clipAndProject(camera, world);
+    REQUIRE(quad);
 
     const int commands_before = fixture.list().CmdBuffer.Size;
-    viewer::overlay::drawTexturedQuad(&fixture.list(), camera, fakeTexture(), quad, kUv, IM_COL32_WHITE);
+    viewer::overlay::drawTexturedQuad(&fixture.list(), camera, fakeTexture(), *quad, kUv, IM_COL32_WHITE);
 
     CHECK(fixture.list().VtxBuffer.Size > 4);
     // The grid is drawn under one texture id: one command for it, however many cells.
@@ -133,11 +134,11 @@ TEST_CASE("a quad straddling the near plane draws only what is in front", "[over
     // Standing on it: the floor runs from behind the camera to ten metres ahead.
     const glm::vec3 world[4] = {{-1.0f, -1.0f, -5.0f}, {1.0f, -1.0f, -5.0f}, {1.0f, -1.0f, 10.0f}, {-1.0f, -1.0f, 10.0f}};
 
-    viewer::overlay::ClippedQuad quad;
-    REQUIRE(viewer::overlay::clipAndProject(camera, world, &quad));
-    CHECK(quad.count == 4); // the plane cuts two edges, leaving a quad of the front part
+    const std::optional<viewer::overlay::ClippedQuad> quad = viewer::overlay::clipAndProject(camera, world);
+    REQUIRE(quad);
+    CHECK(quad->count == 4); // the plane cuts two edges, leaving a quad of the front part
 
-    viewer::overlay::drawTexturedQuad(&fixture.list(), camera, fakeTexture(), quad, kUv, IM_COL32_WHITE);
+    viewer::overlay::drawTexturedQuad(&fixture.list(), camera, fakeTexture(), *quad, kUv, IM_COL32_WHITE);
     CHECK(fixture.list().VtxBuffer.Size > 0);
     checkBufferConsistent(fixture.list());
 
@@ -150,9 +151,7 @@ TEST_CASE("a quad wholly behind the camera is not drawn", "[overlay]") {
     const viewer::Camera camera = test_camera::axisCamera();
     const glm::vec3 world[4] = {{-1.0f, -1.0f, -5.0f}, {1.0f, -1.0f, -5.0f}, {1.0f, 1.0f, -5.0f}, {-1.0f, 1.0f, -5.0f}};
 
-    viewer::overlay::ClippedQuad quad;
-    CHECK_FALSE(viewer::overlay::clipAndProject(camera, world, &quad));
-    CHECK(quad.count == 0);
+    CHECK_FALSE(viewer::overlay::clipAndProject(camera, world));
 }
 
 TEST_CASE("a fully transparent quad emits nothing", "[overlay]") {
@@ -161,9 +160,9 @@ TEST_CASE("a fully transparent quad emits nothing", "[overlay]") {
 
     glm::vec3 world[4];
     REQUIRE(camera.billboardQuad(glm::vec3(0.0f, 0.0f, 50.0f), 4.0f, world));
-    viewer::overlay::ClippedQuad quad;
-    REQUIRE(viewer::overlay::clipAndProject(camera, world, &quad));
+    const std::optional<viewer::overlay::ClippedQuad> quad = viewer::overlay::clipAndProject(camera, world);
+    REQUIRE(quad);
 
-    viewer::overlay::drawTexturedQuad(&fixture.list(), camera, fakeTexture(), quad, kUv, IM_COL32(255, 255, 255, 0));
+    viewer::overlay::drawTexturedQuad(&fixture.list(), camera, fakeTexture(), *quad, kUv, IM_COL32(255, 255, 255, 0));
     CHECK(fixture.list().VtxBuffer.Size == 0);
 }

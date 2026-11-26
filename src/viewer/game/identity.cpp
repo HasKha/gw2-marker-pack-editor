@@ -24,31 +24,24 @@ void readNumber(const nlohmann::json& object, const char* key, T* out) {
 
 } // namespace
 
-const Identity& parseIdentity(const wchar_t* json) {
-    static std::wstring cached_text;
-    static Identity cached;
+Identity parseIdentity(const wchar_t* json) {
+    Identity identity;
+    const nlohmann::json parsed = nlohmann::json::parse(toUtf8(json ? json : L""), nullptr, false);
+    if (parsed.is_discarded() || !parsed.is_object()) return identity;
 
-    const wchar_t* text = json ? json : L"";
-    if (cached_text == text) return cached;
-    cached_text = text;
-    cached = Identity{};
-
-    const nlohmann::json parsed = nlohmann::json::parse(toUtf8(cached_text), nullptr, false);
-    if (parsed.is_discarded() || !parsed.is_object()) return cached;
-
-    if (const auto name = parsed.find("name"); name != parsed.end() && name->is_string()) cached.name = name->get<std::string>();
-    readNumber(parsed, "profession", &cached.profession);
-    readNumber(parsed, "spec", &cached.specialization);
-    readNumber(parsed, "race", &cached.race);
-    readNumber(parsed, "map_id", &cached.map_id);
-    readNumber(parsed, "world_id", &cached.world_id);
-    readNumber(parsed, "team_color_id", &cached.team_color_id);
-    readNumber(parsed, "fov", &cached.fov);
-    readNumber(parsed, "uisz", &cached.ui_size);
+    if (const auto name = parsed.find("name"); name != parsed.end() && name->is_string()) identity.name = name->get<std::string>();
+    readNumber(parsed, "profession", &identity.profession);
+    readNumber(parsed, "spec", &identity.specialization);
+    readNumber(parsed, "race", &identity.race);
+    readNumber(parsed, "map_id", &identity.map_id);
+    readNumber(parsed, "world_id", &identity.world_id);
+    readNumber(parsed, "team_color_id", &identity.team_color_id);
+    readNumber(parsed, "fov", &identity.fov);
+    readNumber(parsed, "uisz", &identity.ui_size);
     if (const auto commander = parsed.find("commander"); commander != parsed.end() && commander->is_boolean()) {
-        cached.commander = commander->get<bool>();
+        identity.commander = commander->get<bool>();
     }
-    return cached;
+    return identity;
 }
 
 } // namespace viewer

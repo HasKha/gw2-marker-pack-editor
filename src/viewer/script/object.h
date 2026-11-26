@@ -124,7 +124,7 @@ void bindType(sol::state_view lua) {
             detail::recordMissing(state, T::kName, key);
         },
         sol::meta_function::to_string,
-        [](const T& self) -> std::string {
+        [](const T& [[maybe_unused]] self) -> std::string {
             if constexpr (detail::HasToString<T>) {
                 return T::toString(self);
             } else {

@@ -40,6 +40,6 @@ enum class KeyAction { None, OpenApplications, Register, Remove, ClearCache };
 // cached from the API. `field` is what the player has
 // typed, `status` the last check's outcome, empty for none; while `checking`, Register does
 // nothing.
-KeyAction drawApiKey(const std::string& registered, char* field, size_t field_size, bool checking, const std::string& status);
+KeyAction drawApiKey(const std::string& registered, std::string* field, bool checking, const std::string& status);
 
 } // namespace viewer::ui::options

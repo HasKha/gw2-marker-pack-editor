@@ -40,7 +40,8 @@ void Library::updateStale(const std::vector<LocalPack>& local, const std::filesy
 
 void Library::setKeepUpdated(const std::string& package, bool on) {
     auto_update_.set(package, on);
-    jobs_->post([file = state_file_, choices = auto_update_] { choices.save(file); });
+    // Not saved, the choice holds until the game closes; nothing on the worker has a way to say so.
+    jobs_->post([file = state_file_, choices = auto_update_] { static_cast<void>(choices.save(file)); });
 }
 
 } // namespace viewer::catalog
