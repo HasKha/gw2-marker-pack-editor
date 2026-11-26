@@ -87,7 +87,8 @@ struct WorldOptions {
     bool in_gameplay = true;
     bool show_hidden = false; // what behaviors filter is drawn too, a marker at half opacity
     // Ours: what hides what its pack leaves to the player (no `occlusion`), with GoodRender.
-    Occlusion occlusion = Occlusion::None;
+    // The viewer sets it from the saved settings; this is their default.
+    Occlusion occlusion = Occlusion::Characters;
 };
 
 // The texture for an image of one pack, or null while it is not available — which, for a

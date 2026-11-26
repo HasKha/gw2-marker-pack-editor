@@ -19,10 +19,11 @@ struct Settings {
     bool allow_auto_hide = true; // "Allow Markers to Automatically Hide"
     bool allow_animation = true; // "Allow Markers to Animate": bounce
     // Ours: with GoodRender, what of the world hides what a pack leaves to the player, an
-    // Occlusion. Its default, None, draws over the world and under the game's UI; Blish HUD
-    // draws everything over both. Saved as "occlusion"; a file from before it, with only
-    // "behind_terrain", reads that as Scene when it was on.
-    int occlusion = 0;
+    // Occlusion. Its default, Characters, draws over terrain and under characters and the
+    // game's UI; Blish HUD draws everything over all of them. Saved as "occlusion"; a file from
+    // before it reads as its "behind_terrain" said, Scene when on and None otherwise, which is
+    // what that player had rather than this default.
+    int occlusion = 1;
     bool smart_categories = true; // "Enable Smart Categories": the menu leaves out other maps'
     bool show_interact_prompt = true; // "Allow Markers to Show Interact Gear On-Screen"
     bool achievement_tooltips = true; // "Show Tooltips for Achievements": over a category in the menu

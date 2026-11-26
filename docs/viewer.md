@@ -95,8 +95,8 @@ sink for the same reason. Publishing is an atomic pointer swap.
   that moment, and once it is fully up draws no world, so no moment fires at all.
 - **The order is Blish's**: every trail, then markers back to front by where each stands before
   `heightOffset` (`buildScene`).
-- **Occlusion is the player's Marker occlusion**: None (default, as Blish HUD), Behind Characters, or Behind
-  Characters and Terrain; a pack's `occlusion` ([format.md](format.md#occlusion-ours)) wins over it.
+- **Occlusion is the player's Marker occlusion**: None (as Blish HUD), Behind Characters (default), or
+  Behind Characters and Terrain; a pack's `occlusion` ([format.md](format.md#occlusion-ours)) wins over it.
   Settled per item when the scene is built (`SceneItem::occlusion`).
 - **Fades are colour alpha, per quad**: `alpha`, `fadeNear`/`fadeFar`, combat, max opacity and the 800 ms
   fade-in multiply as in Pathing's `GetOpacity()`. Its shaders' per-pixel work is matched on average or not
