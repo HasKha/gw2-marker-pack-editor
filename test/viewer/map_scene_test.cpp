@@ -779,3 +779,84 @@ TEST_CASE("map scene: an icon's image is kept once there, as the world's is") {
     CHECK(asked == 1);
     CHECK(live.markers[0].image == test::fakeTexture());
 }
+
+namespace {
+
+// The lines a draw list holds, with the test's flags: no anti-aliasing, four vertices a line.
+int linesDrawn(const ImDrawList& list) {
+    return list.VtxBuffer.Size / 4;
+}
+
+} // namespace
+
+TEST_CASE("map scene: stretches of a trail under a pixel long are joined into lines a pixel long") {
+    // A thousand points over 20 m of a map drawn a pixel a metre: one line each was a thousand lines.
+    std::vector<glm::vec3> points;
+    for (int i = 0; i <= 1000; ++i) points.push_back({400.0f + 0.02f * static_cast<float>(i), 0.0f, 500.0f});
+    runtime::LiveMap live;
+    live.trails.push_back(trail(points));
+
+    const MumbleState state = mumble();
+    const map_scene::MapScene scene = build(live, state);
+    const map::View view = *map::view(state, kDisplay, 1.0f);
+    test::DrawListFixture fixture;
+    map_scene::draw(&fixture.list(), scene, view, 0.0f);
+
+    CHECK(linesDrawn(fixture.list()) >= 19);
+    CHECK(linesDrawn(fixture.list()) <= 21);
+    // Still from end to end.
+    const glm::vec2 first = map::project(view, map::continentPosition(squareKilometre(), points.front()));
+    const glm::vec2 last = map::project(view, map::continentPosition(squareKilometre(), points.back()));
+    float least = std::numeric_limits<float>::max();
+    float most = std::numeric_limits<float>::lowest();
+    for (const ImDrawVert& vertex : fixture.list().VtxBuffer) {
+        least = std::min(least, vertex.pos.x);
+        most = std::max(most, vertex.pos.x);
+    }
+    // AddLine draws through pixel centres, half a pixel on from the points.
+    CHECK(least == Approx(std::min(first.x, last.x) + 0.5f).margin(0.01));
+    CHECK(most == Approx(std::max(first.x, last.x) + 0.5f).margin(0.01));
+}
+
+TEST_CASE("map scene: a trail's segments are never joined, however near") {
+    runtime::LiveMap live;
+    runtime::LiveTrail two = trail({{400.0f, 0.0f, 500.0f}, {400.5f, 0.0f, 500.0f}});
+    auto geometry = std::make_shared<pack::trl::Trail>(*two.trail.geometry);
+    geometry->segments.push_back(pack::trl::Segment{{{450.0f, 0.0f, 500.0f}, {450.5f, 0.0f, 500.0f}}});
+    two.trail.geometry = geometry;
+    live.trails.push_back(two);
+
+    const MumbleState state = mumble();
+    const map_scene::MapScene scene = build(live, state);
+    const map::View view = *map::view(state, kDisplay, 1.0f);
+    test::DrawListFixture fixture;
+    map_scene::draw(&fixture.list(), scene, view, 0.0f);
+
+    // Each its own line, short as it is, and nothing between them.
+    CHECK(linesDrawn(fixture.list()) == 2);
+    const float gap_from = map::project(view, map::continentPosition(squareKilometre(), {402.0f, 0.0f, 500.0f})).x;
+    const float gap_to = map::project(view, map::continentPosition(squareKilometre(), {448.0f, 0.0f, 500.0f})).x;
+    for (const ImDrawVert& vertex : fixture.list().VtxBuffer) {
+        CHECK_FALSE((vertex.pos.x > std::min(gap_from, gap_to) && vertex.pos.x < std::max(gap_from, gap_to)));
+    }
+}
+
+TEST_CASE("map scene: a trail's line is a whole number of pixels wide") {
+    // Pathing's 2 of its pixels at the Normal interface size are 1.794 screen pixels, drawn 2 wide.
+    runtime::LiveMap live;
+    live.trails.push_back(trail({{400.0f, 0.0f, 500.0f}, {450.0f, 0.0f, 500.0f}}));
+    const MumbleState state = mumble();
+    const map_scene::MapScene scene = build(live, state);
+    const map::View view = *map::view(state, kDisplay, 1.0f);
+    test::DrawListFixture fixture;
+    map_scene::draw(&fixture.list(), scene, view, 0.0f);
+
+    REQUIRE(linesDrawn(fixture.list()) == 1);
+    float least = std::numeric_limits<float>::max();
+    float most = std::numeric_limits<float>::lowest();
+    for (const ImDrawVert& vertex : fixture.list().VtxBuffer) {
+        least = std::min(least, vertex.pos.y);
+        most = std::max(most, vertex.pos.y);
+    }
+    CHECK(most - least == Approx(2.0f));
+}

@@ -438,19 +438,37 @@ void draw(ImDrawList* list, const MapScene& scene, const map::View& view, float 
     const float blish_pixel = view.ui_scale * kBlishPixel;
     const int first_vertex = list->VtxBuffer.Size;
 
-    const float width = scene.trail_width * blish_pixel;
+    // A stretch ending within this many pixels of where the last line drawn ends is joined onto the next, which is
+    // drawn from there: zoomed out, a map's hundreds of thousands of points land on a few thousand pixels, and a line a
+    // fraction of a pixel long costs as much as any. What is drawn strays from the trail by under this.
+    constexpr float kLeastPixels = 1.0f;
+
+    // In whole pixels: ImGui draws a line of whole pixels from the atlas's baked lines, anti-aliased by the texture,
+    // and any other as more triangles for its edges, twice the vertices (ImDrawList::AddPolyline).
+    const float width = std::max(1.0f, std::round(scene.trail_width * blish_pixel));
     for (const Path& path : scene.paths) {
         if (outside(view, path.min, path.max)) continue;
-        for (size_t i = path.first; i < path.first + path.count; ++i) {
-            const Line& line = scene.trails[path.layer]->lines[i];
-            glm::vec2 from = map::project(view, line.from);
-            glm::vec2 to = map::project(view, line.to);
-            if (!clipSegment(&from, &to, view.min, view.max)) continue;
-            list->AddLine(
-                ImVec2(from.x, from.y),
-                ImVec2(to.x, to.y),
-                applyOpacity(path.colour, lineOpacity(scene, line, player_height)),
-                width);
+        const std::vector<Line>& lines = scene.trails[path.layer]->lines;
+        const size_t end = path.first + path.count;
+        glm::vec2 start(0.0f); // where the next line drawn starts
+        for (size_t i = path.first; i < end; ++i) {
+            const Line& line = lines[i];
+            // A segment of the trail starts where the one before it did not end, and is never joined to it.
+            if (i == path.first || line.from != lines[i - 1].to) start = map::project(view, line.from);
+            const glm::vec2 reached = map::project(view, line.to);
+            const bool segment_ends = i + 1 == end || lines[i + 1].from != line.to;
+            if (segment_ends || glm::distance(start, reached) >= kLeastPixels) {
+                glm::vec2 from = start;
+                glm::vec2 to = reached;
+                if (clipSegment(&from, &to, view.min, view.max)) {
+                    list->AddLine(
+                        ImVec2(from.x, from.y),
+                        ImVec2(to.x, to.y),
+                        applyOpacity(path.colour, lineOpacity(scene, line, player_height)),
+                        width);
+                }
+                start = reached;
+            }
         }
     }
 

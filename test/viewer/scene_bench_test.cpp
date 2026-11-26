@@ -19,11 +19,17 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdio>
+#include <limits>
 #include <map>
+#include <mutex>
+#include <optional>
 #include <unordered_map>
 #include <vector>
 
 #include "corpus.h"
+#include "draw_list.h"
+
+#include <imgui_internal.h>
 #include "util/job_queue.h"
 #include "viewer/map.h"
 #include "viewer/map_scene.h"
@@ -54,10 +60,14 @@ viewer::Camera followCamera(const glm::vec3& player, float yaw) {
 }
 
 // Nexus, making every image at once: one texture per identifier, so the sink's runs are counted
-// as in game, and the packs' own caches between the scene and it, as in game.
+// as in game, and the packs' own caches between the scene and it, as in game. Under a lock, as Nexus's
+// is: the caches make textures on the worker while the frame looks them up, and a rehash under a lookup
+// hung or crashed this test.
+std::mutex made_mutex;
 std::unordered_map<std::string, Texture> made;
 
 Texture* madeTexture(const char* identifier) {
+    const std::lock_guard<std::mutex> lock(made_mutex);
     auto [it, inserted] = made.try_emplace(identifier);
     if (inserted) it->second = Texture{32, 32, reinterpret_cast<void*>(static_cast<uintptr_t>(made.size() * 16))};
     return &it->second;
@@ -142,6 +152,14 @@ TEST_CASE("the scene over the corpus's busiest maps, timed", "[.bench]") {
     const viewer::WorldOptions options;
     viewer::Scene scene;
 
+    // Lines as Nexus's ImGui draws them, which its NewFrame sets up: anti-aliased, from the baked lines in the font
+    // atlas where a width is whole, with vertex offsets for more than 64k vertices.
+    viewer::test::DrawListFixture draw_list;
+    ImGui::GetIO().Fonts->Build();
+    ImDrawListSharedData* shared = ImGui::GetDrawListSharedData();
+    shared->TexUvWhitePixel = ImGui::GetIO().Fonts->TexUvWhitePixel;
+    shared->TexUvLines = ImGui::GetIO().Fonts->TexUvLines;
+    shared->InitialFlags = ImDrawListFlags_AntiAliasedLines | ImDrawListFlags_AntiAliasedLinesUseTex | ImDrawListFlags_AllowVtxOffset;
     std::printf(
         "%-6s %8s %8s %8s %10s %10s %10s %10s %8s %8s\n",
         "map",
@@ -177,30 +195,14 @@ TEST_CASE("the scene over the corpus's busiest maps, timed", "[.bench]") {
             for (int turn = 0; turn < 4; ++turn) cameras.push_back(followCamera(player, static_cast<float>(turn) * 1.5708f));
         }
 
-        // Over and over, untimed, until every image asked for is made, a few megabytes a frame
-        // as in game: whatever is built or read on first sight is.
-        const auto loading = [&installed] {
-            size_t count = 0;
-            for (const auto& pack : installed.packs) count += pack->textures.counts().loading;
-            return count;
-        };
-        do {
-            for (const viewer::Camera& camera : cameras) {
-                uploads.nextFrame();
-                viewer::buildScene(live, visible, camera, 1.0f, options, lookup, &scene);
-                jobs.wait();
-            }
-        } while (loading() > 0);
-
-        // The minimap's scene at each view, on a map rectangle of the test's own: where on the
-        // continent the map lands does not change what the build does.
+        // The minimap at each view, and the full map, on a map rectangle of the test's own: where on the continent the
+        // map lands does not change what is built or drawn.
         viewer::map::MapDetails details;
         details.map_top_left = glm::dvec2(-100000.0, 100000.0);
         details.map_size = glm::dvec2(200000.0, 200000.0);
         details.continent_size = glm::dvec2(10000.0, 10000.0);
         viewer::map_scene::TrailCache map_trails;
-        viewer::map_scene::MapScene minimap;
-        double minimap_ms = 0.0;
+        std::vector<viewer::MumbleState> compasses;
         for (const viewer::Camera& camera : cameras) {
             viewer::MumbleState mumble;
             mumble.available = true;
@@ -211,12 +213,77 @@ TEST_CASE("the scene over the corpus's busiest maps, timed", "[.bench]") {
             // Blish HUD's axes, z up.
             mumble.player_position = glm::vec3(camera.player.x, camera.player.z, camera.player.y);
             mumble.camera_position = glm::vec3(camera.position.x, camera.position.z, camera.position.y);
+            compasses.push_back(mumble);
+        }
+        glm::dvec2 low(std::numeric_limits<double>::max());
+        glm::dvec2 high(std::numeric_limits<double>::lowest());
+        for (const glm::vec3& point : trail_points) {
+            const glm::dvec2 at = viewer::map::continentPosition(details, point);
+            low = glm::min(low, at);
+            high = glm::max(high, at);
+        }
+        constexpr glm::vec2 kDisplay(1920.0f, 1080.0f);
+        const double fit = std::max((high.x - low.x) / kDisplay.x, (high.y - low.y) / kDisplay.y);
+        viewer::MumbleState full_map;
+        full_map.available = true;
+        full_map.map_id = map_id;
+        full_map.is_map_open = true;
+        full_map.compass_width = 300;
+        full_map.compass_height = 300;
+        full_map.map_center = (low + high) * 0.5;
+        full_map.player_position = glm::vec3(trail_points[0].x, trail_points[0].z, trail_points[0].y);
+        full_map.map_scale = fit;
+        viewer::map_scene::MapScene minimap;
+        viewer::map_scene::MapScene full_scene;
+
+        // Over and over, untimed, until every image asked for is made, a few megabytes a frame as in game: whatever is
+        // built or read on first sight is. Every scene, since an image goes on only while it is looked up.
+        const auto loading = [&installed] {
+            size_t count = 0;
+            for (const auto& pack : installed.packs) count += pack->textures.counts().loading;
+            return count;
+        };
+        // At most this many passes, which a few hundred images handed over a few megabytes a frame take a small part
+        // of: past it the run goes on, and says what never arrived, rather than waiting on it for good.
+        constexpr int kMostPasses = 200;
+        int passes = 0;
+        for (; passes < kMostPasses && (passes == 0 || loading() > 0); ++passes) {
+            for (const viewer::Camera& camera : cameras) {
+                uploads.nextFrame();
+                viewer::buildScene(live, visible, camera, 1.0f, options, lookup, &scene);
+                viewer::map_scene::build(live, visible, details, compasses.front(), {}, 1.0f, 1.0f, lookup, &map_trails, &minimap);
+                viewer::map_scene::build(live, visible, details, full_map, {}, 1.0f, 1.0f, lookup, &map_trails, &full_scene);
+                jobs.wait();
+            }
+        }
+        if (passes == kMostPasses) std::printf("       %zu images never arrived\n", loading());
+
+        double minimap_ms = 0.0;
+        for (const viewer::MumbleState& compass : compasses) {
             const auto mapped = std::chrono::steady_clock::now();
             for (int i = 0; i < kRepeats; ++i) {
-                viewer::map_scene::build(live, visible, details, mumble, {}, 1.0f, 1.0f, lookup, &map_trails, &minimap);
+                viewer::map_scene::build(live, visible, details, compass, {}, 1.0f, 1.0f, lookup, &map_trails, &minimap);
             }
             minimap_ms += millisecondsSince(mapped);
         }
+
+        // The full map's trails and icons drawn, with the whole map fitting the screen, then smaller on it, as the map
+        // zoomed out: what Nexus's render draws while it is up, every line the map has in however few pixels.
+        std::printf("       full map:");
+        for (const double zoom_out : {1.0, 2.0, 4.0}) {
+            full_map.map_scale = fit * zoom_out;
+            const std::optional<viewer::map::View> view = viewer::map::view(full_map, kDisplay, 1.0f);
+            REQUIRE(view);
+            ImDrawList& list = draw_list.list();
+            const auto drawn = std::chrono::steady_clock::now();
+            for (int i = 0; i < kRepeats; ++i) {
+                list._ResetForNewFrame();
+                list.PushClipRectFullScreen();
+                viewer::map_scene::draw(&list, full_scene, *view, full_map.player_position.z);
+            }
+            std::printf(" x%.0f %.3f ms %d vertices;", zoom_out, millisecondsSince(drawn) / kRepeats, list.VtxBuffer.Size);
+        }
+        std::printf("\n");
 
         double build_ms = 0.0;
         double submit_ms = 0.0;
