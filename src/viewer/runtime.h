@@ -9,6 +9,7 @@
 
 #include "viewer/behaviors/entity.h"
 #include "viewer/registry.h"
+#include "viewer/ribbon.h"
 #include "viewer/store.h"
 #include "viewer/textures.h"
 
@@ -101,6 +102,12 @@ struct LiveMarker {
     // The frame's seconds when it last came into view, which it fades in from: Pathing's
     // AnimatedFadeOpacity. See startFadeIns.
     double in_view_since = kNotInView;
+
+    // The image `marker.icon` came to, kept by the scene and the maps once there so a frame does
+    // not look it up again: an installed pack's TextureCache never lets an image go. Null until
+    // then; cleared with a new texture (setTexture). A cache, so it is kept through a const
+    // live map.
+    mutable ImTextureID image = nullptr;
 };
 
 struct LiveTrail {
@@ -111,6 +118,12 @@ struct LiveTrail {
     bool removed = false;
     behaviors::EntityState behavior;
     double in_view_since = kNotInView; // as LiveMarker's
+    mutable ImTextureID image = nullptr; // `trail.texture`'s, as LiveMarker's
+
+    // Its ribbon, built by the scene the first time the trail is drawn and kept with the live
+    // map: a cache, so it is filled in through a const live map. Per live map rather than per
+    // pack: a ribbon is 80 bytes a point, and a frame needs only one map's trails, those shown.
+    mutable std::shared_ptr<const TrailRibbon> ribbon;
 };
 
 // What of the installed packs is on one map, copied out of each pack's baked pathables, and
@@ -124,6 +137,16 @@ struct LiveMap {
     std::vector<LiveMarker> markers;
     std::vector<LiveTrail> trails;
 };
+
+// Gives a live pathable the image at `path` in pack `pack`'s files, as a script does, dropping
+// the image it had.
+void setTexture(LiveMarker* marker, size_t pack, std::string path);
+void setTexture(LiveTrail* trail, size_t pack, std::string path);
+
+// The image at `path` in installed pack `pack`'s files: null until it is read and Nexus has made
+// it, and for a file that is not there or is no image. A miss is read on the worker, from the
+// pack's source, which the read keeps open.
+ImTextureID packImage(Installed& installed, size_t pack, const std::string& path);
 
 // The node `category` of pack `pack_index` landed in, or kNoIndex.
 size_t nodeOf(const Installed& installed, size_t pack_index, size_t category);

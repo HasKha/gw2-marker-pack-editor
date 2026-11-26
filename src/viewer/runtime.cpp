@@ -1,6 +1,9 @@
 #include "viewer/runtime.h"
 
 #include <algorithm>
+#include <utility>
+
+#include "pack/source.h"
 
 namespace viewer::runtime {
 
@@ -86,6 +89,29 @@ void startFadeIns(LiveMap* live, const std::vector<char>& visible, double second
     };
     for (LiveMarker& marker : live->markers) start(marker.node, &marker.in_view_since);
     for (LiveTrail& trail : live->trails) start(trail.node, &trail.in_view_since);
+}
+
+void setTexture(LiveMarker* marker, size_t pack, std::string path) {
+    marker->texture_pack = pack;
+    marker->marker.icon = std::move(path);
+    marker->image = nullptr;
+}
+
+void setTexture(LiveTrail* trail, size_t pack, std::string path) {
+    trail->texture_pack = pack;
+    trail->trail.texture = std::move(path);
+    trail->image = nullptr;
+}
+
+ImTextureID packImage(Installed& installed, size_t pack, const std::string& path) {
+    InstalledPack& installed_pack = *installed.packs[pack];
+    const auto reader = [&installed_pack] {
+        return TextureCache::Reader([source = installed_pack.loaded->source](const std::string& key, std::vector<uint8_t>* bytes) {
+            std::string error;
+            return source && source->read(key, bytes, &error);
+        });
+    };
+    return installed_pack.textures.get(pack::normalizePath(path), reader).texture;
 }
 
 size_t nodeOf(const Installed& installed, size_t pack_index, size_t category) {

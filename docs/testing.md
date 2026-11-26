@@ -62,6 +62,14 @@ is handed, and `test/viewer/test_camera.h` is a camera with hand-written project
 | `http_test.cpp` | cancelling a request against a localhost server that never answers |
 | `selection_test.cpp`, `trail_test.cpp` | the editor's click rules, pruning, both selections; trails and renaming `traildata` |
 
+**What a frame costs** is measured offline, on a Release build: a hidden case builds and submits the world
+scene over the corpus's busiest maps and prints milliseconds a frame. Run it before and after a change to
+`scene.*`, `ribbon.*` or the sinks, on one machine.
+
+```bash
+bin/Release/markus_viewer_test.exe "[.bench]"
+```
+
 One case reaches the real catalog and is hidden from ctest. Run it after touching `http.*` or how the
 catalog is read:
 

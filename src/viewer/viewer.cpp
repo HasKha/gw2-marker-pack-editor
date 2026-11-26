@@ -17,7 +17,6 @@
 #include <string>
 #include <vector>
 
-#include "pack/source.h"
 #include "util/job_queue.h"
 #include "util/json_file.h"
 #include "util/path_text.h"
@@ -984,7 +983,7 @@ void buildMapScene(const TextureLookup& texture) {
     std::shared_ptr<map_scene::MapScene> full_map;
     if (const map::MapDetails* details = mumble_state.available && inGameplay() ? maps.find(mumble_state.map_id) : nullptr) {
         std::vector<map_scene::Layer> layers{map_scene::Layer{&live, &visible, texture, &map_trails}};
-        if (edited_live) layers.push_back(map_scene::Layer{edited_live, &kNoNodes, edited_texture, &edited_map_trails});
+        if (edited_live) layers.push_back(map_scene::Layer{edited_live, &kNoNodes, edited_texture, &edited_map_trails, true});
         map_scene::build(layers, *details, on_compass, mapOptions(), minimap_opacity, uiScale(), minimap.get());
         minimap->keep_compass = kept.keep;
         minimap->above = aboveBelowImage(true);
@@ -1115,17 +1114,7 @@ void preRender() {
     if (edited_live) runtime::startFadeIns(edited_live, kNoNodes, ImGui::GetTime());
     laps.lap(&frame_steps.editor);
 
-    // A miss is read on the worker from the pack's source, which the read keeps open.
-    const TextureLookup texture = [](size_t pack, const std::string& path) -> ImTextureID {
-        runtime::InstalledPack& installed_pack = *installed.packs[pack];
-        const auto reader = [&installed_pack] {
-            return TextureCache::Reader([source = installed_pack.loaded->source](const std::string& key, std::vector<uint8_t>* bytes) {
-                std::string error;
-                return source && source->read(key, bytes, &error);
-            });
-        };
-        return installed_pack.textures.get(pack::normalizePath(path), reader).texture;
-    };
+    const TextureLookup texture = [](size_t pack, const std::string& path) { return runtime::packImage(installed, pack, path); };
 
     std::vector<SceneLayer> layers{SceneLayer{&live, &visible, texture, false}};
     if (edited_live) layers.push_back(SceneLayer{edited_live, &kNoNodes, edited_texture, true});

@@ -5,6 +5,8 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include <glm/vector_relational.hpp>
+
 #include <cmath>
 
 #include "viewer/bake.h"
@@ -130,4 +132,52 @@ TEST_CASE("a step cut across is the same strip, in equal pieces", "[ribbon]") {
     pieces.clear();
     viewer::cutStep(quads[0], 10.0f, &pieces);
     CHECK(pieces.size() == 1); // short enough already: as it was
+}
+
+TEST_CASE("a ribbon built once and scrolled is the ribbon built at that scroll", "[ribbon]") {
+    // A bend and a run of 40 points, so the second segment spans stretches, and steps of every
+    // length against the texture's.
+    std::vector<pack::trl::Segment> segments(2);
+    segments[0].points = {{0, 0, 0}, {0.3f, 0, 0}, {0.3f, 0, 2.5f}};
+    for (int i = 0; i < 40; ++i) segments[1].points.push_back({static_cast<float>(i) * 0.7f, 1.0f, std::sin(static_cast<float>(i))});
+    const viewer::TrailRibbon ribbon = viewer::buildRibbon(segments, kHalf, false);
+
+    for (const float scroll : {0.0f, 0.25f, 0.999f, 3.6f, -1.3f, 4321.75f}) {
+        std::vector<viewer::RibbonQuad> expected;
+        for (const pack::trl::Segment& segment : segments) viewer::appendRibbon(segment.points, kHalf, false, scroll, &expected);
+        REQUIRE(ribbon.quads.size() == expected.size());
+        for (size_t q = 0; q < expected.size(); ++q) {
+            const viewer::RibbonQuad quad = viewer::scrolled(ribbon.quads[q], scroll);
+            for (int i = 0; i < 4; ++i) {
+                CHECK(quad.corners[i] == expected[q].corners[i]);
+                CHECK(quad.uv[i].x == expected[q].uv[i].x);
+                CHECK(quad.uv[i].y == Approx(expected[q].uv[i].y).margin(1e-3f));
+            }
+        }
+    }
+}
+
+TEST_CASE("a ribbon's stretches cover its quads in order, each within its box", "[ribbon]") {
+    std::vector<pack::trl::Segment> segments(2);
+    for (int i = 0; i < 50; ++i) segments[0].points.push_back({static_cast<float>(i), 0, 0});
+    segments[1].points = {{0, 5, 0}, {0, 5, 1}};
+    const viewer::TrailRibbon ribbon = viewer::buildRibbon(segments, kHalf, false);
+
+    size_t next = 0;
+    for (const viewer::TrailRibbon::Stretch& stretch : ribbon.stretches) {
+        CHECK(stretch.first == next);
+        REQUIRE(stretch.count > 0);
+        next += stretch.count;
+        for (size_t q = stretch.first; q < stretch.first + stretch.count; ++q) {
+            for (const glm::vec3& corner : ribbon.quads[q].corners) {
+                CHECK(glm::all(glm::greaterThanEqual(corner, stretch.min)));
+                CHECK(glm::all(glm::lessThanEqual(corner, stretch.max)));
+                CHECK(glm::all(glm::greaterThanEqual(corner, ribbon.min)));
+                CHECK(glm::all(glm::lessThanEqual(corner, ribbon.max)));
+            }
+        }
+    }
+    CHECK(next == ribbon.quads.size());
+    // No stretch runs across two segments: the last one is the second segment's step alone.
+    CHECK(ribbon.stretches.back().count == 1);
 }

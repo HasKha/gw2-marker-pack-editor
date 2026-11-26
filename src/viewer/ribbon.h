@@ -6,6 +6,8 @@
 
 #include <vector>
 
+#include "pack/trl.h"
+
 // The ribbon a trail is drawn as, built the way Pathing builds its vertex strip.
 namespace viewer {
 
@@ -44,5 +46,30 @@ void appendRibbon(const std::vector<glm::vec3>& points, float half_width, bool i
 // strip and the same image, each piece's v shifted near zero as appendRibbon's are. For what
 // changes along a step that a quad's one colour cannot show: its distance fade.
 void cutStep(const RibbonQuad& quad, float most_length, std::vector<RibbonQuad>* out);
+
+// A trail's whole ribbon, built once at no scroll, and bounded a stretch at a time, so that a
+// frame passes over what is past the trail's fade or out of view without looking at each step.
+// Only the scroll moves from frame to frame (scrolled); the points, the width and `wall` do not.
+struct TrailRibbon {
+    // Consecutive quads of one segment, and the box round their corners.
+    struct Stretch {
+        size_t first = 0;
+        size_t count = 0;
+        glm::vec3 min{0.0f};
+        glm::vec3 max{0.0f};
+    };
+
+    std::vector<RibbonQuad> quads; // appendRibbon's at scroll 0, segment after segment
+    std::vector<Stretch> stretches;
+    glm::vec3 min{0.0f}; // round every quad; meaningless with none
+    glm::vec3 max{0.0f};
+};
+
+// appendRibbon over each of `segments`' runs of points, bounded in stretches.
+TrailRibbon buildRibbon(const std::vector<pack::trl::Segment>& segments, float half_width, bool is_wall);
+
+// A quad of a ribbon built at no scroll, as appendRibbon builds it at `scroll`: the same v, less
+// whole texture lengths.
+RibbonQuad scrolled(const RibbonQuad& quad, float scroll);
 
 } // namespace viewer

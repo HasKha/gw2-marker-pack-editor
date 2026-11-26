@@ -388,8 +388,7 @@ const Member<Marker> kMarkerMembers[] = {
          [](sol::state_view lua, Marker& self, const sol::object& value) {
              runtime::LiveMarker& marker = liveMarker(lua, self);
              const Texture texture = assignedTexture(lua, value, marker.pack);
-             marker.texture_pack = texture.pack;
-             marker.marker.icon = texture.path;
+             runtime::setTexture(&marker, texture.pack, texture.path);
          }},
     {.name = "TipName",
      .get = [](sol::state_view lua, Marker& self) { return sol::make_object(lua, bakedMarker(lua, self).tip_name); },
@@ -424,8 +423,7 @@ const Member<Marker> kMarkerMembers[] = {
          [](sol::state_view lua, Marker& self, sol::variadic_args args) {
              runtime::LiveMarker& marker = liveMarker(lua, self);
              const Texture texture = textureArgument(lua, marker.pack, args);
-             marker.texture_pack = texture.pack;
-             marker.marker.icon = texture.path;
+             runtime::setTexture(&marker, texture.pack, texture.path);
              return sol::object(sol::lua_nil);
          }},
     {.name = "Remove",
@@ -474,16 +472,14 @@ const Member<Trail> kTrailMembers[] = {
          [](sol::state_view lua, Trail& self, const sol::object& value) {
              runtime::LiveTrail& trail = liveTrail(lua, self);
              const Texture texture = assignedTexture(lua, value, trail.pack);
-             trail.texture_pack = texture.pack;
-             trail.trail.texture = texture.path;
+             runtime::setTexture(&trail, texture.pack, texture.path);
          }},
     {.name = "SetTexture",
      .call =
          [](sol::state_view lua, Trail& self, sol::variadic_args args) {
              runtime::LiveTrail& trail = liveTrail(lua, self);
              const Texture texture = textureArgument(lua, trail.pack, args);
-             trail.texture_pack = texture.pack;
-             trail.trail.texture = texture.path;
+             runtime::setTexture(&trail, texture.pack, texture.path);
              return sol::object(sol::lua_nil);
          }},
     {.name = "Remove",

@@ -72,7 +72,7 @@ TEST_CASE("behavior settings start at Pathing's defaults and are kept", "[viewer
     CHECK(defaults.allow_auto_hide);
     CHECK(defaults.allow_animation);
     CHECK(defaults.smart_categories);
-    CHECK(defaults.occlusion == 0);
+    CHECK(defaults.occlusion == 1); // Behind characters
     CHECK(defaults.show_interact_prompt);
     CHECK(defaults.clipboard_consent == 0);
 

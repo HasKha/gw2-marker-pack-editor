@@ -323,7 +323,7 @@ TEST_CASE("map scene: every layer's icons are sorted together, and each keeps it
     map_scene::MapScene scene;
     map_scene::build(
         {map_scene::Layer{&installed, &no_nodes, everyTexture(), &installed_trails},
-         map_scene::Layer{&edited, &no_nodes, everyTexture(), &edited_trails}},
+         map_scene::Layer{&edited, &no_nodes, everyTexture(), &edited_trails, true}},
         squareKilometre(),
         mumble(),
         {},
@@ -759,4 +759,23 @@ TEST_CASE("map scene: the compass is kept from the full map coming up until Mumb
     kept = keeper.update(back);
     CHECK_FALSE(kept.keep);
     CHECK(kept.compass.centre == back.map_center);
+}
+
+TEST_CASE("map scene: an icon's image is kept once there, as the world's is") {
+    runtime::LiveMap live;
+    live.markers = {marker({500.0f, 0.0f, 500.0f})};
+    size_t asked = 0;
+    const TextureLookup counted = [&asked](size_t, const std::string&) {
+        ++asked;
+        return test::fakeTexture();
+    };
+
+    map_scene::MapScene scene;
+    map_scene::TrailCache trails;
+    for (int frame = 0; frame < 3; ++frame) {
+        map_scene::build(live, {}, squareKilometre(), mumble(), {}, 1.0f, 1.0f, counted, &trails, &scene);
+        CHECK(scene.icons.size() == 1);
+    }
+    CHECK(asked == 1);
+    CHECK(live.markers[0].image == test::fakeTexture());
 }

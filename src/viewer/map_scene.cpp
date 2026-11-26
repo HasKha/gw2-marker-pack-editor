@@ -374,7 +374,7 @@ void build(
             if (live_marker.removed || !runtime::nodeVisible(live_marker.node, visible)) continue;
             if (live_marker.behavior.filtered && !options.show_hidden) continue;
             if (!allowed(marker_level, out->full_map ? marker.map_visibility : marker.minimap_visibility)) continue;
-            const ImTextureID image = texture(live_marker.texture_pack, marker.icon);
+            const ImTextureID image = keptImage(texture, layers[layer].edited, live_marker.texture_pack, marker.icon, &live_marker.image);
             if (!image) continue;
 
             const glm::vec3 position = markerPosition(marker);

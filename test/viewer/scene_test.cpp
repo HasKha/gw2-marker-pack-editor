@@ -991,3 +991,163 @@ TEST_CASE("a real pack draws on its own map, and only there", "[scene][corpus]")
     CHECK(elsewhere.markers.empty());
     CHECK(elsewhere.trails.empty());
 }
+
+TEST_CASE("what is wholly out of view is left out, and what is partly in it drawn whole", "[scene]") {
+    // The camera at the origin looking down +z, the view widened for the frame it is drawn a
+    // frame later in: straight beside the camera and behind it is out, whatever the turn.
+    const viewer::Camera camera = test_camera::axisCamera();
+
+    SECTION("markers") {
+        Built built;
+        viewer::BakedPathables pathables;
+        pathables.markers = {marker({0, 0, 20}, 0), marker({40, 0, 0}, 0), marker({0, 0, -30}, 0), marker({0, 60, 1}, 0)};
+        // minSize keeps a billboard this many pixels across wherever it is: it may reach into
+        // view from beside it, so it is never left out.
+        pathables.markers.push_back(marker({-40, 0, 0}, 0));
+        pathables.markers.back().min_size = 1000.0f;
+        viewer::runtime::install(&built.installed, loadedPack("pack", pathables));
+
+        built.build(camera);
+        REQUIRE(built.scene.items.size() == 2);
+        CHECK(built.scene.items[0].centre == glm::vec3(-40, 0, 0));
+        CHECK(built.scene.items[1].centre == glm::vec3(0, 0, 20));
+    }
+
+    SECTION("a trail step from behind the camera to in front of it is drawn, all of it") {
+        Built built;
+        installStraightTrail(&built, {0, -1, -40}, {0, -1, 40}, -1.0f, -1.0f);
+        built.build(camera);
+        REQUIRE(built.scene.items.size() == 1);
+        CHECK(std::min(built.scene.items[0].corners[0].z, built.scene.items[0].corners[2].z) == Approx(-40.0f));
+    }
+
+    SECTION("a trail wholly behind the camera is not") {
+        Built built;
+        installStraightTrail(&built, {0, -1, -60}, {0, -1, -30}, -1.0f, -1.0f);
+        built.build(camera);
+        CHECK(built.scene.items.empty());
+    }
+
+    SECTION("nor the steps of one trail that are beside it, while those ahead are") {
+        Built built;
+        viewer::BakedPathables pathables;
+        viewer::BakedTrail trail;
+        trail.category = 0;
+        trail.map_id = kMap;
+        trail.texture = "trail.png";
+        trail.fade_near = trail.fade_far = -1.0f;
+        auto geometry = std::make_shared<pack::trl::Trail>();
+        // Out to the right along x, 40 steps of 5 m, then ahead along z.
+        pack::trl::Segment segment;
+        for (int i = 0; i <= 40; ++i) segment.points.push_back({200.0f - 5.0f * static_cast<float>(i), -1, 0});
+        for (int i = 1; i <= 10; ++i) segment.points.push_back({0, -1, 5.0f * static_cast<float>(i)});
+        geometry->segments.push_back(segment);
+        trail.geometry = geometry;
+        pathables.trails = {trail};
+        viewer::runtime::install(&built.installed, loadedPack("pack", pathables));
+
+        built.build(camera);
+        // Stretches are 16 steps: the last 8 along x share one with the ten ahead, which is in
+        // view and drawn whole; the 32 farther along x are out of it.
+        CHECK(built.scene.items.size() == 18);
+        for (const viewer::SceneItem& item : built.scene.items) CHECK(middleOf(item).x < 40.0f);
+    }
+}
+
+TEST_CASE("a trail's ribbon is built once for its live map", "[scene]") {
+    Built built;
+    installStraightTrail(&built, {0, -1, 2}, {0, -1, 30}, -1.0f, -1.0f);
+    const viewer::runtime::LiveMap live = viewer::runtime::liveMap(built.installed, kMap);
+    const std::vector<char> visible = viewer::runtime::visibleNodes(built.installed.tree, built.states);
+    REQUIRE(live.trails.size() == 1);
+    CHECK_FALSE(live.trails[0].ribbon);
+
+    viewer::buildScene(live, visible, test_camera::axisCamera(), 0.0f, built.options, everyTexture(), &built.scene);
+    const std::shared_ptr<const viewer::TrailRibbon> ribbon = live.trails[0].ribbon;
+    REQUIRE(ribbon);
+    const ImVec2 still = built.scene.items[0].uv[0];
+
+    // Scrolled a quarter of a texture length, from the same ribbon.
+    viewer::buildScene(live, visible, test_camera::axisCamera(), 0.25f, built.options, everyTexture(), &built.scene);
+    CHECK(live.trails[0].ribbon == ribbon);
+    const float moved = built.scene.items[0].uv[0].y - still.y - 0.25f;
+    CHECK(moved == Approx(std::round(moved)).margin(1e-4f));
+}
+
+namespace {
+
+// A lookup that counts what it is asked, and hands back what `image` holds then.
+struct CountedLookup {
+    size_t asked = 0;
+    ImTextureID image = fakeTexture();
+
+    viewer::TextureLookup lookup() {
+        return [this](size_t, const std::string&) {
+            ++asked;
+            return image;
+        };
+    }
+};
+
+} // namespace
+
+TEST_CASE("a pathable's image is looked up until it is there, then kept with the live map", "[scene]") {
+    Built built;
+    viewer::BakedPathables pathables;
+    pathables.markers = {marker({0, 0, 5}, 0)};
+    viewer::BakedTrail trail;
+    trail.category = 0;
+    trail.map_id = kMap;
+    trail.texture = "trail.png";
+    trail.fade_near = trail.fade_far = -1.0f;
+    auto geometry = std::make_shared<pack::trl::Trail>();
+    geometry->segments.push_back({{{0, -1, 2}, {0, -1, 4}}, 0});
+    trail.geometry = geometry;
+    pathables.trails = {trail};
+    viewer::runtime::install(&built.installed, loadedPack("pack", pathables));
+    viewer::runtime::LiveMap live = viewer::runtime::liveMap(built.installed, kMap);
+    const std::vector<char> visible = viewer::runtime::visibleNodes(built.installed.tree, built.states);
+    const viewer::Camera camera = test_camera::axisCamera();
+
+    CountedLookup textures;
+    // Not there yet: asked again next frame.
+    textures.image = nullptr;
+    viewer::buildScene(live, visible, camera, 0.0f, built.options, textures.lookup(), &built.scene);
+    CHECK(built.scene.items.empty());
+    textures.image = fakeTexture();
+    viewer::buildScene(live, visible, camera, 0.0f, built.options, textures.lookup(), &built.scene);
+    CHECK(built.scene.items.size() == 2);
+    CHECK(textures.asked == 4);
+
+    // There: kept, and never asked for again.
+    viewer::buildScene(live, visible, camera, 0.0f, built.options, textures.lookup(), &built.scene);
+    CHECK(built.scene.items.size() == 2);
+    CHECK(textures.asked == 4);
+
+    // Until a script gives it another.
+    viewer::runtime::setTexture(&live.markers[0], 0, "other.png");
+    viewer::runtime::setTexture(&live.trails[0], 0, "other.png");
+    viewer::buildScene(live, visible, camera, 0.0f, built.options, textures.lookup(), &built.scene);
+    CHECK(textures.asked == 6);
+    CHECK(live.markers[0].marker.icon == "other.png");
+    CHECK(live.trails[0].trail.texture == "other.png");
+}
+
+TEST_CASE("the edited pack's images are looked up every frame, since its files change", "[scene]") {
+    Built built;
+    viewer::runtime::install(&built.installed, loadedPack("pack", {{marker({0, 0, 5}, 0)}, {}}));
+    const viewer::runtime::LiveMap live = viewer::runtime::liveMap(built.installed, kMap);
+    const std::vector<char> no_nodes;
+
+    CountedLookup textures;
+    for (int frame = 0; frame < 3; ++frame) {
+        viewer::buildScene(
+            {viewer::SceneLayer{&live, &no_nodes, textures.lookup(), true}},
+            test_camera::axisCamera(),
+            0.0f,
+            {},
+            &built.scene);
+    }
+    CHECK(textures.asked == 3);
+    CHECK_FALSE(live.markers[0].image);
+}

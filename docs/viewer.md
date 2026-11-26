@@ -104,6 +104,9 @@ sink for the same reason. Publishing is an atomic pointer swap.
   `fadeFar` where Pathing's ignore `fadeNear`, a long step cut into pieces that fade alone (`cutStep`);
   fades near the character and camera not at all, which needs a shader of our own. Distance is measured from
   where a marker is drawn, `heightOffset` included.
+- **What is wholly out of view is left out of the scene**, against the view widened for the frame or two
+  until it is drawn (`ViewBounds` in `scene.cpp`); what is partly in view is drawn whole. A trail's ribbon is
+  built once per live map and passed over a stretch at a time, by its fade and the view.
 - **`cull`** keeps one face, decided in `itemCorners`; which is `Cull`'s comment in `bake.h`.
 - **`occlude` is not drawn.** Blish erases what is behind it from its transparent overlay; a draw list cannot
   erase, so over the terrain markers behind those walls show through.

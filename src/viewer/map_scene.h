@@ -207,6 +207,9 @@ struct Layer {
     const std::vector<char>* visible = nullptr; // runtime::visibleNodes over its nodes
     TextureLookup texture;
     TrailCache* trails = nullptr; // its own: a cache keeps one live map's lines
+    // The pack open in the editor, whose cache drops an image whose file changes: its images are
+    // looked up every frame rather than kept (LiveMarker::image).
+    bool edited = false;
 };
 
 // Builds what the map shows of every layer on `details`' map, for the map MumbleLink has up:

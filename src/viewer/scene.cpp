@@ -4,7 +4,9 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cmath>
 #include <limits>
+#include <memory>
 
 #include "viewer/bake.h"
 #include "viewer/behaviors/update.h"
@@ -26,6 +28,80 @@ float squaredDistance(const glm::vec3& a, const glm::vec3& b) {
     const glm::vec3 d = a - b;
     return glm::dot(d, d);
 }
+
+// How far `point` is from the nearest point of the box.
+float distanceToBox(const glm::vec3& point, const glm::vec3& min, const glm::vec3& max) {
+    return glm::length(glm::max(glm::max(min - point, point - max), glm::vec3(0.0f)));
+}
+
+// What the camera may show by the time the scene is drawn: its view, widened. The scene is built
+// at one Present and drawn at the next frame's moments with that frame's camera, so the view it
+// is built with is a frame or so old. Only what lies wholly outside the widened view is left out:
+// whatever is partly in it, in front of the camera and behind it at once included, is drawn whole,
+// as it is drawn without the test.
+class ViewBounds
+{
+public:
+    explicit ViewBounds(const Camera& camera) {
+        // How far the camera may turn between the view the scene is built with and the one it is
+        // drawn with, a frame or two: 20° is 600° a second at 60 fps over two frames, past a
+        // mouse flick. Turned faster, what comes in at the screen's edge shows a frame late.
+        constexpr float kTurnRadians = 0.35f;
+        // How far it may move meanwhile, with room to spare: a frame at any mount's speed is
+        // well under this.
+        constexpr float kMoveMetres = 5.0f;
+        // Short of a right angle, where a side of the view would fold onto the camera's plane.
+        constexpr float kMostHalfAngle = 1.5f;
+
+        const glm::vec3 side = glm::cross(camera.up, camera.front);
+        if (!camera.valid || glm::length(side) < 1e-4f || camera.viewport.y <= 0.0f) return;
+        const glm::vec3 right = glm::normalize(side);
+        const glm::vec3 up = glm::cross(camera.front, right);
+
+        const float half_tall = std::min(camera.fov * 0.5f + kTurnRadians, kMostHalfAngle);
+        const float half_wide = std::min(std::atan(std::tan(camera.fov * 0.5f) * camera.aspect) + kTurnRadians, kMostHalfAngle);
+        // Each side's normal, pointing in.
+        normals_[0] = camera.front * std::sin(half_wide) - right * std::cos(half_wide);
+        normals_[1] = camera.front * std::sin(half_wide) + right * std::cos(half_wide);
+        normals_[2] = camera.front * std::sin(half_tall) - up * std::cos(half_tall);
+        normals_[3] = camera.front * std::sin(half_tall) + up * std::cos(half_tall);
+        apex_ = camera.position;
+        slack_ = kMoveMetres;
+        // The turn's room as pixels at the middle of the screen.
+        margin_pixels_ = kTurnRadians * camera.viewport.y / camera.fov;
+        enabled_ = true;
+    }
+
+    bool sphereOutside(const glm::vec3& centre, float radius) const {
+        if (!enabled_) return false;
+        for (const glm::vec3& normal : normals_) {
+            if (glm::dot(normal, centre - apex_) < -(radius + slack_)) return true;
+        }
+        return false;
+    }
+
+    bool boxOutside(const glm::vec3& min, const glm::vec3& max) const {
+        if (!enabled_) return false;
+        for (const glm::vec3& normal : normals_) {
+            // The box's corner farthest along the normal, which is in if any corner is.
+            const glm::vec3 corner(normal.x >= 0.0f ? max.x : min.x, normal.y >= 0.0f ? max.y : min.y, normal.z >= 0.0f ? max.z : min.z);
+            if (glm::dot(normal, corner - apex_) < -slack_) return true;
+        }
+        return false;
+    }
+
+    // How big on screen minSize may make a billboard and still leave the turn's room to the
+    // test: minSize clamps a billboard's pixels whatever its size in the world, so one far away
+    // can be much larger than its sphere.
+    float mostMinSize() const { return enabled_ ? margin_pixels_ * 0.5f : 0.0f; }
+
+private:
+    bool enabled_ = false; // false leaves nothing out: no camera to widen
+    glm::vec3 apex_{0.0f};
+    glm::vec3 normals_[4];
+    float slack_ = 0.0f;
+    float margin_pixels_ = 0.0f;
+};
 
 // How far `point` is from the nearest point of the segment a→b.
 float distanceToSegment(const glm::vec3& point, const glm::vec3& a, const glm::vec3& b) {
@@ -89,6 +165,7 @@ void appendLayer(
     float seconds,
     const WorldOptions& options,
     float settings_opacity,
+    const ViewBounds& bounds,
     Scene* out) {
     const runtime::LiveMap& live = *layer.live;
     const std::vector<char>& visible = *layer.visible;
@@ -118,8 +195,12 @@ void appendLayer(
         const float size = marker.icon_size * 2.0f * options.marker_scale;
         if (glm::dot(position - camera.position, camera.front) < -size) continue;
 
-        const ImTextureID image = layer.texture(live_marker.texture_pack, marker.icon);
+        const ImTextureID image = keptImage(layer.texture, layer.edited, live_marker.texture_pack, marker.icon, &live_marker.image);
         if (!image && !layer.edited) continue;
+        // Out of view only after its icon is asked for, so that an icon just beside the view is
+        // read before the camera turns to it. A billboard minSize may blow up is never out.
+        const bool may_grow = !marker.has_rotation && marker.min_size * options.marker_scale > bounds.mostMinSize();
+        if (!may_grow && bounds.sphereOutside(position, size)) continue;
 
         SceneItem item;
         item.texture = image;
@@ -149,16 +230,15 @@ void appendLayer(
         out->items.push_back(item);
     }
 
-    // Kept between calls: the quads of one trail run are only needed until they are copied
-    // into the scene.
-    static std::vector<RibbonQuad> quads;
+    // Kept between calls: the pieces of one step are only needed until they are copied into
+    // the scene.
     static std::vector<RibbonQuad> pieces;
     for (const runtime::LiveTrail& live_trail : live.trails) {
         const BakedTrail& trail = live_trail.trail;
         if (live_trail.removed || !trail.in_game_visibility || !trail.geometry || !runtime::nodeVisible(live_trail.node, visible)) continue;
         if (live_trail.behavior.filtered && !options.show_hidden) continue;
 
-        const ImTextureID image = layer.texture(live_trail.texture_pack, trail.texture);
+        const ImTextureID image = keptImage(layer.texture, layer.edited, live_trail.texture_pack, trail.texture, &live_trail.image);
         if (!image && !layer.edited) continue;
 
         // StandardTrail.World.Render: the view distance caps the fade, in the fade's inches.
@@ -193,11 +273,22 @@ void appendLayer(
             }
             out->items.push_back(item);
         };
-        for (const pack::trl::Segment& segment : trail.geometry->segments) {
-            quads.clear();
-            appendRibbon(segment.points, kTrailHalfWidth * trail.scale, trail.is_wall, scroll, &quads);
+        if (!live_trail.ribbon) {
+            live_trail.ribbon =
+                std::make_shared<const TrailRibbon>(buildRibbon(trail.geometry->segments, kTrailHalfWidth * trail.scale, trail.is_wall));
+        }
+        const TrailRibbon& ribbon = *live_trail.ribbon;
+        // A fade only falls with distance, so a box whose nearest point has faded out holds
+        // nothing to draw.
+        const auto boxShows = [&](const glm::vec3& min, const glm::vec3& max) {
+            return fadeAt(distanceToBox(camera.player, min, max)) > 0.0f && !bounds.boxOutside(min, max);
+        };
+        if (ribbon.quads.empty() || !boxShows(ribbon.min, ribbon.max)) continue;
 
-            for (const RibbonQuad& step : quads) {
+        for (const TrailRibbon::Stretch& stretch : ribbon.stretches) {
+            if (!boxShows(stretch.min, stretch.max)) continue;
+            for (size_t i = stretch.first; i < stretch.first + stretch.count; ++i) {
+                const RibbonQuad step = scrolled(ribbon.quads[i], scroll);
                 // A step is one quad per point and may be hundreds of metres long. Where it fades
                 // alike from where it comes nearest the player to where it goes farthest, it is
                 // drawn whole; where not, it is cut, so it shows up to fadeFar however far its
@@ -232,7 +323,8 @@ void buildScene(const std::vector<SceneLayer>& layers, const Camera& camera, flo
     if (!camera.valid || !options.in_gameplay || !options.enabled) return;
 
     const float settings_opacity = options.max_opacity * (options.combat_fade && options.in_combat ? 0.5f : 1.0f);
-    for (const SceneLayer& layer : layers) appendLayer(layer, camera, seconds, options, settings_opacity, out);
+    const ViewBounds bounds(camera);
+    for (const SceneLayer& layer : layers) appendLayer(layer, camera, seconds, options, settings_opacity, bounds, out);
 
     // Stable, as Blish's StableSortKey breaks a tie by its entity list: markers stacked on one
     // spot are drawn in the order they were loaded.

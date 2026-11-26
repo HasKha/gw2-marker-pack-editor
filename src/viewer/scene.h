@@ -94,6 +94,16 @@ struct WorldOptions {
 // marker, means it is not drawn this frame, as Pathing draws nothing without one.
 using TextureLookup = std::function<ImTextureID(size_t pack, const std::string& path)>;
 
+// `lookup`'s image for a pathable's texture, `kept` being its LiveMarker::image or
+// LiveTrail::image: what was kept, else looked up, and kept once there unless `edited` says the
+// lookup may take it back.
+inline ImTextureID keptImage(const TextureLookup& lookup, bool edited, size_t pack, const std::string& path, ImTextureID* kept) {
+    if (*kept) return *kept;
+    const ImTextureID image = lookup(pack, path);
+    if (!edited) *kept = image;
+    return image;
+}
+
 // One live map going into the scene.
 struct SceneLayer {
     const runtime::LiveMap* live = nullptr;
@@ -101,7 +111,7 @@ struct SceneLayer {
     TextureLookup texture;
     // The pack open in the editor: its items carry their pathable, and keep no texture when
     // their image is missing — see SceneItem. Drawn as every other pack is, so its author sees
-    // what a player will.
+    // what a player will. Its images are looked up every frame, as map_scene::Layer::edited's.
     bool edited = false;
 };
 

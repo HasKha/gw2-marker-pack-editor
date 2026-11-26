@@ -78,6 +78,54 @@ void appendRibbon(const std::vector<glm::vec3>& points, float half_width, bool i
     }
 }
 
+TrailRibbon buildRibbon(const std::vector<pack::trl::Segment>& segments, float half_width, bool is_wall) {
+    // Steps a stretch holds. Few enough that a stretch near the player or the edge of the view
+    // leaves little to look at step by step; many enough that passing over the stretches costs a
+    // small part of looking at every step.
+    constexpr size_t kStepsPerStretch = 16;
+
+    TrailRibbon ribbon;
+    for (const pack::trl::Segment& segment : segments) {
+        const size_t start = ribbon.quads.size();
+        appendRibbon(segment.points, half_width, is_wall, 0.0f, &ribbon.quads);
+        for (size_t first = start; first < ribbon.quads.size(); first += kStepsPerStretch) {
+            TrailRibbon::Stretch stretch;
+            stretch.first = first;
+            stretch.count = std::min(kStepsPerStretch, ribbon.quads.size() - first);
+            stretch.min = stretch.max = ribbon.quads[first].corners[0];
+            for (size_t i = first; i < first + stretch.count; ++i) {
+                for (const glm::vec3& corner : ribbon.quads[i].corners) {
+                    stretch.min = glm::min(stretch.min, corner);
+                    stretch.max = glm::max(stretch.max, corner);
+                }
+            }
+            ribbon.stretches.push_back(stretch);
+        }
+    }
+    if (!ribbon.stretches.empty()) {
+        ribbon.min = ribbon.stretches.front().min;
+        ribbon.max = ribbon.stretches.front().max;
+        for (const TrailRibbon::Stretch& stretch : ribbon.stretches) {
+            ribbon.min = glm::min(ribbon.min, stretch.min);
+            ribbon.max = glm::max(ribbon.max, stretch.max);
+        }
+    }
+    return ribbon;
+}
+
+RibbonQuad scrolled(const RibbonQuad& quad, float scroll) {
+    // appendRibbon takes whole texture lengths off a quad by the floor of its lesser v, scroll
+    // included; at no scroll that left `least` of it, in [0, 1). The scroll's whole lengths are
+    // dropped first, which is the same image and keeps a long session's scroll from eating v's
+    // precision.
+    const float part = scroll - std::floor(scroll);
+    const float least = std::min(quad.uv[0].y, quad.uv[3].y);
+    const float shift = part - std::floor(least + part);
+    RibbonQuad out = quad;
+    for (ImVec2& uv : out.uv) uv.y += shift;
+    return out;
+}
+
 void cutStep(const RibbonQuad& quad, float most_length, std::vector<RibbonQuad>* out) {
     const glm::vec3 start = (quad.corners[0] + quad.corners[1]) * 0.5f;
     const glm::vec3 end = (quad.corners[2] + quad.corners[3]) * 0.5f;
