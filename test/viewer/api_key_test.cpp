@@ -2,7 +2,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
-#include "viewer/api_key.h"
+#include "viewer/gw2_api/api_key.h"
 
 using viewer::api_key::Outcome;
 

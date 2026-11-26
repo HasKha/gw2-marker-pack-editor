@@ -8,7 +8,7 @@
 #include <string>
 
 #include "pack/attributes.h"
-#include "viewer/api_key.h"
+#include "viewer/gw2_api/api_key.h"
 #include "viewer/ui/fonts.h"
 #include "viewer/ui/style.h"
 
@@ -38,6 +38,50 @@ bool combo(const char* label, int* value, const char* const* items, int count) {
 }
 
 } // namespace
+
+bool drawInterface(settings::Settings* settings) {
+    bool changed = ImGui::Checkbox("Show the menu in Nexus's right-click menu", &settings->menu_in_nexus);
+    changed |= ImGui::Checkbox("Show an icon in Nexus's bar", &settings->menu_icon);
+    return changed;
+}
+
+PacksAction drawPacks(settings::Settings* settings, const std::string& status) {
+    PacksAction action = PacksAction::None;
+    if (ImGui::Checkbox("Enable Lua scripts", &settings->run_scripts)) action = PacksAction::ScriptsToggled;
+
+    // One width for the three, so they stand as a column.
+    const std::string manage = fonts::label(ICON_FA_BOX_ARCHIVE, "Manage Packs");
+    const std::string reload = fonts::label(ICON_FA_ROTATE_RIGHT, "Reload Packs");
+    const std::string import = fonts::label(ICON_FA_FILE_IMPORT, "Import from Blish HUD...");
+    const float width = style::buttonWidth({manage.c_str(), reload.c_str(), import.c_str()});
+    if (style::button(manage.c_str(), true, width)) action = PacksAction::Manage;
+    if (style::button(reload.c_str(), true, width)) action = PacksAction::Reload;
+    ImGui::SameLine();
+    ImGui::Text("%s", status.c_str());
+    if (style::button(import.c_str(), true, width)) action = PacksAction::Import;
+    return action;
+}
+
+bool drawSlowFrameLog(settings::Settings* settings) {
+    bool changed = ImGui::Checkbox("Log frames where Markus takes more than", &settings->log_slow_frames);
+    if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip(
+            "To Nexus's log, one line a second at most: how long Markus's own work took and where,\n"
+            "how long the whole frame was, and what was going on.");
+    }
+    ImGui::SameLine();
+    style::beginDisabled(!settings->log_slow_frames);
+    style::setFieldWidth();
+    changed |= ImGui::SliderFloat(
+        "##slow_frame_ms",
+        &settings->slow_frame_ms,
+        1.0f,
+        100.0f,
+        "%.1f ms",
+        ImGuiSliderFlags_Logarithmic | ImGuiSliderFlags_AlwaysClamp);
+    style::endDisabled();
+    return changed;
+}
 
 bool drawPack(settings::Settings* settings, bool* show_hidden) {
     bool changed = ImGui::Checkbox("Show markers in the world", &settings->world_pathables);

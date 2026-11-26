@@ -69,7 +69,8 @@ The viewer's folder is [viewer.md](viewer.md#layout).
 src/
   addon/entry.cpp      Nexus entry
   util/                path_text.h, json_file.* (lenient reads, all-or-nothing writes),
-                       job_queue.* (the worker every file the frame needs goes through)
+                       job_queue.* (the worker every file the frame needs goes through),
+                       kept_file.h (a file rewritten on it whenever its store moves)
   http/                http.*, background.h
   pack/
     source.*           DataSource: a zip or a folder; path normalization
@@ -100,7 +101,7 @@ test/
 
 **The open pack is baked per `State::revision`.** Resolving inherited attributes per marker per frame is
 too slow on a 56k-marker pack. Every edit calls `State::touch()`; visibility toggles do not, since they are
-view state and `viewer/edited.*` compares the flags itself.
+view state and `viewer/live/edited.*` compares the flags itself.
 
 **`resources` decodes a few assets per frame**, so arriving on a map with hundreds of new icons does not
 hitch. A miss is cached only when the file is absent; caching "Nexus could not make a texture yet" would
@@ -257,5 +258,5 @@ under "Unresolved".
 
 The viewer draws the open pack ([viewer.md](viewer.md#the-editor-inside)). `editor/world/` draws only the
 outline, picking, point handles, a dot where an icon is missing, and the gizmo, on the draw list over
-everything, using `viewer/render/overlay.*` and `viewer/camera.*`. With the full map open the editor clears
+everything, using `viewer/render/overlay.*` and `viewer/game/camera.*`. With the full map open the editor clears
 its hover state, so a click on the map selects nothing in the world.

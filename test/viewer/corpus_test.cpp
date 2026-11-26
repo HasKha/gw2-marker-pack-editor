@@ -19,7 +19,7 @@
 #include "pack/source.h"
 #include "pack/writer.h"
 #include "pack/xml_reader.h"
-#include "viewer/bake.h"
+#include "viewer/live/bake.h"
 
 namespace {
 

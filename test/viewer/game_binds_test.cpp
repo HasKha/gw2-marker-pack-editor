@@ -3,7 +3,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include "corpus.h"
-#include "viewer/game_binds.h"
+#include "viewer/game/game_binds.h"
 
 using viewer::game_binds::Key;
 

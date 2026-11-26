@@ -10,7 +10,7 @@
 
 #include "corpus.h"
 #include "viewer/behaviors/states.h"
-#include "viewer/blish_import.h"
+#include "viewer/packs/blish_import.h"
 #include "viewer/store.h"
 
 namespace {

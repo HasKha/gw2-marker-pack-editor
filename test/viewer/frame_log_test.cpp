@@ -5,8 +5,8 @@
 #include <chrono>
 #include <string>
 
-#include "viewer/bake.h"
 #include "viewer/frame_log.h"
+#include "viewer/live/bake.h"
 
 TEST_CASE("a slow frame's line names our share, the steps that count, the frame, and what was going on", "[frame_log]") {
     viewer::frame_log::Frame frame;

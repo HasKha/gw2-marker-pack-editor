@@ -4,7 +4,7 @@
 #include <string>
 
 #include "editor/editor_state.h"
-#include "viewer/camera.h"
+#include "viewer/game/camera.h"
 
 namespace ui::trail_editor {
 

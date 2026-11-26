@@ -1,0 +1,85 @@
+#pragma once
+
+#include <cstdint>
+#include <filesystem>
+#include <functional>
+#include <memory>
+#include <optional>
+#include <string>
+#include <vector>
+
+#include "pack/model.h"
+#include "pack/trl.h"
+#include "viewer/live/bake.h"
+#include "viewer/live/runtime.h"
+
+// A pack drawn from a model that changes as it is drawn, rather than from disk: the editor's open
+// pack, which the viewer draws with the installed ones, through the same bake.
+namespace viewer::edited {
+
+// The model as it stands this frame.
+struct Report {
+    // Where it was opened from or last saved; empty for a pack never saved.
+    std::filesystem::path path;
+
+    // The live model, null when no pack is open. Read only on the render thread, where the
+    // editor changes it, and never kept past the frame it was reported for.
+    const pack::Pack* pack = nullptr;
+
+    // Moves with every edit, and with every pack opened: the bake is redone when it does.
+    uint64_t revision = 0;
+
+    // Per Pack::pathables, whether the editor's tree shows it. A view state, not an edit, so
+    // it moves no revision. Null shows everything.
+    const std::vector<char>* shown = nullptr;
+};
+
+// A trail's points as the editor reads them, unsaved edits included. Null when there is no such
+// file, or, with `*deferred` set, while it is being read: try again next frame.
+using TrailLookup = std::function<std::shared_ptr<const pack::trl::Trail>(const std::string& path, bool* deferred)>;
+
+// The colour a texture gives a trail on the map (trail_colour::sample), unsaved images included.
+// Nothing, with `*deferred` set, while it is being read: try again next frame.
+using ColourLookup = std::function<std::optional<ImU32>(const std::string& path, bool* deferred)>;
+
+// The model as a live map of its own, apart from the installed packs': an edit, which a gizmo
+// drag makes every frame, rebuilds only this. Its scripts never load.
+//
+// Its markers and trails have no node in the viewer's tree: the editor's tree decides what
+// shows, through Report::shown.
+class EditedLive
+{
+public:
+    // Brings the live map in line with `report` on `map_id`: bakes again when the revision moved,
+    // and copies out what is on the map again when the bake, the map, what is shown or a
+    // trail's map changed. A trail's map is in its file, so a trail is on no map until
+    // `trail` has read it; a trail without a tint is white on the map until `colour` has read its
+    // texture. True when the live map was built again, its entities all new.
+    bool update(const Report& report, int map_id, const TrailLookup& trail, const ColourLookup& colour = {});
+
+    // Drops everything: no pack is open.
+    void clear();
+
+    // Behaviors keep their state in it from one frame to the next, until it is built again.
+    runtime::LiveMap& live() { return live_; }
+    const runtime::LiveMap& live() const { return live_; }
+
+    // Every marker and trail of the pack, baked: what the editor's overlay places its handles by.
+    const BakedPathables& baked() const { return baked_; }
+
+private:
+    // Reads the points and map of every trail without them, and the colour of every trail still
+    // to be sampled. True when any arrived.
+    bool resolveTrails(const TrailLookup& trail, const ColourLookup& colour);
+    void rebuild(int map_id);
+
+    bool open_ = false;
+    uint64_t revision_ = 0;
+    BakedPathables baked_;
+    std::vector<char> shown_;
+    bool unresolved_ = false; // a trail whose file or texture waits for a later frame
+    uint64_t builds_ = 0; // never reset, so a live map's revision is never reused
+    runtime::LiveMap live_;
+};
+
+} // namespace viewer::edited

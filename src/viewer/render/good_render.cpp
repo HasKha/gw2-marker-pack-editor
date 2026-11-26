@@ -5,7 +5,7 @@
 #include <atomic>
 #include <chrono>
 
-#include "viewer/map_scene.h"
+#include "viewer/maps/map_scene.h"
 #include "viewer/render/overlay.h"
 
 namespace viewer::good_render_sink {

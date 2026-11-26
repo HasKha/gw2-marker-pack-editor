@@ -9,7 +9,7 @@
 #include <string>
 #include <vector>
 
-#include "viewer/bake.h"
+#include "viewer/live/bake.h"
 #include "viewer/render/good_render.h"
 #include "viewer/ui/diagnostics.h"
 

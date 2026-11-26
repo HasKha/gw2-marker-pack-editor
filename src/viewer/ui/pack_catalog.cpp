@@ -201,6 +201,42 @@ void drawTab(Tab tab, const std::vector<Row>& rows, const char* filter, std::vec
 
 } // namespace
 
+Listing list(const catalog::Library& library, const std::vector<catalog::LocalPack>& local) {
+    Listing listing;
+    const std::vector<catalog::Package>* packages = library.packages();
+
+    // Every package in the catalog, with its copy on disk if any.
+    size_t absent = 0;
+    if (packages) {
+        for (const catalog::Package& package : *packages) {
+            Row row;
+            row.package = &package;
+            row.local = catalog::findLocal(package, local);
+            row.state = catalog::state(package, row.local);
+            row.download = library.downloads().status(package.file_name);
+            row.keep_updated = library.keepUpdated(package.name);
+            if (row.state == catalog::State::Absent) ++absent;
+            listing.rows.push_back(row);
+        }
+    }
+
+    // Then every archive in our folder the catalog does not list. The loose-XML pack is the
+    // folder itself, which is not ours to delete, so it is left out.
+    for (const catalog::LocalPack& pack : local) {
+        if (!packages || !catalog::findPackage(pack, *packages)) {
+            Row row;
+            row.local = &pack;
+            listing.rows.push_back(row);
+        }
+    }
+
+    listing.failed = library.failed();
+    listing.status = packages         ? std::to_string(absent) + " packs to download"
+                     : listing.failed ? "Could not load the list of packs."
+                                      : "Loading the list of packs...";
+    return listing;
+}
+
 std::vector<Action> draw(const std::vector<Row>& rows, const std::string& library_status, bool can_retry, bool* retry, bool* open) {
     std::vector<Action> actions;
     if (!*open) {

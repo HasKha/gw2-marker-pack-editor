@@ -7,7 +7,7 @@
 #include "corpus.h"
 #include "util/job_queue.h"
 #include "util/json_file.h"
-#include "viewer/achievements.h"
+#include "viewer/gw2_api/achievements.h"
 
 using viewer::achievements::Details;
 

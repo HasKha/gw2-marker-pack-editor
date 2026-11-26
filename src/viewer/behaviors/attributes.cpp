@@ -5,7 +5,7 @@
 #include <charconv>
 
 #include "pack/attributes.h"
-#include "viewer/mumble.h"
+#include "viewer/game/mumble.h"
 
 namespace viewer::behaviors {
 

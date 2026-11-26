@@ -6,10 +6,10 @@
 #include <string>
 #include <vector>
 
-#include "viewer/map.h"
-#include "viewer/map_scene.h"
-#include "viewer/registry.h"
-#include "viewer/runtime.h"
+#include "viewer/live/runtime.h"
+#include "viewer/maps/map.h"
+#include "viewer/maps/map_scene.h"
+#include "viewer/packs/registry.h"
 #include "viewer/store.h"
 
 // What the mouse does over a marker on the minimap or the full map: FlatMap's tooltip, and its

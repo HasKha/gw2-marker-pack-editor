@@ -16,7 +16,7 @@
 #include "viewer/behaviors/cron.h"
 #include "viewer/behaviors/festivals.h"
 #include "viewer/behaviors/states.h"
-#include "viewer/mumble.h"
+#include "viewer/game/mumble.h"
 
 using namespace viewer::behaviors;
 using viewer::UtcMillis;

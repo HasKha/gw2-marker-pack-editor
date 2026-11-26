@@ -1,6 +1,6 @@
 #pragma once
 
-#include "viewer/achievements.h"
+#include "viewer/gw2_api/achievements.h"
 
 // Pathing's AchievementTooltipView, as text: the name, the description in grey under it, then
 // the requirement — or the text of the marker's bit, when it names one that has text. Without

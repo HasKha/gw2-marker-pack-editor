@@ -9,9 +9,9 @@
 #include <vector>
 
 #include "draw_list.h"
-#include "viewer/map.h"
-#include "viewer/map_scene.h"
-#include "viewer/runtime.h"
+#include "viewer/live/runtime.h"
+#include "viewer/maps/map.h"
+#include "viewer/maps/map_scene.h"
 
 using namespace viewer;
 using Catch::Approx;

@@ -2,7 +2,7 @@ include_guard(GLOBAL)
 include(FetchContent)
 
 # stb_image, to decode a trail's texture on our side for the colour it is drawn with on the map
-# (viewer/trail_colour.*). Nexus decodes the images it draws but hands no pixels back. stb_image
+# (viewer/render/trail_colour.*). Nexus decodes the images it draws but hands no pixels back. stb_image
 # rather than WIC because MonoGame, which decodes Pathing's, does it through StbImageSharp, a port
 # of the same file: the same pixels come out.
 FetchContent_Declare(

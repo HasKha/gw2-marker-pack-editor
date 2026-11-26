@@ -1,7 +1,7 @@
 #pragma once
 
 #include "editor/editor_state.h"
-#include "viewer/camera.h"
+#include "viewer/game/camera.h"
 
 namespace world::gizmo {
 

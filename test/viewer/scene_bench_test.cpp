@@ -31,14 +31,14 @@
 
 #include <imgui_internal.h>
 #include "util/job_queue.h"
-#include "viewer/map.h"
-#include "viewer/map_scene.h"
-#include "viewer/registry.h"
+#include "viewer/live/runtime.h"
+#include "viewer/maps/map.h"
+#include "viewer/maps/map_scene.h"
+#include "viewer/packs/registry.h"
 #include "viewer/render/good_render.h"
-#include "viewer/runtime.h"
-#include "viewer/scene.h"
+#include "viewer/render/scene.h"
+#include "viewer/render/textures.h"
 #include "viewer/store.h"
-#include "viewer/textures.h"
 
 namespace {
 

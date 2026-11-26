@@ -15,8 +15,8 @@
 #include "pack/source.h"
 #include "pack/xml_reader.h"
 #include "test_camera.h"
-#include "viewer/edited.h"
-#include "viewer/scene.h"
+#include "viewer/live/edited.h"
+#include "viewer/render/scene.h"
 
 using Catch::Approx;
 

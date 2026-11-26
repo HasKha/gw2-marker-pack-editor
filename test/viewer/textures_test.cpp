@@ -15,7 +15,7 @@
 
 #include "fake_png.h"
 #include "util/job_queue.h"
-#include "viewer/textures.h"
+#include "viewer/render/textures.h"
 
 namespace {
 

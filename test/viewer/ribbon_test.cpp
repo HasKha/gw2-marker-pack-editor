@@ -9,8 +9,8 @@
 
 #include <cmath>
 
-#include "viewer/bake.h"
-#include "viewer/ribbon.h"
+#include "viewer/live/bake.h"
+#include "viewer/render/ribbon.h"
 
 using Catch::Approx;
 

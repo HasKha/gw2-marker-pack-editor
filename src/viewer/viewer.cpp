@@ -1,50 +1,52 @@
 #include "viewer/viewer.h"
 
-#include <imgui.h>
-// For the rectangle of the button ImGui last saw clicked: where our icon in Nexus's bar is.
 #include <IconsFontAwesome7.h>
 #include <d3d11.h>
-#include <imgui_internal.h>
+#include <imgui.h>
 
 #include <windows.h>
 
-#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <future>
 #include <memory>
+#include <optional>
 #include <set>
 #include <string>
 #include <vector>
 
 #include "util/job_queue.h"
-#include "util/json_file.h"
+#include "util/kept_file.h"
 #include "util/path_text.h"
-#include "viewer/account.h"
-#include "viewer/achievements.h"
-#include "viewer/api_key.h"
 #include "viewer/behaviors/festivals.h"
 #include "viewer/behaviors/states.h"
 #include "viewer/behaviors/update.h"
-#include "viewer/blish_import.h"
-#include "viewer/camera.h"
-#include "viewer/catalog.h"
-#include "viewer/downloads.h"
+#include "viewer/desktop.h"
 #include "viewer/frame_log.h"
-#include "viewer/game_binds.h"
-#include "viewer/map.h"
-#include "viewer/map_scene.h"
-#include "viewer/mumble.h"
-#include "viewer/registry.h"
+#include "viewer/game/camera.h"
+#include "viewer/game/game_binds.h"
+#include "viewer/game/interact_key.h"
+#include "viewer/game/mumble.h"
+#include "viewer/game/rtapi.h"
+#include "viewer/gw2_api/account.h"
+#include "viewer/gw2_api/achievements.h"
+#include "viewer/gw2_api/api_key.h"
+#include "viewer/live/runtime.h"
+#include "viewer/maps/map.h"
+#include "viewer/maps/map_scene.h"
+#include "viewer/maps/maps.h"
+#include "viewer/packs/blish_import.h"
+#include "viewer/packs/library.h"
+#include "viewer/packs/pack_folder.h"
+#include "viewer/packs/registry.h"
 #include "viewer/render/good_render.h"
 #include "viewer/render/overlay.h"
-#include "viewer/rtapi.h"
-#include "viewer/runtime.h"
-#include "viewer/scene.h"
+#include "viewer/render/recycled.h"
+#include "viewer/render/scene.h"
+#include "viewer/render/textures.h"
 #include "viewer/script/engine.h"
 #include "viewer/settings.h"
 #include "viewer/store.h"
-#include "viewer/textures.h"
 #include "viewer/ui/diagnostics.h"
 #include "viewer/ui/fonts.h"
 #include "viewer/ui/icon_data.h"
@@ -56,7 +58,6 @@
 #include "viewer/ui/options.h"
 #include "viewer/ui/pack_catalog.h"
 #include "viewer/ui/script_console.h"
-#include "viewer/ui/style.h"
 #include "viewer/utc.h"
 
 namespace viewer {
@@ -69,6 +70,11 @@ Mumble::Data* mumble_link = nullptr;
 const NexusLinkData* nexus_link = nullptr;
 
 std::filesystem::path folder;
+
+// `name` in our folder, or nothing while there is no folder.
+std::filesystem::path inFolder(const std::filesystem::path& name) {
+    return folder.empty() ? folder : folder / name;
+}
 
 // Every read and write of a file after load: the frame hands them over and takes the answer
 // on a later frame, never waiting for the disk itself. Stopped in unload, which lets what is
@@ -93,11 +99,7 @@ ID3D11Device* font_device = nullptr;
 
 EditorHooks editor;
 
-registry::Loader loader;
-// Every path discovery found, so a pack the editor lets go of is read again only if it was
-// one of ours to begin with.
-std::vector<std::filesystem::path> discovered;
-
+PackFolder pack_folder;
 runtime::Installed installed;
 runtime::LiveMap live;
 store::CategoryStates category_states;
@@ -105,30 +107,8 @@ std::vector<char> visible;
 uint64_t visible_revision = ~0ull; // the category_states revision `visible` was derived from
 uint64_t visible_tree = ~0ull; // and the Installed revision
 
-// The last scene published, and the one before it, the older reused once no sink holds it any
-// more. A scene is thousands of items, and allocating one a frame is a waste.
-template <class T>
-class Recycled
-{
-public:
-    // A scene to build into: the spare, if nothing holds it, or a new one.
-    std::shared_ptr<T> take() { return spare_ && spare_.use_count() == 1 ? std::move(spare_) : std::make_shared<T>(); }
-    // Keeps `built`, which is about to be published.
-    void keep(const std::shared_ptr<T>& built) {
-        spare_ = std::move(current_);
-        current_ = built;
-    }
-    void clear() {
-        current_.reset();
-        spare_.reset();
-    }
-
-private:
-    std::shared_ptr<T> current_;
-    std::shared_ptr<T> spare_;
-};
-
 Recycled<Scene> scenes;
+Maps maps;
 
 // For the Development section: what built the last scene and how long Present's work took, and
 // what GoodRender's moments drew in the last frame.
@@ -142,86 +122,23 @@ std::chrono::steady_clock::time_point last_present{};
 frame_log::Steps frame_steps;
 frame_log::Limiter slow_frames;
 
-// Adds the time since the last lap, or since it was made, to a step of frame_steps.
-class Laps
-{
-public:
-    void lap(double* step) {
-        const auto now = std::chrono::steady_clock::now();
-        *step += std::chrono::duration<double, std::milli>(now - last_).count();
-        last_ = now;
-    }
-
-private:
-    std::chrono::steady_clock::time_point last_ = std::chrono::steady_clock::now();
-};
-
-// The minimap and the full map: every map's rectangles, each one's fade after it comes up, the
-// full map's zoom as it opens and closes, the compass as MumbleLink last described it, and what
-// was published.
-map::Catalog maps;
-map_scene::FadeIn minimap_fade;
-map_scene::FadeIn full_map_fade;
-map_scene::FullMapZoom full_map_zoom;
-map_scene::CompassKeeper compass;
-map_scene::TrailCache map_trails;
-Recycled<map_scene::MapScene> minimap_scenes;
-Recycled<map_scene::MapScene> full_map_scenes;
-
 // The pack open in the editor this frame, as EditorHooks::edited_live hands it over: drawn in
 // the world and on the maps with the installed packs. Its markers belong to no node of our
 // tree, which the editor's own decides for, so nothing of ours turns them off.
 runtime::LiveMap* edited_live = nullptr;
 TextureLookup edited_texture;
-map_scene::TrailCache edited_map_trails;
 const std::vector<char> kNoNodes;
-
-// A pack as it was read: a check on the worker hands back the ones written since.
-struct ReadAt {
-    std::filesystem::path path;
-    std::filesystem::file_time_type written;
-};
-// When packs were last checked for a write since they were read, and the check while it runs.
-std::chrono::steady_clock::time_point last_change_check{};
-std::future<std::vector<ReadAt>> change_check;
 
 bool console_window = false;
 bool catalog_window = false;
 bool options_window = false;
 
-// The Blish HUD import: what Pathing has, read on the worker before the window opens, what the
-// player chose to bring, and the copy while it runs, which reads what Pathing kept too so that
-// the frame only has to apply it.
+// The Blish HUD import, and what the player chose to bring.
 bool import_window = false;
-std::future<blish_import::Found> import_search;
-blish_import::Found import_found;
+blish_import::Importer importer;
 ui::import_window::Choices import_choices;
-struct Imported {
-    blish_import::Copied copied;
-    blish_import::Found states; // what of Pathing's states was chosen
-    behaviors::BehaviorStates timers; // states.timers, read
-};
-std::unique_ptr<http::Background<Imported>> import_job;
-std::string import_status;
 
-// The public catalog: its list, asked for at load; the downloads into our folder; the per-pack
-// choices; every pack on disk as the catalog sees them; and whether this session's automatic
-// updates have been started.
-std::unique_ptr<http::Background<std::vector<catalog::Package>>> catalog_request;
-catalog::Downloads downloads;
-catalog::AutoUpdate auto_update;
-std::vector<catalog::LocalPack> local_packs;
-bool auto_updated = false;
-// The packs on disk changed: they are listed again on the worker once the loader is done, since
-// the pack it reads may be about to go, and the installed packs brought in line with the list.
-struct Discovered {
-    std::vector<std::filesystem::path> packs;
-    std::vector<catalog::LocalPack> local;
-};
-bool sync_pending = false;
-std::future<Discovered> discovery;
-// Downloads being moved into place on the worker: those that could not be, and why.
-std::future<std::vector<std::pair<catalog::Downloads::Finished, std::string>>> placing;
+catalog::Library library;
 
 // Scripts: one engine for every pack, built again with every live map, as Pathing's is with
 // every map. `scripts_stale` holds from the moment the live map is replaced until the engine
@@ -241,20 +158,10 @@ behaviors::FestivalFetcher festivals;
 // setting, never saved.
 bool show_hidden = false;
 
-// The API key in the options: what the player has typed, the check of what they registered
-// while it runs, and what the last check said, until the key is removed. A check carries the
-// key it was asked about, which is what is saved.
-char key_field[128] = {};
-struct KeyCheck {
-    std::string key;
-    api_key::Check check;
-};
-std::unique_ptr<http::Background<KeyCheck>> key_check;
-std::string key_status;
-std::future<bool> key_saved; // the registered key being written, which key_status waits for
-// What the registered key says of the account: achievements and this week's raids.
+// The API key in the options, what the registered key says of the account (achievements and
+// this week's raids), and what achievements are, for their tooltips.
+api_key::Registration registration;
 account::Fetcher account_progress;
-// What achievements are, for their tooltips.
 achievements::Catalog achievement_details;
 
 // Our icon in Nexus's bar was clicked: the menu opens under it on the next render. Set from
@@ -262,52 +169,17 @@ achievements::Catalog achievement_details;
 std::atomic<bool> menu_requested{false};
 std::atomic<bool> all_markers_requested{false};
 constexpr const char* kMenuPopup = "##marker_pack_menu";
+// Where the menu is placed in Nexus now: its own menu, and behind our icon in its bar.
+bool menu_in_nexus = false;
+bool menu_icon = false;
 
 // Pathing's smart categories: the menus whose hidden categories were asked for, until the map
 // changes.
 std::set<size_t> menu_show_all;
 int menu_show_all_map = 0;
 
-// The interact key, heard in the window procedure, which runs on the game's window thread
-// while the frame runs on its render thread.
-//
-// The key is the game's, as Nexus keeps it: each of the two binds packed as its virtual key and,
-// from bit 8, Shift, Ctrl and Alt; 0 for none. F, the game's default, when Nexus's file does not
-// name Interact at all. Bound to the mouse or to keys not known here, it has no key: F then may
-// well be some other action's, and a marker interacting on it would be a surprise.
-std::atomic<uint32_t> interact_binds[2] = {'F', 0};
-// Set at load. The write time is readInteractBind's alone, which runs at load and after that
-// only on the worker.
-std::filesystem::path game_binds_file;
-std::filesystem::file_time_type game_binds_written{};
-
-uint32_t pack(const game_binds::Key& key) {
-    return static_cast<uint32_t>(key.virtual_key) | (key.shift ? 1u << 8 : 0u) | (key.ctrl ? 2u << 8 : 0u) | (key.alt ? 4u << 8 : 0u);
-}
-
-// Reads Nexus's game binds again when the file changed: the player rebinding Interact in Nexus.
-void readInteractBind() {
-    std::error_code ec;
-    const std::filesystem::file_time_type written = std::filesystem::last_write_time(game_binds_file, ec);
-    if (ec || written == game_binds_written) return;
-    game_binds_written = written;
-    const std::vector<game_binds::Key> keys =
-        game_binds::read(game_binds_file, game_binds::ACTION_INTERACT).value_or(std::vector<game_binds::Key>{game_binds::Key{'F'}});
-    interact_binds[0] = keys.size() > 0 ? pack(keys[0]) : 0;
-    interact_binds[1] = keys.size() > 1 ? pack(keys[1]) : 0;
-}
-
-// Whether `key`, just pressed, is one of the interact binds, with exactly its modifiers held: Ctrl+F
-// is not F, and is likely some other action's.
-bool isInteract(WPARAM key) {
-    const auto held = [](int virtual_key) { return (GetKeyState(virtual_key) & 0x8000) != 0; };
-    const uint32_t mods = (held(VK_SHIFT) ? 1u : 0u) | (held(VK_CONTROL) ? 2u : 0u) | (held(VK_MENU) ? 4u : 0u);
-    return std::any_of(std::begin(interact_binds), std::end(interact_binds), [&](const std::atomic<uint32_t>& bind) {
-        const uint32_t packed = bind.load();
-        return packed != 0 && static_cast<WPARAM>(packed & 0xFF) == key && (packed >> 8) == mods;
-    });
-}
-
+// The interact key and Escape, heard in the window procedure, for the frame.
+InteractKey interact_key;
 std::atomic<bool> interact_pressed{false};
 std::atomic<bool> escape_released{false};
 
@@ -315,83 +187,25 @@ std::atomic<bool> escape_released{false};
 // since a script may change them every tick.
 constexpr std::chrono::seconds kSaveInterval{5};
 std::chrono::steady_clock::time_point last_save;
-
-// One file kept between sessions, written on the worker whenever its store's revision moves.
-// A write that fails is handed over again at the next save.
-class KeptFile
-{
-public:
-    // What the store holds at `revision` is what the file holds: it was just read from it.
-    void loaded(uint64_t revision) { handed_ = revision; }
-
-    // Hands `text()` over to be written to `file` when the store moved past what was handed
-    // over last. Writes of one file land in order, so the last handed over is what stays.
-    template <class Text>
-    void save(const std::filesystem::path& file, uint64_t revision, const Text& text) {
-        if (util::ready(written_) && !util::take(written_).value_or(false)) handed_ = kNothing;
-        if (file.empty() || revision == handed_) return;
-        handed_ = revision;
-        written_ = jobs.ask([file, text = text()] { return util::json_file::writeText(file, text); });
-    }
-
-private:
-    static constexpr uint64_t kNothing = ~0ull;
-    uint64_t handed_ = kNothing;
-    std::future<bool> written_; // the last handed over
-};
-KeptFile categories_file;
-KeptFile storage_file;
-KeptFile timers_file;
-
-std::filesystem::path categoriesFile() {
-    return folder.empty() ? folder : folder / store::CATEGORIES_FILE_NAME;
-}
-
-std::filesystem::path storageFile() {
-    return folder.empty() ? folder : folder / store::STORAGE_FILE_NAME;
-}
-
-std::filesystem::path timersFile() {
-    return folder.empty() ? folder : folder / behaviors::TIMERS_FILE_NAME;
-}
-
-std::filesystem::path packsFolder() {
-    return folder.empty() ? folder : folder / PACKS_FOLDER;
-}
-
-std::filesystem::path catalogFile() {
-    return folder.empty() ? folder : folder / catalog::STATE_FILE_NAME;
-}
-
-std::filesystem::path mapsFile() {
-    return folder.empty() ? folder : folder / map::CACHE_FILE_NAME;
-}
+util::KeptFile categories_file;
+util::KeptFile storage_file;
+util::KeptFile timers_file;
 
 // Every few seconds: what changed is handed over to be written, timers that ran out are
 // dropped, and Nexus's binds are looked at again.
 void saveStates() {
-    categories_file.save(categoriesFile(), category_states.revision(), [] { return category_states.text(); });
-    storage_file.save(storageFile(), script_storage.revision(), [] { return script_storage.text(); });
+    categories_file.save(&jobs, inFolder(store::CATEGORIES_FILE_NAME), category_states.revision(), [] { return category_states.text(); });
+    storage_file.save(&jobs, inFolder(store::STORAGE_FILE_NAME), script_storage.revision(), [] { return script_storage.text(); });
     behavior_states.expire(utcNow());
-    timers_file.save(timersFile(), behavior_states.revision(), [] { return behavior_states.text(); });
-    jobs.post(readInteractBind);
+    timers_file.save(&jobs, inFolder(behaviors::TIMERS_FILE_NAME), behavior_states.revision(), [] { return behavior_states.text(); });
+    jobs.post([] { interact_key.read(); });
     last_save = std::chrono::steady_clock::now();
 }
 
 // The clipboard, for a `copy` marker and User.SetClipboard alike, telling the player with
 // `message`. Whether a pack may copy at all is the caller's to ask.
 bool setClipboard(const std::string& text, const std::string& message) {
-    const int length = MultiByteToWideChar(CP_UTF8, 0, text.c_str(), -1, nullptr, 0);
-    if (length <= 0 || !OpenClipboard(nullptr)) return false;
-    EmptyClipboard();
-    bool copied = false;
-    if (HGLOBAL memory = GlobalAlloc(GMEM_MOVEABLE, static_cast<size_t>(length) * sizeof(wchar_t))) {
-        MultiByteToWideChar(CP_UTF8, 0, text.c_str(), -1, static_cast<wchar_t*>(GlobalLock(memory)), length);
-        GlobalUnlock(memory);
-        copied = SetClipboardData(CF_UNICODETEXT, memory) != nullptr;
-        if (!copied) GlobalFree(memory);
-    }
-    CloseClipboard();
+    const bool copied = desktop::copy(text);
     if (copied && api) api->UI.SendAlert(message.c_str());
     return copied;
 }
@@ -401,76 +215,13 @@ bool setClipboard(const std::string& text, const std::string& message) {
 void runScripts() {
     if (!persisted.run_scripts) return;
     if (scripts_stale) {
-        if (loader.busy()) return;
+        if (pack_folder.loading()) return;
         scripts->reset();
         scripts->loadPacks();
         scripts_stale = false;
     }
     const ImGuiIO& io = ImGui::GetIO();
     scripts->tick(ImGui::GetTime(), io.DeltaTime);
-}
-
-// Every pack in `packs_folder`, and each as the catalog sees it. Blish HUD's are drawn once
-// imported into ours, not from theirs. Reads the disk: at load, or on the worker.
-Discovered discoverIn(const std::filesystem::path& packs_folder) {
-    Discovered found;
-    if (!packs_folder.empty()) {
-        std::error_code ec;
-        std::filesystem::create_directories(packs_folder, ec);
-        found.packs = registry::discoverPacks(packs_folder);
-    }
-    found.local = catalog::localPacks(found.packs);
-    return found;
-}
-
-bool isDiscovered(const std::filesystem::path& path) {
-    return std::any_of(discovered.begin(), discovered.end(), [&](const std::filesystem::path& known) {
-        return registry::samePack(known, path);
-    });
-}
-
-// The packs on disk changed, by the catalog's hand or ours: see updateDiscovery.
-void syncPacks() {
-    sync_pending = true;
-}
-
-// Brings the installed packs in line with our folder once the worker has listed it: what is gone
-// is dropped, what is new is loaded, and nothing else is read again. Listed only while the
-// loader is idle, since it may be reading a pack that is about to go. A list made while the loader
-// started, or while the packs changed again, is made again: one from before a delete or a
-// download put in place would load the very pack being deleted or replaced.
-void updateDiscovery() {
-    if (util::ready(discovery)) {
-        std::optional<Discovered> found = util::take(discovery);
-        if (sync_pending || loader.busy()) {
-            sync_pending = true;
-        } else if (found) {
-            discovered = std::move(found->packs);
-            local_packs = std::move(found->local);
-
-            std::vector<std::filesystem::path> gone;
-            for (const std::unique_ptr<runtime::InstalledPack>& pack : installed.packs) {
-                if (!isDiscovered(pack->loaded->path)) gone.push_back(pack->loaded->path);
-            }
-            for (const std::filesystem::path& path : gone) runtime::uninstall(&installed, path);
-
-            std::vector<std::filesystem::path> added;
-            for (const std::filesystem::path& path : discovered) {
-                if (!runtime::isInstalled(installed, path)) added.push_back(path);
-            }
-            loader.add(std::move(added));
-        }
-    }
-    if (sync_pending && !discovery.valid() && !loader.busy()) {
-        sync_pending = false;
-        discovery = jobs.ask([packs_folder = packsFolder()] { return discoverIn(packs_folder); });
-    }
-}
-
-void reloadPacks() {
-    loader.stop();
-    runtime::clear(&installed);
-    syncPacks();
 }
 
 void replaceLiveMap(int map_id) {
@@ -514,294 +265,74 @@ behaviors::Frame behaviorFrame() {
     return behaviors::Frame{&mumble_state, utcNow(), ImGui::GetTime(), &festivals.active(), &account_progress.progress()};
 }
 
-// The interact key's name as the keyboard writes it, for the prompt. With no key the prompt is
-// still clicked, so that is what it says.
-std::string keyName(int virtual_key) {
-    if (virtual_key == 0) return "Click";
-    const LONG scan = static_cast<LONG>(MapVirtualKeyW(static_cast<UINT>(virtual_key), MAPVK_VK_TO_VSC)) << 16;
-    char name[64] = {};
-    if (GetKeyNameTextA(scan, name, static_cast<int>(sizeof(name))) > 0) return name;
-    return "?";
-}
-
 // Hears the interact key and Escape, and passes both on: the game interacts with what it has
 // in front of it as well, as it does with Blish HUD running.
 UINT onWndProc(HWND window, UINT message, WPARAM key, LPARAM flags) {
     // The editor first: a click it picks a marker with is not the game's.
     if (editor.wnd_proc && editor.wnd_proc(window, message, key, flags) == 0) return 0;
     const bool first_press = (flags & (LPARAM{1} << 30)) == 0;
-    if (message == WM_KEYDOWN && first_press && isInteract(key)) interact_pressed = true;
+    if (message == WM_KEYDOWN && first_press && interact_key.matches(key)) interact_pressed = true;
     if (message == WM_KEYUP && key == VK_ESCAPE) escape_released = true;
     return message;
 }
 
-
-// Takes what the loader has finished. A pack read again replaces its copy only now, so it is
-// drawn all the while.
-void updatePacks() {
-    while (std::unique_ptr<registry::LoadedPack> loaded = loader.take()) {
-        if (!loaded->error.empty()) api->Log(ELogLevel_WARNING, ADDON_NAME, (util::pathText(loaded->path) + ": " + loaded->error).c_str());
-        runtime::uninstall(&installed, loaded->path);
-        runtime::install(&installed, std::move(loaded));
-    }
-}
-
-// Reads again every pack written since it was read: saved by the editor, or by anything else.
-// Looked at on the worker every few seconds, and not while the loader is reading.
-void reloadChangedPacks() {
-    if (util::ready(change_check)) {
-        // Only a pack still installed as the check found it: one removed or read again while
-        // it ran is not the pack it looked at.
-        std::vector<std::filesystem::path> changed;
-        for (const ReadAt& pack : util::take(change_check).value_or(std::vector<ReadAt>{})) {
-            const bool same =
-                std::any_of(installed.packs.begin(), installed.packs.end(), [&](const std::unique_ptr<runtime::InstalledPack>& now) {
-                    return now->loaded->path == pack.path && now->loaded->written == pack.written;
-                });
-            if (same) changed.push_back(pack.path);
-        }
-        if (!changed.empty() && !loader.busy()) loader.add(std::move(changed));
-    }
-
-    constexpr auto kInterval = std::chrono::seconds(2);
-    const auto now = std::chrono::steady_clock::now();
-    if (change_check.valid() || now - last_change_check < kInterval || loader.busy()) return;
-    last_change_check = now;
-    std::vector<ReadAt> read;
-    for (const std::unique_ptr<runtime::InstalledPack>& pack : installed.packs)
-        read.push_back(ReadAt{pack->loaded->path, pack->loaded->written});
-    change_check = jobs.ask([read = std::move(read)] {
-        std::vector<ReadAt> changed;
-        for (const ReadAt& pack : read) {
-            if (registry::writtenAt(pack.path) != pack.written) changed.push_back(pack);
-        }
-        return changed;
-    });
-}
-
-// Puts each download that arrived in place of its old copy, on the worker, then lists the packs
-// again: the list is made after the moves, the worker running both in order. Not while the
-// loader is busy: the pack it is reading may be the one being replaced.
-void installDownloads() {
-    if (util::ready(placing)) {
-        using Failed = std::vector<std::pair<catalog::Downloads::Finished, std::string>>;
-        for (const auto& [finished, error] : util::take(placing).value_or(Failed{})) downloads.fail(finished, error);
-    }
-    if (placing.valid() || loader.busy()) return;
-    std::vector<catalog::Downloads::Finished> finished = downloads.take();
-    if (finished.empty()) return;
-
-    // An installed pack keeps its archive open. Its reads queued on the worker go before the
-    // move, and each lets go of the archive as it is done, so it is closed by then.
-    for (const catalog::Downloads::Finished& download : finished) runtime::uninstall(&installed, download.target);
-    placing = jobs.ask([finished = std::move(finished)] {
-        std::vector<std::pair<catalog::Downloads::Finished, std::string>> failed;
-        for (const catalog::Downloads::Finished& download : finished) {
-            if (!MoveFileExW(download.part.c_str(), download.target.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_COPY_ALLOWED)) {
-                std::error_code ec;
-                std::filesystem::remove(download.part, ec);
-                failed.emplace_back(download, "could not replace " + util::pathText(download.target.filename()));
-            }
-        }
-        return failed;
-    });
-    syncPacks();
-}
-
-// Deletes one of our packs from disk, on the worker, then lists the packs again: the list is
-// made after the delete, the worker running both in order.
-void deletePack(const std::filesystem::path& path) {
-    runtime::uninstall(&installed, path);
-    jobs.post([path, nexus = api] {
-        std::error_code ec;
-        std::filesystem::remove(path, ec);
-        if (ec) nexus->Log(ELogLevel_WARNING, ADDON_NAME, ("could not delete " + util::pathText(path) + ": " + ec.message()).c_str());
-    });
-    syncPacks();
-}
-
-void startCatalogRequest() {
-    catalog_request = std::make_unique<http::Background<std::vector<catalog::Package>>>();
-    catalog_request->start([](const http::Cancel& cancel) -> std::optional<std::vector<catalog::Package>> {
-        const std::optional<std::string> body = http::get(catalog::REPO_URL, cancel, std::chrono::seconds(15));
-        return body ? catalog::parse(*body) : std::nullopt;
-    });
-}
-
-// Pathing's "Keep Updated": once a session, as soon as the catalog has answered, each of our
-// packs older than the catalog's is downloaded again.
-void autoUpdate() {
-    const std::vector<catalog::Package>* packages = catalog_request ? catalog_request->get() : nullptr;
-    if (auto_updated || !packages) return;
-    auto_updated = true;
-    for (const catalog::Package& package : *packages) {
-        const catalog::LocalPack* local = catalog::findLocal(package, local_packs);
-        if (local && catalog::state(package, local) == catalog::State::Stale && auto_update.enabled(package.name)) {
-            downloads.start(package, packsFolder());
-        }
-    }
-}
-
-// A web page in the player's browser.
-void openInBrowser(const std::string& url) {
-    const int length = MultiByteToWideChar(CP_UTF8, 0, url.c_str(), -1, nullptr, 0);
-    if (length <= 0) return;
-    std::wstring wide(static_cast<size_t>(length), L'\0');
-    MultiByteToWideChar(CP_UTF8, 0, url.c_str(), -1, wide.data(), length);
-    ShellExecuteW(nullptr, L"open", wide.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
-}
-
-// Registers the key the check was about once it says the key is fit, else says why not.
-// From the frame rather than the options page, so a key is kept even if the page closed
-// while the check ran.
-void finishKeyCheck() {
-    if (util::ready(key_saved) && !util::take(key_saved).value_or(false)) {
-        key_status = "Key added, but it could not be saved: you will need to add it again next time.";
-    }
-    if (!key_check || !key_check->finished()) return;
-    // The job always answers; one that did not counts as the API not answering.
-    const KeyCheck done = key_check->take().value_or(KeyCheck{});
-    key_check.reset();
-    switch (done.check.outcome) {
-    case api_key::Outcome::Valid:
-        persisted.api_key = done.key;
-        account_progress.setKey(persisted.api_key, utcNow());
-        std::fill(std::begin(key_field), std::end(key_field), char{});
-        key_status = "Key added.";
-        key_saved = saveSettings();
-        break;
-    case api_key::Outcome::MissingPermissions:
-        key_status =
-            "This key is missing permissions: " + done.check.missing + ". Make a new one with \"account\" and \"progression\" selected.";
-        break;
-    case api_key::Outcome::Rejected: key_status = "This key was not accepted. Check that you copied all of it."; break;
-    case api_key::Outcome::NoAnswer: key_status = "Could not reach the GW2 API to check the key. Try again in a moment."; break;
-    }
-}
-
 void drawCatalog() {
     if (!catalog_window) return;
-    const std::vector<catalog::Package>* packages = catalog_request ? catalog_request->get() : nullptr;
-
-    // Every package in the catalog, with its copy on disk if any.
-    std::vector<ui::pack_catalog::Row> rows;
-    size_t absent = 0;
-    if (packages) {
-        for (const catalog::Package& package : *packages) {
-            ui::pack_catalog::Row row;
-            row.package = &package;
-            row.local = catalog::findLocal(package, local_packs);
-            row.state = catalog::state(package, row.local);
-            row.download = downloads.status(package.file_name);
-            row.keep_updated = auto_update.enabled(package.name);
-            if (row.state == catalog::State::Absent) ++absent;
-            rows.push_back(row);
-        }
-    }
-
-    // Then every archive in our folder the catalog does not list — all of them while its list is
-    // not in. The loose-XML pack is the folder itself, which is not ours to delete, so it is
-    // left out.
-    for (const catalog::LocalPack& local : local_packs) {
-        if (!packages || !catalog::findPackage(local, *packages)) {
-            ui::pack_catalog::Row row;
-            row.local = &local;
-            rows.push_back(row);
-        }
-    }
-
-    std::string status = "Loading the list of packs...";
-    const bool failed = !packages && catalog_request && catalog_request->finished();
-    if (failed) status = "Could not load the list of packs.";
-    if (packages) status = std::to_string(absent) + " packs to download";
-
+    const ui::pack_catalog::Listing listing = ui::pack_catalog::list(library, pack_folder.local());
     bool retry = false;
-    for (const ui::pack_catalog::Action& action : ui::pack_catalog::draw(rows, status, failed, &retry, &catalog_window)) {
+    for (const ui::pack_catalog::Action& action :
+         ui::pack_catalog::draw(listing.rows, listing.status, listing.failed, &retry, &catalog_window)) {
         const ui::pack_catalog::Row& row = *action.row;
         switch (action.kind) {
-        case ui::pack_catalog::Action::Kind::Download: downloads.start(*row.package, packsFolder()); break;
+        case ui::pack_catalog::Action::Kind::Download: library.downloads().start(*row.package, pack_folder.folder()); break;
         case ui::pack_catalog::Action::Kind::Delete:
-            if (row.local) deletePack(row.local->path);
+            if (row.local) pack_folder.remove(&installed, row.local->path);
             break;
-        case ui::pack_catalog::Action::Kind::KeepUpdated:
-            auto_update.set(row.package->name, action.value);
-            jobs.post([file = catalogFile(), choices = auto_update] { choices.save(file); });
-            break;
-        case ui::pack_catalog::Action::Kind::OpenPage: openInBrowser(row.package->info); break;
+        case ui::pack_catalog::Action::Kind::KeepUpdated: library.setKeepUpdated(row.package->name, action.value); break;
+        case ui::pack_catalog::Action::Kind::OpenPage: desktop::openInBrowser(row.package->info); break;
         }
     }
-    if (retry) startCatalogRequest();
+    if (retry) library.requestList();
 }
 
 // Opens the import, reading again what Blish HUD has now: the window opens once the worker has
 // read it (drawImport).
 void openImport() {
-    if (import_job) {
+    if (importer.running()) {
         import_window = true;
-    } else if (!import_search.valid()) {
-        import_search = jobs.ask([] { return blish_import::find(registry::blishMarkersFolder()); });
+    } else {
+        importer.findOnWorker(registry::blishMarkersFolder(), &jobs);
     }
-}
-
-// Copies the chosen packs on a worker, and reads the chosen states with them.
-void startImport() {
-    std::vector<std::filesystem::path> packs;
-    for (size_t i = 0; i < import_found.packs.size(); ++i) {
-        if (i < import_choices.packs.size() && import_choices.packs[i]) packs.push_back(import_found.packs[i]);
-    }
-    Imported chosen;
-    chosen.states.categories = import_found.categories;
-    chosen.states.storage = import_found.storage;
-    chosen.states.timers = import_found.timers;
-
-    import_status = "Importing...";
-    import_job = std::make_unique<http::Background<Imported>>();
-    import_job->start([packs, chosen, into = packsFolder()](const http::Cancel&) -> std::optional<Imported> {
-        Imported done = chosen;
-        done.copied = blish_import::copyPacks(packs, into);
-        if (!done.states.timers.empty()) done.timers.load(done.states.timers);
-        return done;
-    });
-}
-
-// Once the copy is done: Pathing's states into ours, written at once, and the new packs loaded.
-void finishImport() {
-    if (!import_job || !import_job->finished()) return;
-    const Imported* done = import_job->get();
-    if (!done) {
-        import_job.reset();
-        import_status = "The import did not finish.";
-        return;
-    }
-
-    for (const auto& [id, on] : done->states.categories) category_states.remember(id, on);
-    for (const auto& [key, value] : done->states.storage) script_storage.upsert(key, value);
-    behavior_states.merge(done->timers);
-    saveStates();
-
-    // A pack kept because ours was as new is imported as far as the player can tell.
-    const size_t imported = done->copied.copied + done->copied.kept;
-    import_status = imported == 1 ? "Imported 1 marker pack." : "Imported " + std::to_string(imported) + " marker packs.";
-    for (const std::string& error : done->copied.errors) {
-        import_status += "\nCould not import " + error;
-        api->Log(ELogLevel_WARNING, ADDON_NAME, ("Blish HUD import: " + error).c_str());
-    }
-    import_job.reset();
-    syncPacks();
 }
 
 void drawImport() {
-    if (util::ready(import_search)) {
-        import_found = util::take(import_search).value_or(blish_import::Found{});
+    if (importer.takeFound()) {
         import_choices = {};
-        import_status.clear();
         import_window = true;
     }
-    finishImport();
+
+    // Once the copy is done: Pathing's states into ours, written at once, and the new packs loaded.
+    if (const std::optional<blish_import::Importer::Done> done = importer.finish()) {
+        for (const auto& [id, on] : done->states.categories) category_states.remember(id, on);
+        for (const auto& [key, value] : done->states.storage) script_storage.upsert(key, value);
+        behavior_states.merge(done->timers);
+        saveStates();
+        for (const std::string& error : done->copied.errors)
+            api->Log(ELogLevel_WARNING, ADDON_NAME, ("Blish HUD import: " + error).c_str());
+        pack_folder.rescan();
+    }
+
     const bool was_open = import_window;
     const ui::import_window::Answer answer =
-        ui::import_window::draw(import_found, &import_choices, import_status, import_job != nullptr, &import_window);
-    if (answer == ui::import_window::Answer::Import) startImport();
+        ui::import_window::draw(importer.found(), &import_choices, importer.status(), importer.running(), &import_window);
+    if (answer == ui::import_window::Answer::Import) {
+        const std::vector<std::filesystem::path>& found = importer.found().packs;
+        std::vector<std::filesystem::path> chosen;
+        for (size_t i = 0; i < found.size(); ++i) {
+            if (i < import_choices.packs.size() && import_choices.packs[i]) chosen.push_back(found[i]);
+        }
+        importer.start(std::move(chosen), pack_folder.folder());
+    }
     // Answered, or closed: it does not open by itself again.
     if (!persisted.import_offered && (answer != ui::import_window::Answer::None || (was_open && !import_window))) {
         persisted.import_offered = true;
@@ -854,47 +385,16 @@ void takeFontDevice() {
     if (SUCCEEDED(swap_chain->GetDevice(__uuidof(ID3D11Device), reinterpret_cast<void**>(&font_device)))) ui::fonts::load(font_device);
 }
 
-// Opens the menu under our icon, or above it in the lower half of the screen, and likewise left
-// or right. Nexus's bar is an ImGui window, and ImGui keeps the rectangle of the button last
-// clicked as its nav focus (SetFocusID in imgui.cpp): our icon, while it holds the mouse. The
-// mouse itself, failing that.
-void placeMenu() {
-    const ImGuiContext& g = *ImGui::GetCurrentContext();
-    const ImVec2 mouse = ImGui::GetIO().MousePos;
-    ImRect icon(mouse, mouse);
-    if (const ImGuiWindow* window = g.NavWindow) {
-        const ImRect& relative = window->NavRectRel[0];
-        const ImRect clicked(
-            window->Pos.x + relative.Min.x,
-            window->Pos.y + relative.Min.y,
-            window->Pos.x + relative.Max.x,
-            window->Pos.y + relative.Max.y);
-        if (clicked.Contains(mouse)) icon = clicked;
-    }
-    const ImVec2 display = ImGui::GetIO().DisplaySize;
-    const bool below = icon.GetCenter().y < display.y * 0.5f;
-    const bool rightward = icon.GetCenter().x < display.x * 0.5f;
-    ImGui::SetNextWindowPos(
-        ImVec2(rightward ? icon.Min.x : icon.Max.x, below ? icon.Max.y : icon.Min.y),
-        ImGuiCond_Always,
-        ImVec2(rightward ? 0.0f : 1.0f, below ? 0.0f : 1.0f));
-}
-
 // The menu for a left click on our icon.
 void drawMenuPopup() {
     if (menu_requested.exchange(false)) {
-        placeMenu();
+        ui::main_menu::placeUnderIcon();
         ImGui::OpenPopup(kMenuPopup);
     }
     if (ImGui::BeginPopup(kMenuPopup)) {
         drawMenuItems();
         ImGui::EndPopup();
     }
-}
-
-std::string loadingStatus() {
-    if (!loader.busy()) return std::to_string(installed.packs.size()) + " packs";
-    return "Loading packs: " + std::to_string(installed.packs.size()) + " of " + std::to_string(discovered.size());
 }
 
 // Windows' display scale. The system's, not the game window's monitor's as Nexus and Blish HUD
@@ -941,22 +441,6 @@ WorldOptions worldOptions() {
     return options;
 }
 
-map_scene::Options mapOptions() {
-    map_scene::Options options;
-    options.enabled = persisted.map_pathables;
-    options.map_markers = static_cast<map_scene::Visibility>(persisted.map_marker_visibility);
-    options.map_trails = static_cast<map_scene::Visibility>(persisted.map_trail_visibility);
-    options.minimap_markers = static_cast<map_scene::Visibility>(persisted.minimap_marker_visibility);
-    options.minimap_trails = static_cast<map_scene::Visibility>(persisted.minimap_trail_visibility);
-    options.map_opacity = persisted.map_opacity;
-    options.minimap_opacity = persisted.minimap_opacity;
-    options.above_below = persisted.map_above_below;
-    options.fade_far_trails = persisted.map_fade_far_trails;
-    options.trail_width = persisted.map_trail_width;
-    options.show_hidden = show_hidden;
-    return options;
-}
-
 // The above or below image the maps draw on an icon's corner, which the options page shows too.
 // Nexus returns the texture it already made for an identifier, so asking every frame decodes
 // each once; null until it is ready.
@@ -968,39 +452,36 @@ ImTextureID aboveBelowImage(bool above) {
     return texture ? static_cast<ImTextureID>(texture->Resource) : nullptr;
 }
 
-// What the minimap shows this frame, and the full map while it is up. Nothing on a map the API
-// has not described, as in Pathing, nor on a loading screen.
-void buildMapScene(const TextureLookup& texture) {
-    const double now = ImGui::GetTime();
-    const map_scene::CompassKeeper::Kept kept = compass.update(mumble_state);
-    // The compass stays where it was under the full map, so its fade goes on through it.
-    const MumbleState on_compass = map_scene::withCompass(mumble_state, kept.compass);
-    const float minimap_opacity = minimap_fade.update(on_compass, now);
-    const float full_map_opacity = full_map_fade.update(mumble_state, now);
-    const map_scene::FullMapZoom::Frame zoom = full_map_zoom.update(mumble_state.is_map_open, last_drawn.world, now);
+// What the maps are handed at Present: the live maps, as the world scene is, and the options.
+Maps::Frame mapFrame(const TextureLookup& texture) {
+    Maps::Frame frame;
+    frame.mumble = &mumble_state;
+    frame.in_gameplay = inGameplay();
+    frame.world_drawn = last_drawn.world;
+    frame.seconds = ImGui::GetTime();
+    frame.live = &live;
+    frame.visible = &visible;
+    frame.texture = texture;
+    frame.edited = edited_live;
+    frame.edited_texture = edited_texture;
 
-    const std::shared_ptr<map_scene::MapScene> minimap = minimap_scenes.take();
-    std::shared_ptr<map_scene::MapScene> full_map;
-    if (const map::MapDetails* details = mumble_state.available && inGameplay() ? maps.find(mumble_state.map_id) : nullptr) {
-        std::vector<map_scene::Layer> layers{map_scene::Layer{&live, &visible, texture, &map_trails}};
-        if (edited_live) layers.push_back(map_scene::Layer{edited_live, &kNoNodes, edited_texture, &edited_map_trails, true});
-        map_scene::build(layers, *details, on_compass, mapOptions(), minimap_opacity, uiScale(), minimap.get());
-        minimap->keep_compass = kept.keep;
-        minimap->above = aboveBelowImage(true);
-        minimap->below = aboveBelowImage(false);
-        if (mumble_state.is_map_open) {
-            full_map = full_map_scenes.take();
-            map_scene::build(layers, *details, mumble_state, mapOptions(), full_map_opacity * zoom.opacity, uiScale(), full_map.get());
-            full_map->zoom = zoom.zoom;
-            full_map->above = minimap->above;
-            full_map->below = minimap->below;
-        }
-    } else {
-        *minimap = map_scene::MapScene{};
-    }
-    minimap_scenes.keep(minimap);
-    if (full_map) full_map_scenes.keep(full_map);
-    map_scene::publish(minimap, full_map);
+    map_scene::Options& options = frame.options;
+    options.enabled = persisted.map_pathables;
+    options.map_markers = static_cast<map_scene::Visibility>(persisted.map_marker_visibility);
+    options.map_trails = static_cast<map_scene::Visibility>(persisted.map_trail_visibility);
+    options.minimap_markers = static_cast<map_scene::Visibility>(persisted.minimap_marker_visibility);
+    options.minimap_trails = static_cast<map_scene::Visibility>(persisted.minimap_trail_visibility);
+    options.map_opacity = persisted.map_opacity;
+    options.minimap_opacity = persisted.minimap_opacity;
+    options.above_below = persisted.map_above_below;
+    options.fade_far_trails = persisted.map_fade_far_trails;
+    options.trail_width = persisted.map_trail_width;
+    options.show_hidden = show_hidden;
+
+    frame.ui_scale = uiScale();
+    frame.above = aboveBelowImage(true);
+    frame.below = aboveBelowImage(false);
+    return frame;
 }
 
 // The map's tooltip and menu, over what was published this frame. None on the compass while the
@@ -1025,50 +506,47 @@ void drawMapMenu() {
     if (ui::map_menu::draw(context)) saveStates();
 }
 
+// The frame that ended with the Present beginning at `started`, logged when our work in it took
+// long. Loading screens and the game in the background included: what we do there is ours all
+// the same.
+void logSlowFrame(std::chrono::steady_clock::time_point started) {
+    size_t skipped = 0;
+    if (!persisted.log_slow_frames || !slow_frames.take(frame_steps.total(), persisted.slow_frame_ms, started, &skipped)) return;
+    frame_log::Frame frame;
+    frame.interval = std::chrono::duration<double, std::milli>(started - last_present).count();
+    frame.steps = frame_steps;
+    double slowest = 0.0;
+    for (size_t pack = 0; pack < installed.packs.size(); ++pack) {
+        if (const double seconds = scripts->frameSeconds(pack); seconds > slowest) {
+            slowest = seconds;
+            frame.slowest_scripts = util::pathText(installed.packs[pack]->loaded->path.filename());
+        }
+    }
+    frame.map_id = live.map_id;
+    if (const std::shared_ptr<const Scene> scene = published()) frame.quads = scene->items.size();
+    frame.lua_bytes = scripts->heapBytes();
+    frame.jobs = jobs.unfinished();
+    frame.uploads = texture_uploads.images();
+    frame.upload_pixels = texture_uploads.pixels();
+    frame.loading_packs = pack_folder.loading();
+    frame.skipped = skipped;
+    api->Log(ELogLevel_INFO, ADDON_NAME, frame_log::line(frame).c_str());
+}
+
 // Everything is decided here, at Present, before the next frame is drawn: GoodRender's
 // moments only draw what this publishes, because a moment runs inside the game's frame and
 // anything slow there stalls the game.
 void preRender() {
     const auto started = std::chrono::steady_clock::now();
-
-    // The frame that ended with this Present, logged when our work in it took long. Loading
-    // screens and the game in the background included: what we do there is ours all the same.
     frame_steps.moments = good_render_sink::takeMomentMilliseconds();
-    if (last_present != std::chrono::steady_clock::time_point{}) {
-        const double interval = std::chrono::duration<double, std::milli>(started - last_present).count();
-        size_t skipped = 0;
-        if (persisted.log_slow_frames && slow_frames.take(frame_steps.total(), persisted.slow_frame_ms, started, &skipped)) {
-            frame_log::Frame frame;
-            frame.interval = interval;
-            frame.steps = frame_steps;
-            double slowest = 0.0;
-            for (size_t pack = 0; pack < installed.packs.size(); ++pack) {
-                if (const double seconds = scripts->frameSeconds(pack); seconds > slowest) {
-                    slowest = seconds;
-                    frame.slowest_scripts = util::pathText(installed.packs[pack]->loaded->path.filename());
-                }
-            }
-            frame.map_id = live.map_id;
-            if (const std::shared_ptr<const Scene> scene = published()) frame.quads = scene->items.size();
-            frame.lua_bytes = scripts->heapBytes();
-            frame.jobs = jobs.unfinished();
-            frame.uploads = texture_uploads.images();
-            frame.upload_pixels = texture_uploads.pixels();
-            frame.loading_packs = loader.busy();
-            frame.skipped = skipped;
-            api->Log(ELogLevel_INFO, ADDON_NAME, frame_log::line(frame).c_str());
-        }
-    }
+    if (last_present != std::chrono::steady_clock::time_point{}) logSlowFrame(started);
     last_present = started;
     frame_steps = {};
 
-    Laps laps;
+    frame_log::Laps laps;
     texture_uploads.nextFrame();
-    updatePacks();
-    reloadChangedPacks();
-    installDownloads();
-    updateDiscovery();
-    autoUpdate();
+    pack_folder.update(&installed, &library.downloads());
+    library.updateStale(pack_folder.local(), pack_folder.folder());
     account_progress.update(std::chrono::steady_clock::now(), utcNow());
     achievement_details.update(std::chrono::steady_clock::now());
     laps.lap(&frame_steps.packs);
@@ -1126,7 +604,7 @@ void preRender() {
     scene_camera = camera.source;
     laps.lap(&frame_steps.scene);
 
-    buildMapScene(texture);
+    maps.build(mapFrame(texture));
     laps.lap(&frame_steps.maps);
     present_times.add(std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started).count());
 }
@@ -1165,15 +643,16 @@ void drawFrame() {
     drawMenuPopup();
     // Before the windows it can open, so they show in the frame it was clicked in.
     drawOptionsWindow();
-    ui::script_console::draw(
-        *scripts,
-        installed,
-        folder.empty() ? folder : folder / ui::script_console::SAVE_FILE_NAME,
-        jobs,
-        &console_window);
+    ui::script_console::draw(*scripts, installed, inFolder(ui::script_console::SAVE_FILE_NAME), jobs, &console_window);
     drawCatalog();
     drawImport();
-    finishKeyCheck();
+    // Registers a key the check found fit. From the frame rather than the options page, so a key
+    // is kept even if the page closed while the check ran.
+    if (std::optional<std::string> key = registration.takeAccepted()) {
+        persisted.api_key = std::move(*key);
+        account_progress.setKey(persisted.api_key, utcNow());
+        registration.saving(saveSettings());
+    }
     // Either may have removed a pack, and the prompt below calls into the live map.
     refreshLiveMap(live.map_id);
 
@@ -1181,7 +660,7 @@ void drawFrame() {
         ui::interaction::draw(
             screen,
             static_cast<settings::InfoDisplay>(persisted.info_display),
-            keyName(static_cast<int>(interact_binds[0].load() & 0xFF)),
+            interact_key.name(),
             persisted.show_interact_prompt,
             &achievement_details)) {
         behaviors::interactWith(&live, screen.prompt->marker, behaviorHost(), behaviorFrame());
@@ -1194,7 +673,7 @@ void drawFrame() {
 }
 
 void render() {
-    Laps laps;
+    frame_log::Laps laps;
     takeFontDevice();
     // The world and the map before our font is pushed: see fonts::push.
     drawWorld();
@@ -1214,103 +693,104 @@ void onAllMarkersKeybind(const char*, bool is_release) {
     if (!is_release) all_markers_requested = true;
 }
 
-// Puts the menu where the options say: in Nexus's menu, and behind our icon in Nexus's bar. Safe
-// from the options page, Nexus's or our window's: Nexus holds its quick access lock only while
-// drawing the bar.
-void applyMenuPlaces() {
-    static bool in_nexus = false;
-    static bool icon = false;
-    if (persisted.menu_in_nexus != in_nexus) {
-        if (persisted.menu_in_nexus) {
+// Puts the menu in Nexus's menu when `in_nexus`, and behind our icon in Nexus's bar when `icon`,
+// taking it out of either otherwise. Safe from the options page, Nexus's or our window's: Nexus
+// holds its quick access lock only while drawing the bar.
+void placeMenu(bool in_nexus, bool icon) {
+    if (in_nexus != menu_in_nexus) {
+        if (in_nexus) {
             api->QuickAccess.AddContextMenu(QUICKACCESS_ID, nullptr, drawNexusMenuItems);
         } else {
             api->QuickAccess.RemoveContextMenu(QUICKACCESS_ID);
         }
-        in_nexus = persisted.menu_in_nexus;
+        menu_in_nexus = in_nexus;
     }
-    if (persisted.menu_icon != icon) {
-        if (persisted.menu_icon) {
+    if (icon != menu_icon) {
+        if (icon) {
             api->QuickAccess.Add(SHORTCUT_ID, ICON_TEXTURE_ID, ICON_HOVER_TEXTURE_ID, KEYBIND_MENU_ID, ADDON_NAME);
             api->QuickAccess.AddContextMenu(SHORTCUT_MENU_ID, SHORTCUT_ID, drawMenuItems);
         } else {
             api->QuickAccess.RemoveContextMenu(SHORTCUT_MENU_ID);
             api->QuickAccess.Remove(SHORTCUT_ID);
         }
-        icon = persisted.menu_icon;
+        menu_icon = icon;
     }
 }
 
-void removeMenuPlaces() {
-    const bool in_nexus = persisted.menu_in_nexus;
-    const bool icon = persisted.menu_icon;
-    persisted.menu_in_nexus = false;
-    persisted.menu_icon = false;
-    applyMenuPlaces();
-    persisted.menu_in_nexus = in_nexus;
-    persisted.menu_icon = icon;
+// What the Development section shows. The images' counts walk every pack's cache, so this is
+// gathered only while the section is open.
+ui::diagnostics::Figures diagnosticFigures() {
+    ui::diagnostics::Figures figures;
+    figures.service = good_render_sink::service();
+    figures.drawn = last_drawn;
+    figures.camera = scene_camera;
+    if (const std::shared_ptr<const Scene> scene = published()) figures.scene_items = scene->items.size();
+    figures.present_ms = present_times.last();
+    figures.present_peak_ms = present_times.peak();
+    figures.map_id = live.map_id;
+    figures.map_described = maps.find(live.map_id) != nullptr;
+    figures.in_gameplay = inGameplay();
+    figures.markers = live.markers.size();
+    figures.trails = live.trails.size();
+    figures.packs_found = pack_folder.found();
+    figures.loading = pack_folder.loading();
+    for (const std::unique_ptr<runtime::InstalledPack>& pack : installed.packs) {
+        figures.packs.push_back(
+            ui::diagnostics::PackFigures{util::pathText(pack->loaded->path.filename()), pack->loaded->error, pack->textures.counts()});
+    }
+    figures.uploads_images = texture_uploads.images();
+    figures.uploads_pixels = texture_uploads.pixels();
+    figures.jobs = jobs.unfinished();
+    figures.lua_bytes = scripts->heapBytes();
+    return figures;
 }
 
 // The page's sections, the first three open until the player closes them: what a new player
 // sets up, the API key among it, before what fine-tunes the drawing.
 void drawOptionsPage() {
-    if (ImGui::CollapsingHeader("Interface", ImGuiTreeNodeFlags_DefaultOpen)) {
-        bool places = ImGui::Checkbox("Show the menu in Nexus's right-click menu", &persisted.menu_in_nexus);
-        places |= ImGui::Checkbox("Show an icon in Nexus's bar", &persisted.menu_icon);
-        if (places) {
-            applyMenuPlaces();
-            saveSettings();
-        }
+    if (ImGui::CollapsingHeader("Interface", ImGuiTreeNodeFlags_DefaultOpen) && ui::options::drawInterface(&persisted)) {
+        placeMenu(persisted.menu_in_nexus, persisted.menu_icon);
+        saveSettings();
     }
 
     if (ImGui::CollapsingHeader("Marker Packs", ImGuiTreeNodeFlags_DefaultOpen)) {
-        const bool scripts_changed = ImGui::Checkbox("Enable Lua scripts", &persisted.run_scripts);
-        if (scripts_changed) {
+        switch (ui::options::drawPacks(&persisted, pack_folder.status(installed))) {
+        case ui::options::PacksAction::None: break;
+        case ui::options::PacksAction::ScriptsToggled:
             saveSettings();
             // Off throws every handler away, and what scripts did to the map with them; on starts
             // them again from pack.lua.
             scripts->reset();
             replaceLiveMap(live.map_id);
+            break;
+        case ui::options::PacksAction::Manage: catalog_window = true; break;
+        case ui::options::PacksAction::Reload: pack_folder.reload(&installed); break;
+        case ui::options::PacksAction::Import: openImport(); break;
         }
-
-        // One width for the three, so they stand as a column.
-        const std::string manage = ui::fonts::label(ICON_FA_BOX_ARCHIVE, "Manage Packs");
-        const std::string reload = ui::fonts::label(ICON_FA_ROTATE_RIGHT, "Reload Packs");
-        const std::string import = ui::fonts::label(ICON_FA_FILE_IMPORT, "Import from Blish HUD...");
-        const float width = ui::style::buttonWidth({manage.c_str(), reload.c_str(), import.c_str()});
-        if (ui::style::button(manage.c_str(), true, width)) catalog_window = true;
-        if (ui::style::button(reload.c_str(), true, width)) reloadPacks();
-        ImGui::SameLine();
-        ImGui::Text("%s", loadingStatus().c_str());
-        if (ui::style::button(import.c_str(), true, width)) openImport();
     }
 
     if (ImGui::CollapsingHeader("GW2 API Key", ImGuiTreeNodeFlags_DefaultOpen)) {
-        switch (ui::options::drawApiKey(persisted.api_key, key_field, sizeof(key_field), key_check != nullptr, key_status)) {
+        switch (ui::options::drawApiKey(
+            persisted.api_key,
+            registration.field(),
+            registration.fieldSize(),
+            registration.checking(),
+            registration.status())) {
         case ui::options::KeyAction::None: break;
-        case ui::options::KeyAction::OpenApplications: openInBrowser(api_key::APPLICATIONS_URL); break;
-        case ui::options::KeyAction::Register:
-            if (std::string key = api_key::trimmed(key_field); key.empty()) {
-                key_status = "Paste a key in the field first.";
-            } else {
-                key_status.clear();
-                key_check = std::make_unique<http::Background<KeyCheck>>();
-                key_check->start([key = std::move(key)](const http::Cancel& cancel) -> std::optional<KeyCheck> {
-                    return KeyCheck{key, api_key::ask(key, cancel)};
-                });
-            }
-            break;
+        case ui::options::KeyAction::OpenApplications: desktop::openInBrowser(api_key::APPLICATIONS_URL); break;
+        case ui::options::KeyAction::Register: registration.submit(); break;
         case ui::options::KeyAction::Remove:
             persisted.api_key.clear();
             saveSettings();
             // The progress kept was the key's: it goes with it.
             account_progress.setKey(persisted.api_key, utcNow());
             account_progress.clearCache();
-            key_status.clear();
+            registration.setStatus({});
             break;
         case ui::options::KeyAction::ClearCache:
             account_progress.clearCache();
             achievement_details.clear();
-            key_status = "Saved API data cleared.";
+            registration.setStatus("Saved API data cleared.");
             break;
         }
     }
@@ -1322,60 +802,19 @@ void drawOptionsPage() {
         saveSettings();
     }
 
-    // For pack authors and bug reports. The figures are gathered only while it is open: the
-    // images' counts walk every pack's cache.
+    // For pack authors and bug reports.
     if (ImGui::CollapsingHeader("Development")) {
         if (ImGui::Button(ui::fonts::label(ICON_FA_TERMINAL, "Open Lua Script Console").c_str())) console_window = true;
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("Messages and errors from pack scripts.");
         ImGui::SameLine();
-
-        ui::diagnostics::Figures figures;
-        figures.service = good_render_sink::service();
-        figures.drawn = last_drawn;
-        figures.camera = scene_camera;
-        if (const std::shared_ptr<const Scene> scene = published()) figures.scene_items = scene->items.size();
-        figures.present_ms = present_times.last();
-        figures.present_peak_ms = present_times.peak();
-        figures.map_id = live.map_id;
-        figures.map_described = maps.find(live.map_id) != nullptr;
-        figures.in_gameplay = inGameplay();
-        figures.markers = live.markers.size();
-        figures.trails = live.trails.size();
-        figures.packs_found = discovered.size();
-        figures.loading = loader.busy();
-        for (const std::unique_ptr<runtime::InstalledPack>& pack : installed.packs) {
-            figures.packs.push_back(
-                ui::diagnostics::PackFigures{util::pathText(pack->loaded->path.filename()), pack->loaded->error, pack->textures.counts()});
-        }
-        figures.uploads_images = texture_uploads.images();
-        figures.uploads_pixels = texture_uploads.pixels();
-        figures.jobs = jobs.unfinished();
-        figures.lua_bytes = scripts->heapBytes();
-        ui::diagnostics::draw(ui::diagnostics::describe(figures), [] {
-            bool changed = ImGui::Checkbox("Log frames where Markus takes more than", &persisted.log_slow_frames);
-            if (ImGui::IsItemHovered()) {
-                ImGui::SetTooltip(
-                    "To Nexus's log, one line a second at most: how long Markus's own work took and where,\n"
-                    "how long the whole frame was, and what was going on.");
-            }
-            ImGui::SameLine();
-            ui::style::beginDisabled(!persisted.log_slow_frames);
-            ui::style::setFieldWidth();
-            changed |= ImGui::SliderFloat(
-                "##slow_frame_ms",
-                &persisted.slow_frame_ms,
-                1.0f,
-                100.0f,
-                "%.1f ms",
-                ImGuiSliderFlags_Logarithmic | ImGuiSliderFlags_AlwaysClamp);
-            ui::style::endDisabled();
-            if (changed) saveSettings();
+        ui::diagnostics::draw(ui::diagnostics::describe(diagnosticFigures()), [] {
+            if (ui::options::drawSlowFrameLog(&persisted)) saveSettings();
         });
     }
 }
 
 void drawOptions() {
-    Laps laps;
+    frame_log::Laps laps;
     takeFontDevice();
     ui::fonts::push();
     drawOptionsPage();
@@ -1411,20 +850,19 @@ void load(AddonAPI* aApi, Mumble::Data* aMumbleLink) {
     }
     persisted = settings::load(folder);
     // Read here, before there is a frame to stall; from here on every file goes through `jobs`.
-    account_progress.open(folder.empty() ? folder : folder / account::CACHE_FILE_NAME, persisted.api_key, utcNow(), &jobs);
-    achievement_details.open(folder.empty() ? folder : folder / achievements::CACHE_FILE_NAME, &jobs);
-    category_states.load(categoriesFile());
+    account_progress.open(inFolder(account::CACHE_FILE_NAME), persisted.api_key, utcNow(), &jobs);
+    achievement_details.open(inFolder(achievements::CACHE_FILE_NAME), &jobs);
+    category_states.load(inFolder(store::CATEGORIES_FILE_NAME));
     categories_file.loaded(category_states.revision());
-    script_storage.load(storageFile());
+    script_storage.load(inFolder(store::STORAGE_FILE_NAME));
     storage_file.loaded(script_storage.revision());
-    behavior_states.load(timersFile());
+    behavior_states.load(inFolder(behaviors::TIMERS_FILE_NAME));
     timers_file.loaded(behavior_states.revision());
     if (const char* game = api->Paths.GetGameDirectory()) {
-        game_binds_file = std::filesystem::path(game) / "addons" / "Nexus" / game_binds::FILE_NAME;
-        readInteractBind();
+        interact_key.open(std::filesystem::path(game) / "addons" / "Nexus" / game_binds::FILE_NAME);
     }
     festivals.start();
-    maps.start(mapsFile());
+    maps.open(inFolder(map::CACHE_FILE_NAME));
 
     script::Host host;
     host.installed = &installed;
@@ -1446,16 +884,12 @@ void load(AddonAPI* aApi, Mumble::Data* aMumbleLink) {
     scripts = std::make_unique<script::Engine>(host);
     scripts_stale = true;
 
-    auto_update.load(catalogFile());
-    Discovered found = discoverIn(packsFolder());
-    discovered = std::move(found.packs);
-    local_packs = std::move(found.local);
-    loader.add(discovered);
-    startCatalogRequest();
+    library.open(inFolder(catalog::STATE_FILE_NAME), &jobs);
+    pack_folder.open(inFolder(PACKS_FOLDER), &jobs, api);
     // Offered once, by itself, when Blish HUD has anything to bring.
     if (!persisted.import_offered) {
-        import_found = blish_import::find(registry::blishMarkersFolder());
-        import_window = !import_found.empty();
+        importer.find(registry::blishMarkersFolder());
+        import_window = !importer.found().empty();
         if (!import_window) persisted.import_offered = true;
     }
     good_render_sink::load(mumble_link);
@@ -1477,7 +911,7 @@ void load(AddonAPI* aApi, Mumble::Data* aMumbleLink) {
         ICON_HOVER_TEXTURE_ID,
         const_cast<unsigned char*>(ui::icon_data::kIconHover),
         sizeof(ui::icon_data::kIconHover));
-    applyMenuPlaces();
+    placeMenu(persisted.menu_in_nexus, persisted.menu_icon);
 }
 
 void unload() {
@@ -1489,7 +923,7 @@ void unload() {
     api->Renderer.Deregister(render);
     api->Renderer.Deregister(drawOptions);
     api->WndProc.Deregister(onWndProc);
-    removeMenuPlaces();
+    placeMenu(false, false);
     ui::fonts::unload();
     if (font_device) {
         font_device->Release();
@@ -1498,10 +932,10 @@ void unload() {
     api->InputBinds.Deregister(KEYBIND_MENU_ID);
     api->InputBinds.Deregister(KEYBIND_ALL_MARKERS_ID);
 
-    loader.stop();
-    downloads.stop();
-    catalog_request.reset();
-    key_check.reset();
+    pack_folder.stop();
+    library.stop();
+    importer.stop();
+    registration.stop();
     account_progress.stop();
     achievement_details.stop();
     festivals.stop();
@@ -1511,21 +945,12 @@ void unload() {
     screen = behaviors::Screen{};
     publish(nullptr);
     scenes.clear();
-    map_scene::publish(nullptr, nullptr);
-    minimap_scenes.clear();
-    full_map_scenes.clear();
-    map_trails = map_scene::TrailCache{};
     live = runtime::LiveMap{};
     installed = runtime::Installed{};
     // After the packs are gone, so what was queued to read their images reads nothing, and
     // after saveStates, whose writes it waits for.
     jobs.stop();
     texture_uploads = TextureUploads{};
-    change_check = {};
-    discovery = {};
-    placing = {};
-    import_search = {};
-    key_saved = {};
     editor = {};
     api = nullptr;
 }

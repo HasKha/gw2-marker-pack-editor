@@ -13,8 +13,8 @@
 #include <vector>
 
 #include "corpus.h"
-#include "viewer/registry.h"
-#include "viewer/trail_colour.h"
+#include "viewer/packs/registry.h"
+#include "viewer/render/trail_colour.h"
 
 namespace {
 

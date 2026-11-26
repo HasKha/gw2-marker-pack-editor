@@ -1,8 +1,8 @@
 #pragma once
 
 #include "editor/editor_state.h"
-#include "viewer/camera.h"
-#include "viewer/scene.h"
+#include "viewer/game/camera.h"
+#include "viewer/render/scene.h"
 
 // What only an editor draws over the world, the viewer having drawn the pack itself: the
 // outline of what is selected and hovered, the open trail's point handles, and where an icon or

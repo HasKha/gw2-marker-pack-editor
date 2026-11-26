@@ -3,8 +3,8 @@
 #include <Mumble.h>
 #include <Nexus.h>
 
-#include "viewer/runtime.h"
-#include "viewer/scene.h"
+#include "viewer/live/runtime.h"
+#include "viewer/render/scene.h"
 
 // The viewer's lifecycle, and the addon-wide things it owns: the name, the folder, and the
 // one options page Nexus shows for the addon.

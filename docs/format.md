@@ -32,7 +32,7 @@ pugixml parses every corpus file (937 files, 146k elements); NanoXml's leniency 
 
 `UnpackTrailPoi` overwrites the XML `mapid` with the `.trl` header's, so a disagreement is a dead attribute,
 not an error. We read the header too: `BakedTrail::map_id` is unknown until the file is read (see
-`viewer/edited.cpp`). The editor still writes the XML `mapid`, since readers use it without opening the
+`viewer/live/edited.cpp`). The editor still writes the XML `mapid`, since readers use it without opening the
 `.trl`, and `trail_edit::setMapId` writes both.
 
 A trail with no `traildata`, or whose file is missing or fails to parse, is dropped.

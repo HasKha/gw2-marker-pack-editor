@@ -6,12 +6,12 @@
 #include <string>
 #include <vector>
 
-#include "viewer/account.h"
 #include "viewer/behaviors/attributes.h"
 #include "viewer/behaviors/states.h"
-#include "viewer/mumble.h"
-#include "viewer/registry.h"
-#include "viewer/runtime.h"
+#include "viewer/game/mumble.h"
+#include "viewer/gw2_api/account.h"
+#include "viewer/live/runtime.h"
+#include "viewer/packs/registry.h"
 #include "viewer/store.h"
 
 // Behaviors run: every frame's filters, focus as the player walks into a marker's range,

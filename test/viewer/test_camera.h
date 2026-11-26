@@ -5,7 +5,7 @@
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtc/matrix_transform.hpp>
 
-#include "viewer/camera.h"
+#include "viewer/game/camera.h"
 
 namespace test_camera {
 

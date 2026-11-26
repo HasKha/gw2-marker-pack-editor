@@ -7,7 +7,7 @@
 #include <thread>
 
 #include "corpus.h"
-#include "viewer/registry.h"
+#include "viewer/packs/registry.h"
 
 namespace {
 

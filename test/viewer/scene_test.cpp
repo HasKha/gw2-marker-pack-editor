@@ -15,10 +15,10 @@
 #include "draw_list.h"
 #include "fake_png.h"
 #include "test_camera.h"
-#include "viewer/map_scene.h"
+#include "viewer/live/runtime.h"
+#include "viewer/maps/map_scene.h"
 #include "viewer/render/good_render.h"
-#include "viewer/runtime.h"
-#include "viewer/scene.h"
+#include "viewer/render/scene.h"
 #include "viewer/store.h"
 
 using Catch::Approx;

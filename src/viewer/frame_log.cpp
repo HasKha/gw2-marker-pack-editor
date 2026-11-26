@@ -2,7 +2,7 @@
 
 #include <cstdio>
 
-#include "viewer/bake.h"
+#include "viewer/live/bake.h"
 
 namespace viewer::frame_log {
 

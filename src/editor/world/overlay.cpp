@@ -7,7 +7,7 @@
 #include <cmath>
 
 #include "editor/trail_edit.h"
-#include "viewer/bake.h"
+#include "viewer/live/bake.h"
 #include "viewer/render/overlay.h"
 
 namespace world::overlay {

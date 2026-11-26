@@ -11,8 +11,8 @@
 #include <string_view>
 #include <vector>
 
-#include "viewer/account.h"
 #include "viewer/behaviors/attributes.h"
+#include "viewer/gw2_api/account.h"
 #include "viewer/script/console.h"
 
 namespace viewer::runtime {

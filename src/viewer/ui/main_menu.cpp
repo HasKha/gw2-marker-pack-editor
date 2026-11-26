@@ -2,11 +2,13 @@
 
 #include <IconsFontAwesome7.h>
 #include <imgui.h>
+// For the rectangle of the button ImGui last saw clicked: where our icon in Nexus's bar is.
+#include <imgui_internal.h>
 
 #include <string>
 #include <vector>
 
-#include "viewer/runtime.h"
+#include "viewer/live/runtime.h"
 #include "viewer/ui/achievement_tooltip.h"
 #include "viewer/ui/fonts.h"
 #include "viewer/ui/style.h"
@@ -166,6 +168,30 @@ void drawScriptEntry(script::Engine* engine, size_t index) {
 }
 
 } // namespace
+
+// Nexus's bar is an ImGui window, and ImGui keeps the rectangle of the button last clicked as its
+// nav focus (SetFocusID in imgui.cpp): our icon, while it holds the mouse.
+void placeUnderIcon() {
+    const ImGuiContext& g = *ImGui::GetCurrentContext();
+    const ImVec2 mouse = ImGui::GetIO().MousePos;
+    ImRect icon(mouse, mouse);
+    if (const ImGuiWindow* window = g.NavWindow) {
+        const ImRect& relative = window->NavRectRel[0];
+        const ImRect clicked(
+            window->Pos.x + relative.Min.x,
+            window->Pos.y + relative.Min.y,
+            window->Pos.x + relative.Max.x,
+            window->Pos.y + relative.Max.y);
+        if (clicked.Contains(mouse)) icon = clicked;
+    }
+    const ImVec2 display = ImGui::GetIO().DisplaySize;
+    const bool below = icon.GetCenter().y < display.y * 0.5f;
+    const bool rightward = icon.GetCenter().x < display.x * 0.5f;
+    ImGui::SetNextWindowPos(
+        ImVec2(rightward ? icon.Min.x : icon.Max.x, below ? icon.Max.y : icon.Min.y),
+        ImGuiCond_Always,
+        ImVec2(rightward ? 0.0f : 1.0f, below ? 0.0f : 1.0f));
+}
 
 bool drawItems(const Context& context) {
     bool changed = false;

@@ -4,8 +4,9 @@
 #include <string>
 #include <vector>
 
-#include "viewer/catalog.h"
-#include "viewer/downloads.h"
+#include "viewer/packs/catalog.h"
+#include "viewer/packs/downloads.h"
+#include "viewer/packs/library.h"
 
 // The Marker Pack Library window: Pathing's PackRepoView and its MarkerPackHero rows — download,
 // update, keep updated, the pack's page, delete — sorted into two tabs, Installed for the packs
@@ -21,6 +22,17 @@ struct Row {
     std::optional<catalog::Downloads::Status> download;
     bool keep_updated = true;
 };
+
+// What the window lists, and how the catalog's list is coming along.
+struct Listing {
+    std::vector<Row> rows;
+    std::string status;
+    bool failed = false; // the catalog answered with no list, which a retry asks for again
+};
+
+// Every package of `library`'s list, with its copy in `local` if any, then every pack of `local`
+// the catalog does not list: all of them while its list is not in. The rows point into both.
+Listing list(const catalog::Library& library, const std::vector<catalog::LocalPack>& local);
 
 // What the player asked for, and of which row.
 struct Action {

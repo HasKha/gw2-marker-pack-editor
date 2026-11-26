@@ -31,6 +31,20 @@ struct Steps {
     double total() const;
 };
 
+// Adds the time since the last lap, or since it was made, to a step of Steps.
+class Laps
+{
+public:
+    void lap(double* step) {
+        const auto now = std::chrono::steady_clock::now();
+        *step += std::chrono::duration<double, std::milli>(now - last_).count();
+        last_ = now;
+    }
+
+private:
+    std::chrono::steady_clock::time_point last_ = std::chrono::steady_clock::now();
+};
+
 struct Frame {
     double interval = 0.0; // from one Present to the next: the whole frame, for scale
     Steps steps;

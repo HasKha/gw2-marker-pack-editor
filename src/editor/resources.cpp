@@ -5,7 +5,7 @@
 #include <vector>
 
 #include "util/job_queue.h"
-#include "viewer/trail_colour.h"
+#include "viewer/render/trail_colour.h"
 #include "viewer/viewer.h"
 
 namespace resources {

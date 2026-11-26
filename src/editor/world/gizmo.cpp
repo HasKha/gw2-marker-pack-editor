@@ -15,7 +15,7 @@
 #include "editor/editor_state.h"
 #include "editor/trail_edit.h"
 #include "editor/undo.h"
-#include "viewer/bake.h"
+#include "viewer/live/bake.h"
 
 namespace world::gizmo {
 

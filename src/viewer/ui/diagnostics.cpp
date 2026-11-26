@@ -6,7 +6,7 @@
 #include <algorithm>
 #include <cstdio>
 
-#include "viewer/bake.h"
+#include "viewer/live/bake.h"
 #include "viewer/ui/fonts.h"
 #include "viewer/ui/style.h"
 

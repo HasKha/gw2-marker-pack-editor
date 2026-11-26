@@ -5,8 +5,8 @@
 
 #include <glm/vec2.hpp>
 
-#include "viewer/camera.h"
-#include "viewer/scene.h"
+#include "viewer/game/camera.h"
+#include "viewer/render/scene.h"
 
 // The sink that draws the published scenes into the game's frame through GoodRender: the world at
 // MOMENT_WORLD_FINISHED through world_quad, the map at MOMENT_BEFORE_WINDOWS. Optional: whatever no

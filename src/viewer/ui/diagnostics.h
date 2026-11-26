@@ -7,9 +7,9 @@
 #include <string>
 #include <vector>
 
-#include "viewer/camera.h"
+#include "viewer/game/camera.h"
 #include "viewer/render/good_render.h"
-#include "viewer/textures.h"
+#include "viewer/render/textures.h"
 
 // The diagnostics in the options page's Development section: what draws the world and with which
 // camera, the live map, the packs and their images, and the worker. For whoever is chasing a pack

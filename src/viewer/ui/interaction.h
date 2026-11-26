@@ -2,8 +2,8 @@
 
 #include <string>
 
-#include "viewer/achievements.h"
 #include "viewer/behaviors/update.h"
+#include "viewer/gw2_api/achievements.h"
 #include "viewer/settings.h"
 
 // What behaviors show on screen: a focused marker's `info`, and the prompt saying what the

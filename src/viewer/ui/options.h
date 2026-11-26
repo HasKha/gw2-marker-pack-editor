@@ -11,6 +11,17 @@
 // true when it changed a setting that is saved.
 namespace viewer::ui::options {
 
+// Where the menu is shown: Nexus's right-click menu, and an icon in Nexus's bar.
+bool drawInterface(settings::Settings* settings);
+
+// What the player asked of the Marker Packs section. The section draws one button per action,
+// beside `status`, how many packs are in or how loading goes.
+enum class PacksAction { None, ScriptsToggled, Manage, Reload, Import };
+PacksAction drawPacks(settings::Settings* settings, const std::string& status);
+
+// The slow-frame log's switch and threshold, in the Development section.
+bool drawSlowFrameLog(settings::Settings* settings);
+
 // Pathing's pack settings: how the world is drawn, and what behaviors may do and put on
 // screen. `show_hidden` is its "Temporarily Show Ghost Markers", for this session only and
 // never saved.

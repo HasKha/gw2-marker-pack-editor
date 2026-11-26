@@ -10,7 +10,7 @@
 #include "pack/model.h"
 #include "pack/source.h"
 #include "pack/trl.h"
-#include "viewer/textures.h"
+#include "viewer/render/textures.h"
 
 // Images and trail data read out of the open pack on demand, since a large pack ships thousands,
 // on a worker of the editor's own: a frame asks, and a later frame has the answer.

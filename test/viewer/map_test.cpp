@@ -12,8 +12,8 @@
 
 #include "corpus.h"
 #include "http/http.h"
-#include "viewer/map.h"
-#include "viewer/mumble.h"
+#include "viewer/game/mumble.h"
+#include "viewer/maps/map.h"
 
 using namespace viewer::map;
 using Catch::Approx;

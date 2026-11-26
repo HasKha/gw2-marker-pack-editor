@@ -5,9 +5,9 @@
 #include <cmath>
 
 #include "pack/attributes.h"
-#include "viewer/mumble.h"
-#include "viewer/registry.h"
-#include "viewer/runtime.h"
+#include "viewer/game/mumble.h"
+#include "viewer/live/runtime.h"
+#include "viewer/packs/registry.h"
 #include "viewer/script/api.h"
 #include "viewer/script/context.h"
 #include "viewer/script/lson.h"

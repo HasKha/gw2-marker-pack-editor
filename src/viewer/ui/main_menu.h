@@ -4,9 +4,9 @@
 #include <set>
 #include <vector>
 
-#include "viewer/account.h"
-#include "viewer/achievements.h"
-#include "viewer/registry.h"
+#include "viewer/gw2_api/account.h"
+#include "viewer/gw2_api/achievements.h"
+#include "viewer/packs/registry.h"
 #include "viewer/script/engine.h"
 #include "viewer/store.h"
 
@@ -44,6 +44,11 @@ struct Context {
     // one between each addon's items and the next.
     bool separator = true;
 };
+
+// Places the next window, the menu's popup, under our icon in Nexus's bar, or above it in the
+// lower half of the screen, and likewise left or right of it. Under the mouse when the icon
+// cannot be found.
+void placeUnderIcon();
 
 // Draws the items into a popup or menu already begun. True when a category was turned on or off.
 //

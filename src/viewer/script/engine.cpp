@@ -8,8 +8,8 @@
 
 #include "pack/source.h"
 #include "util/path_text.h"
-#include "viewer/registry.h"
-#include "viewer/runtime.h"
+#include "viewer/live/runtime.h"
+#include "viewer/packs/registry.h"
 #include "viewer/script/api.h"
 #include "viewer/script/context.h"
 

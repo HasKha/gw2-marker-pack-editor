@@ -8,7 +8,7 @@
 #include "corpus.h"
 #include "util/job_queue.h"
 #include "util/json_file.h"
-#include "viewer/account.h"
+#include "viewer/gw2_api/account.h"
 
 using viewer::account::Progress;
 

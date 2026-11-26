@@ -3,7 +3,7 @@
 #include <string>
 #include <vector>
 
-#include "viewer/blish_import.h"
+#include "viewer/packs/blish_import.h"
 
 // The wizard that brings Blish HUD's packs and Pathing's choices into our folder: shown on the
 // first load when Blish HUD has anything, and from a button in the options.

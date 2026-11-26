@@ -9,9 +9,9 @@
 #include <thread>
 
 #include "corpus.h"
-#include "viewer/catalog.h"
-#include "viewer/downloads.h"
-#include "viewer/registry.h"
+#include "viewer/packs/catalog.h"
+#include "viewer/packs/downloads.h"
+#include "viewer/packs/registry.h"
 #include "viewer/utc.h"
 
 using namespace viewer::catalog;

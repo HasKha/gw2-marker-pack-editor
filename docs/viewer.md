@@ -28,33 +28,40 @@ goal.
 
 ```
 src/viewer/
-  viewer.*       lifecycle, the options page, EditorHooks
+  viewer.*       lifecycle, the frame's order, the options page's sections, EditorHooks
   settings.*     viewer.json: menu places, and Pathing's settings by its names
-  registry.*     installed packs: discovery, enable/disable, loading on workers, the merged tree
-  blish_import.* what Blish HUD's Pathing has: packs, category choices, Storage, timers
-  bake.*         pack::Pack -> resolved attributes, grouped by map id
-  runtime.*      the live map: visibility, fades, behavior state, markers scripts made
-  edited.*       the editor's pack as a live map of its own, baked per revision
+  store.*        category toggles, script Storage
+  guid.*         Pathing's Guid: the pack's base64, or an MD5 of other text
+  utc.*          the wall clock, and the date format timers and the catalog share
+  desktop.*      the clipboard and the player's browser
+  frame_log.*    the slow-frame log: a frame in which our own work took long, step by step, in Nexus's log
+  packs/         the packs on disk and where they come from:
+                 registry (discovery, enable/disable, loading on workers, the merged tree),
+                 pack_folder (our folder kept in line with the installed packs: listing, reloading
+                 what was written, downloads put in place, deletes), catalog (the public pack
+                 catalog), downloads (its downloads), library (the catalog as a session uses it),
+                 blish_import (what Blish HUD's Pathing has: packs, category choices, Storage, timers)
+  live/          the packs made something to draw: bake (pack::Pack -> resolved attributes, grouped
+                 by map id), runtime (the live map: visibility, fades, behavior state, markers
+                 scripts made), edited (the editor's pack as a live map of its own, baked per revision)
   behaviors/     Pathing's Behavior/: attributes, update (per frame), entity, states (timers.txt),
                  cron (schedule), festivals
   script/        the Lua state and Pathing's API: engine, object (member tables, call-style shim,
                  census), values, world, globals, os_library, lson, console
-  guid.*         Pathing's Guid: the pack's base64, or an MD5 of other text
-  identity.*     MumbleLink's identity JSON
-  scene.*        this frame's world quads, built from the live maps
-  map.*          where the world lands on the minimap and full map
-  map_scene.*    what the maps show, drawn into any draw list
-  render/        the sinks: good_render.* (moments) and overlay.* (Nexus render, draw list)
-  camera.*       RTAPI or MumbleLink -> view/projection
-  rtapi.*        the RealTime API addon's data block, followed as Nexus loads and unloads it
-  mumble.*       MumbleLink as Blish HUD names it, for scripts and behaviors
-  textures.*     images read and decoded on the worker, made into Nexus textures a few MB a Present
-  catalog.*      the public pack catalog; downloads.* its downloads
-  account.*, achievements.*, api_key.*   the GW2 API, for achievement and raid filters
-  game_binds.*   the game's Interact bind, from Nexus's GameBinds.xml
-  store.*        category toggles, script Storage
-  utc.*          the wall clock, and the date format timers and the catalog share
-  frame_log.*    the slow-frame log: a frame in which our own work took long, step by step, in Nexus's log
+  render/        the world drawn: scene (this frame's world quads, built from the live maps),
+                 recycled (the last two scenes published, the older reused), ribbon, textures
+                 (images read and decoded on the worker, made into Nexus textures a few MB a
+                 Present), trail_colour, and the sinks: good_render (moments) and overlay (Nexus
+                 render, draw list)
+  maps/          map (where the world lands on the minimap and full map), map_scene (what the maps
+                 show, drawn into any draw list), maps (the maps across frames: rectangles, fades,
+                 zoom, compass, trail caches)
+  game/          what the game and Nexus tell us: camera (RTAPI or MumbleLink -> view/projection),
+                 rtapi (the RealTime API addon's data block, followed as Nexus loads and unloads
+                 it), mumble (MumbleLink as Blish HUD names it, for scripts and behaviors),
+                 identity (MumbleLink's identity JSON), game_binds (the game's Interact bind, from
+                 Nexus's GameBinds.xml), interact_key (that bind, heard on the window thread)
+  gw2_api/       the GW2 API, for achievement and raid filters: account, achievements, api_key
   ui/            main_menu, options, pack_catalog, import_window, script_console, interaction,
                  diagnostics (the options page's Development section), map_menu, fonts (Font Awesome merged into Nexus's font), achievement_tooltip,
                  style (the palette and shared widgets, the editor's too)

@@ -16,7 +16,7 @@
 #include <RTAPI.hpp>
 
 #include "test_camera.h"
-#include "viewer/camera.h"
+#include "viewer/game/camera.h"
 
 using Catch::Approx;
 

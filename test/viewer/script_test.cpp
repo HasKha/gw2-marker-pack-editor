@@ -10,9 +10,9 @@
 #include <string>
 
 #include "corpus.h"
-#include "viewer/mumble.h"
-#include "viewer/registry.h"
-#include "viewer/runtime.h"
+#include "viewer/game/mumble.h"
+#include "viewer/live/runtime.h"
+#include "viewer/packs/registry.h"
 #include "viewer/script/engine.h"
 #include "viewer/store.h"
 

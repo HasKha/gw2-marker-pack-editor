@@ -5,8 +5,8 @@
 #include <glm/vec2.hpp>
 #include <glm/vec3.hpp>
 
-#include "viewer/camera.h"
-#include "viewer/scene.h"
+#include "viewer/game/camera.h"
+#include "viewer/render/scene.h"
 
 // World-space quads drawn into an ImGui draw list: the sink used when GoodRender is not
 // served, and what the editor's overlay projects its outlines with.
