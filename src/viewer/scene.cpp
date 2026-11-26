@@ -264,9 +264,6 @@ void appendLayer(
             // Blish's strip starts each quad at its right corner at the first point, then its
             // left, then the right at the next — see appendRibbon's corner order.
             item.front = frontOf(trail.cull, quad.corners[1], quad.corners[0], quad.corners[2]);
-            // StandardTrail.DrawOrder is float.MaxValue: every trail under every marker, trails
-            // in the order loaded.
-            item.depth = std::numeric_limits<float>::max();
             item.occlusion = trail.occlusion.value_or(options.occlusion);
             if (layer.edited) {
                 item.pathable = trail.pathable;

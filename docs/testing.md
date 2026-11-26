@@ -62,9 +62,10 @@ is handed, and `test/viewer/test_camera.h` is a camera with hand-written project
 | `http_test.cpp` | cancelling a request against a localhost server that never answers |
 | `selection_test.cpp`, `trail_test.cpp` | the editor's click rules, pruning, both selections; trails and renaming `traildata` |
 
-**What a frame costs** is measured offline, on a Release build: a hidden case builds and submits the world
-scene over the corpus's busiest maps and prints milliseconds a frame. Run it before and after a change to
-`scene.*`, `ribbon.*` or the sinks, on one machine.
+**What a frame costs** is measured offline, on a Release build: a hidden case takes the corpus's busiest maps
+and prints milliseconds for rebuilding the live map, building and submitting the world scene, building the
+minimap, and drawing the full map's trails and icons at three zooms. Run it before and after a change to
+`scene.*`, `ribbon.*`, `map_scene.*`, `runtime.*` or the sinks, on one machine.
 
 ```bash
 bin/Release/markus_viewer_test.exe "[.bench]"

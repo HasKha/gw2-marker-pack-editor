@@ -52,9 +52,9 @@ struct SceneItem {
     // corners are; a billboard's always faces the camera, so the scene settles that itself.
     glm::vec3 front{0.0f};
 
-    // What it was sorted by, Blish's DrawOrder: for a marker the squared distance from the
-    // camera to where it stands without its heightOffset, rather than where it is drawn; for
-    // a piece of trail the largest float, so that every trail is under every marker.
+    // What a marker was sorted by, Blish's DrawOrder: the squared distance from the camera to
+    // where it stands without its heightOffset, rather than where it is drawn. Unset for a
+    // piece of trail, which buildScene puts under every marker without sorting.
     float depth = 0.0f;
 
     // With GoodRender, at WORLD_FINISHED and under the game's UI: what of the world in front of
