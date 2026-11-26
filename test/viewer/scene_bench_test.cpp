@@ -1,5 +1,5 @@
 // How long the world scene takes to build and submit over the corpus's busiest maps, offline: the
-// numbers a change to scene.* or the GoodRender sink is judged by, without the game. Hidden from
+// numbers a change to scene.*, map_scene.*, the live map or the GoodRender sink is judged by, without the game. Hidden from
 // ctest; run it on a Release build, before and after, on one machine:
 //
 //     bin/Release/markus_viewer_test.exe "[.bench]"
@@ -25,6 +25,8 @@
 
 #include "corpus.h"
 #include "util/job_queue.h"
+#include "viewer/map.h"
+#include "viewer/map_scene.h"
 #include "viewer/registry.h"
 #include "viewer/render/good_render.h"
 #include "viewer/runtime.h"
@@ -140,8 +142,24 @@ TEST_CASE("the scene over the corpus's busiest maps, timed", "[.bench]") {
     const viewer::WorldOptions options;
     viewer::Scene scene;
 
-    std::printf("%-6s %8s %8s %8s %10s %10s %8s %8s\n", "map", "points", "markers", "trails", "build ms", "submit ms", "quads", "runs");
+    std::printf(
+        "%-6s %8s %8s %8s %10s %10s %10s %10s %8s %8s\n",
+        "map",
+        "points",
+        "markers",
+        "trails",
+        "live ms",
+        "build ms",
+        "submit ms",
+        "minimap ms",
+        "quads",
+        "runs");
     for (const auto& [map_id, point_count] : busiest) {
+        // The live map, as a map change or a pack coming or going builds it.
+        constexpr int kLiveMaps = 5;
+        const auto lived = std::chrono::steady_clock::now();
+        for (int i = 0; i < kLiveMaps; ++i) viewer::runtime::liveMap(installed, map_id);
+        const double live_ms = millisecondsSince(lived) / kLiveMaps;
         const viewer::runtime::LiveMap live = viewer::runtime::liveMap(installed, map_id);
 
         // The player at points spread along the map's trails, in the order they were loaded.
@@ -174,6 +192,32 @@ TEST_CASE("the scene over the corpus's busiest maps, timed", "[.bench]") {
             }
         } while (loading() > 0);
 
+        // The minimap's scene at each view, on a map rectangle of the test's own: where on the
+        // continent the map lands does not change what the build does.
+        viewer::map::MapDetails details;
+        details.map_top_left = glm::dvec2(-100000.0, 100000.0);
+        details.map_size = glm::dvec2(200000.0, 200000.0);
+        details.continent_size = glm::dvec2(10000.0, 10000.0);
+        viewer::map_scene::TrailCache map_trails;
+        viewer::map_scene::MapScene minimap;
+        double minimap_ms = 0.0;
+        for (const viewer::Camera& camera : cameras) {
+            viewer::MumbleState mumble;
+            mumble.available = true;
+            mumble.map_id = map_id;
+            mumble.compass_width = 300;
+            mumble.compass_height = 300;
+            mumble.map_scale = 1.0;
+            // Blish HUD's axes, z up.
+            mumble.player_position = glm::vec3(camera.player.x, camera.player.z, camera.player.y);
+            mumble.camera_position = glm::vec3(camera.position.x, camera.position.z, camera.position.y);
+            const auto mapped = std::chrono::steady_clock::now();
+            for (int i = 0; i < kRepeats; ++i) {
+                viewer::map_scene::build(live, visible, details, mumble, {}, 1.0f, 1.0f, lookup, &map_trails, &minimap);
+            }
+            minimap_ms += millisecondsSince(mapped);
+        }
+
         double build_ms = 0.0;
         double submit_ms = 0.0;
         size_t quad_total = 0;
@@ -205,13 +249,15 @@ TEST_CASE("the scene over the corpus's busiest maps, timed", "[.bench]") {
         }
         const double frames = static_cast<double>(cameras.size() * kRepeats);
         std::printf(
-            "%-6d %8zu %8zu %8zu %10.3f %10.3f %8zu %8zu\n",
+            "%-6d %8zu %8zu %8zu %10.3f %10.3f %10.3f %10.3f %8zu %8zu\n",
             map_id,
             point_count,
             live.markers.size(),
             live.trails.size(),
+            live_ms,
             build_ms / frames,
             submit_ms / frames,
+            minimap_ms / frames,
             quad_total / cameras.size(),
             run_total / cameras.size());
     }

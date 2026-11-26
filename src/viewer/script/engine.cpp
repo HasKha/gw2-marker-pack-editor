@@ -185,6 +185,10 @@ struct Engine::State {
     // what was found is kept: a script may define a function later.
     std::unordered_map<std::string, sol::protected_function> behavior_functions;
     GameTime last_tick; // what script-tick hands its function: the GameTime of the last tick
+    // `last_tick` as a Lua value, made once a tick and handed to every call: a GameTime has only getters, so one value
+    // serves them all, where one each would leave the collector a userdata per scripted marker per frame. Nil before
+    // the first tick.
+    sol::object tick_time;
 };
 
 Engine::Engine(Host host)
@@ -241,7 +245,8 @@ bool Engine::run(size_t pack, std::string_view file, std::string_view source) {
 void Engine::tick(double total_seconds, double elapsed_seconds) {
     Context& ctx = state_->context;
     state_->last_tick = GameTime{total_seconds, elapsed_seconds};
-    const sol::object game_time = sol::make_object(state_->lua, state_->last_tick);
+    state_->tick_time = sol::make_object(state_->lua, state_->last_tick);
+    const sol::object game_time = state_->tick_time;
 
     // The handlers there were when the tick began; one registered by a handler waits for the
     // next. Event.Update does the same with ToArray.
@@ -325,7 +330,9 @@ std::optional<bool> Engine::callBehavior(const behaviors::ScriptCall& call, beha
     std::vector<sol::object> arguments;
     arguments.push_back(entity.trail ? pushTrail(lua, entity.index) : pushMarker(lua, entity.index));
     if (hook == behaviors::Hook::Focus || hook == behaviors::Hook::Trigger) arguments.push_back(sol::make_object(lua, flag));
-    if (hook == behaviors::Hook::Tick) arguments.push_back(sol::make_object(lua, state.last_tick));
+    if (hook == behaviors::Hook::Tick) {
+        arguments.push_back(state.tick_time.valid() ? state.tick_time : sol::make_object(lua, state.last_tick));
+    }
     for (const behaviors::ScriptArg& argument : call.args) arguments.push_back(scriptArgument(lua, argument));
 
     const sol::protected_function_result result = timedCall(ctx, pack, found->second, sol::as_args(arguments));

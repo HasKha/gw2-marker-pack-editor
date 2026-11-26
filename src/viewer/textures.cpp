@@ -12,6 +12,7 @@ void TextureUploads::handed(AddonAPI* api, std::string identifier, int64_t pixel
 }
 
 void TextureUploads::nextFrame() {
+    ++frame_;
     // Nexus drops what it could not make after a minute, and never makes an image whose header
     // reads but whose pixels do not decode. Past this an image like that stops holding the others
     // back: about ten seconds at 60 fps, far past the frame or two a texture takes to be made.
@@ -76,9 +77,12 @@ Image TextureCache::get(const std::string& key, const std::function<Reader()>& r
     }
 
     // Decoded: there once Nexus has made it.
-    if (const Texture* made = api_->Textures.Get(entry.identifier.c_str()); made && made->Resource) {
-        entry.image = Image{static_cast<ImTextureID>(made->Resource), static_cast<int>(made->Width), static_cast<int>(made->Height)};
-        entry.done = true;
+    if (entry.asked_frame != uploads_->frame()) {
+        entry.asked_frame = uploads_->frame();
+        if (const Texture* made = api_->Textures.Get(entry.identifier.c_str()); made && made->Resource) {
+            entry.image = Image{static_cast<ImTextureID>(made->Resource), static_cast<int>(made->Width), static_cast<int>(made->Height)};
+            entry.done = true;
+        }
     }
     return entry.image;
 }

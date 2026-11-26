@@ -26,6 +26,7 @@ struct FakeNexus {
     std::map<std::string, Texture> queued; // decoded, waiting for a Present
     std::map<std::string, Texture> created; // by identifier, as Nexus keeps them
     std::vector<std::string> requests;
+    int gets = 0; // Get calls, which Nexus answers under a lock of its own
     std::vector<int64_t> made_per_present; // the pixels each Present made
     bool device_ready = true;
 
@@ -43,6 +44,7 @@ struct FakeNexus {
 
     static Texture* get(const char* identifier) {
         std::lock_guard<std::mutex> lock(current->mutex);
+        ++current->gets;
         const auto it = current->created.find(identifier);
         return it == current->created.end() ? nullptr : &it->second;
     }
@@ -351,4 +353,19 @@ TEST_CASE("the upload budget says what is out", "[textures]") {
     h.endFrame();
     CHECK(h.uploads.images() == 0);
     CHECK(h.uploads.pixels() == 0);
+}
+
+TEST_CASE("an image Nexus has not made yet is asked of it once a frame, however often it is looked up", "[textures]") {
+    // Every marker sharing the icon looks it up each frame: one Get each, under Nexus's lock, while it waited.
+    Harness h;
+    h.files.files["shared.png"] = pngHeader(4, 4);
+    h.nexus.device_ready = false;
+    CHECK(h.drawn("shared.png", 2).texture == nullptr); // read, then handed over, and not made
+    const int before = h.nexus.gets;
+    for (int marker = 0; marker < 5; ++marker) CHECK(h.get("shared.png").texture == nullptr);
+    CHECK(h.nexus.gets - before == 1);
+
+    h.nexus.device_ready = true;
+    h.endFrame();
+    CHECK(h.get("shared.png").texture != nullptr);
 }

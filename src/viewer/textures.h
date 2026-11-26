@@ -53,6 +53,9 @@ public:
     size_t images() const { return out_.size(); }
     int64_t pixels() const { return pixels_; }
 
+    // How many frames nextFrame has begun.
+    uint64_t frame() const { return frame_; }
+
 private:
     struct Out {
         AddonAPI* api;
@@ -62,6 +65,7 @@ private:
     };
     std::vector<Out> out_;
     int64_t pixels_ = 0;
+    uint64_t frame_ = 0;
 };
 
 class TextureCache
@@ -134,8 +138,10 @@ private:
         // Then held until `uploads` has room, and handed to Nexus.
         Read read;
         bool handed = false;
-        // Then asked of Nexus every lookup until it has made the texture.
+        // Then asked of Nexus until it has made the texture, once a frame however many pathables share the image:
+        // TextureUploads::frame() when it last was.
         std::string identifier;
+        uint64_t asked_frame = UINT64_MAX;
         Image image;
         bool done = false; // `image` is final, a miss included
     };

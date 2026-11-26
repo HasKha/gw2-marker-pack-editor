@@ -20,6 +20,9 @@ void install(Installed* installed, std::unique_ptr<registry::LoadedPack> loaded)
     auto pack = std::make_unique<InstalledPack>(std::move(loaded), prefix);
     pack->textures.setApi(installed->api, installed->jobs, installed->uploads);
     mergeInto(installed, pack.get());
+    const BakedPathables& pathables = pack->loaded->pathables;
+    for (size_t i = 0; i < pathables.markers.size(); ++i) pack->on_map[pathables.markers[i].map_id].markers.push_back(i);
+    for (size_t i = 0; i < pathables.trails.size(); ++i) pack->on_map[pathables.trails[i].map_id].trails.push_back(i);
     installed->packs.push_back(std::move(pack));
     ++installed->revision;
 }
@@ -125,12 +128,17 @@ LiveMap liveMap(const Installed& installed, int map_id) {
     live.revision = installed.revision;
 
     for (size_t p = 0; p < installed.packs.size(); ++p) {
-        const BakedPathables& pathables = installed.packs[p]->loaded->pathables;
-        for (const BakedMarker& marker : pathables.markers) {
-            if (marker.map_id == map_id) live.markers.push_back({p, nodeOf(installed, p, marker.category), marker, p});
-        }
-        for (const BakedTrail& trail : pathables.trails) {
-            if (trail.map_id == map_id) live.trails.push_back({p, nodeOf(installed, p, trail.category), trail, p});
+        const InstalledPack& pack = *installed.packs[p];
+        if (const auto found = pack.on_map.find(map_id); found != pack.on_map.end()) {
+            const BakedPathables& pathables = pack.loaded->pathables;
+            for (const size_t i : found->second.markers) {
+                const BakedMarker& marker = pathables.markers[i];
+                live.markers.push_back({p, nodeOf(installed, p, marker.category), marker, p});
+            }
+            for (const size_t i : found->second.trails) {
+                const BakedTrail& trail = pathables.trails[i];
+                live.trails.push_back({p, nodeOf(installed, p, trail.category), trail, p});
+            }
         }
     }
     return live;

@@ -5,6 +5,7 @@
 #include <limits>
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "viewer/behaviors/entity.h"
@@ -25,6 +26,14 @@ struct InstalledPack {
     std::unique_ptr<registry::LoadedPack> loaded;
     std::vector<size_t> node_of; // a category of the pack -> its node in the shared tree
     TextureCache textures;
+
+    // Its baked markers and trails by map, indices into `loaded->pathables`, in order: what a live map copies out,
+    // without walking every map's.
+    struct OnMap {
+        std::vector<size_t> markers;
+        std::vector<size_t> trails;
+    };
+    std::unordered_map<int, OnMap> on_map;
 };
 
 struct Installed {

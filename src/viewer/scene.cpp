@@ -157,7 +157,7 @@ float shaderFade(float distance_inches, float fade_near, float fade_far, float v
     return (1.0f - mult) * kept;
 }
 
-// Appends one layer's items to `out`, unsorted. `settings_opacity` is GetOpacity's settings,
+// Appends one layer's markers to `markers` and its trails to `out`, unsorted. `settings_opacity` is GetOpacity's settings,
 // the same for every marker and trail.
 void appendLayer(
     const SceneLayer& layer,
@@ -166,6 +166,7 @@ void appendLayer(
     const WorldOptions& options,
     float settings_opacity,
     const ViewBounds& bounds,
+    std::vector<SceneItem>* markers,
     Scene* out) {
     const runtime::LiveMap& live = *layer.live;
     const std::vector<char>& visible = *layer.visible;
@@ -227,7 +228,7 @@ void appendLayer(
             item.min_size = marker.min_size * options.marker_scale;
             item.max_size = marker.max_size;
         }
-        out->items.push_back(item);
+        markers->push_back(item);
     }
 
     // Kept between calls: the pieces of one step are only needed until they are copied into
@@ -324,11 +325,18 @@ void buildScene(const std::vector<SceneLayer>& layers, const Camera& camera, flo
 
     const float settings_opacity = options.max_opacity * (options.combat_fade && options.in_combat ? 0.5f : 1.0f);
     const ViewBounds bounds(camera);
-    for (const SceneLayer& layer : layers) appendLayer(layer, camera, seconds, options, settings_opacity, bounds, out);
+    // Kept between frames, as the scene's own items are: the markers until they are sorted, and their sort keys.
+    static std::vector<SceneItem> markers;
+    static std::vector<DepthKey> keys;
+    markers.clear();
+    for (const SceneLayer& layer : layers) appendLayer(layer, camera, seconds, options, settings_opacity, bounds, &markers, out);
 
-    // Stable, as Blish's StableSortKey breaks a tie by its entity list: markers stacked on one
-    // spot are drawn in the order they were loaded.
-    std::stable_sort(out->items.begin(), out->items.end(), [](const SceneItem& a, const SceneItem& b) { return a.depth > b.depth; });
+    // Every trail under every marker, in the order loaded, as StandardTrail.DrawOrder's float.MaxValue puts them; then
+    // the markers back to front, ties in the order loaded, as Blish's StableSortKey breaks them by its entity list:
+    // markers stacked on one spot are drawn in the order they were loaded.
+    backToFront(markers, &keys);
+    out->items.reserve(out->items.size() + markers.size());
+    for (const DepthKey& key : keys) out->items.push_back(markers[key.index]);
 }
 
 void buildScene(

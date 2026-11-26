@@ -4,6 +4,8 @@
 
 #include <glm/vec3.hpp>
 
+#include <algorithm>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <string>
@@ -103,6 +105,24 @@ inline ImTextureID keptImage(const TextureLookup& lookup, bool edited, size_t pa
     const ImTextureID image = lookup(pack, path);
     if (!edited) *kept = image;
     return image;
+}
+
+// Where one of a list of items goes when they are drawn back to front: its depth, larger first, and where it is in the
+// list, which breaks a tie, so that equals keep the order they were given in.
+struct DepthKey {
+    float depth;
+    uint32_t index;
+};
+
+// `items`' keys in the order to draw them, back to front by `depth`. Keys are sorted rather than the items, which are many
+// times larger, and `keys` keeps its memory from one frame to the next.
+template <class T>
+void backToFront(const std::vector<T>& items, std::vector<DepthKey>* keys) {
+    keys->resize(items.size());
+    for (size_t i = 0; i < items.size(); ++i) (*keys)[i] = DepthKey{items[i].depth, static_cast<uint32_t>(i)};
+    std::sort(keys->begin(), keys->end(), [](const DepthKey& a, const DepthKey& b) {
+        return a.depth != b.depth ? a.depth > b.depth : a.index < b.index;
+    });
 }
 
 // One live map going into the scene.

@@ -399,3 +399,28 @@ end
     // Pure Lua garbage, made inside a tick handler, does not set it off: the calls in do.
     CHECK(most < size_t{8} * 1024 * 1024);
 }
+
+TEST_CASE("every script-tick call of a tick is handed that tick's one GameTime", "[viewer][script]") {
+    // One a call was garbage for the collector, a userdata per scripted marker per frame.
+    Scripted s("script_tick_time", R"(
+local last
+function Same(marker, gameTime)
+  local same = last == gameTime
+  last = gameTime
+  return same
+end
+)");
+    s.engine->loadPacks();
+    const viewer::behaviors::ScriptCall same{"Same", {}};
+    const auto call = [&] {
+        return s.engine->callBehavior(same, viewer::behaviors::Entity{false, 0}, viewer::behaviors::Hook::Tick, false);
+    };
+    REQUIRE_FALSE(s.live.markers.empty());
+    s.engine->tick(1.0, 1.0 / 60.0);
+    CHECK(call() == false);
+    CHECK(call() == true);
+    s.engine->tick(1.0 + 1.0 / 60.0, 1.0 / 60.0);
+    CHECK(call() == false);
+    CHECK(call() == true);
+    CHECK(s.errors() == 0);
+}
