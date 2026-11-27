@@ -45,7 +45,8 @@ src/viewer/
                  catalog), downloads (its downloads), library (the catalog as a session uses it),
                  blish_import (what Blish HUD's Pathing has: packs, category choices, Storage, timers)
   live/          the packs made something to draw: bake (pack::Pack -> resolved attributes, grouped
-                 by map id), runtime (the live map: visibility, fades, behavior state, markers
+                 by map id), effective_values (what the bake reads: each category's values resolved
+                 once, by slots fixed at compile time), runtime (the live map: visibility, fades, behavior state, markers
                  scripts made), edited (the editor's pack as a live map of its own, baked per revision)
   behaviors/     Pathing's Behavior/: attributes, update (per frame), entity, states (timers.txt),
                  cron (schedule), festivals

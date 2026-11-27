@@ -53,7 +53,7 @@ Loaded loadMarker(const corpus::TempDir& temp, const std::string& attributes, co
 std::shared_ptr<const Behaviors> behaviorsOf(const std::string& name, const std::string& attributes, const std::string& category = "") {
     const corpus::TempDir temp(name);
     const Loaded loaded = loadMarker(temp, attributes, category);
-    return bakeBehaviors(loaded.model, loaded.model.pathables.at(0), true);
+    return bakeBehaviors(viewer::effectiveValues(loaded.model, loaded.model.pathables.at(0)), true);
 }
 
 } // namespace
@@ -326,7 +326,7 @@ TEST_CASE("a trail takes filters and scripts, and no modifier", "[behaviors][att
     std::string error;
     loaded.source = pack::open(temp.path(), &error);
     loaded.model = pack::loadPack(*loaded.source);
-    const auto behaviors = bakeBehaviors(loaded.model, loaded.model.pathables.at(0), false);
+    const auto behaviors = bakeBehaviors(viewer::effectiveValues(loaded.model, loaded.model.pathables.at(0)), false);
     REQUIRE(behaviors);
     CHECK(behaviors->mounts);
     CHECK_FALSE(behaviors->copy);

@@ -11,6 +11,7 @@
 #include "pack/model.h"
 #include "viewer/behaviors/cron.h"
 #include "viewer/guid.h"
+#include "viewer/live/effective_values.h"
 
 // What a marker or trail does beyond being drawn, read from its attributes once, at the bake:
 // the filters and modifiers of Pathing's Behavior/, in the order StandardMarker_Behaviors.cs
@@ -113,10 +114,10 @@ struct Behaviors {
     std::optional<ScriptCall> once;
 };
 
-// What `pathable` does beyond being drawn, through its categories, or null when it does
+// What a pathable does beyond being drawn, from its effective `values`, or null when it does
 // nothing more — which is most markers, so they carry a pointer and no more. A trail takes
 // the filters and the script only, as StandardTrail_Behaviors.cs registers no modifier and
 // no `behavior`.
-std::shared_ptr<const Behaviors> bakeBehaviors(const pack::Pack& pack, const pack::Pathable& pathable, bool is_marker);
+std::shared_ptr<const Behaviors> bakeBehaviors(const EffectiveValues& values, bool is_marker);
 
 } // namespace viewer::behaviors

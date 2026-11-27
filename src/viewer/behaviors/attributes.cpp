@@ -90,23 +90,22 @@ bool pathingBool(std::string_view text) {
 class Reader
 {
 public:
-    Reader(const pack::Pack& pack, const pack::Pathable& pathable)
-        : pack(pack)
-        , pathable(pathable) {}
+    explicit Reader(const EffectiveValues& values)
+        : effective(values) {}
 
-    const std::string* value(std::string_view key) const { return pack.effectiveValue(pathable, key); }
+    const std::string* value(BakedKey key) const { return effective.value(key); }
 
-    bool any(std::initializer_list<std::string_view> keys) const {
-        return std::any_of(keys.begin(), keys.end(), [&](std::string_view key) { return value(key) != nullptr; });
+    bool any(std::initializer_list<BakedKey> keys) const {
+        return std::any_of(keys.begin(), keys.end(), [&](BakedKey key) { return value(key) != nullptr; });
     }
 
-    float number(std::string_view key, float fallback) const {
+    float number(BakedKey key, float fallback) const {
         const std::string* text = value(key);
         return text ? pack::parseFloat(*text).value_or(fallback) : fallback;
     }
 
     // GetValueAsEnums: each part looked up by name, an unknown one standing for 0.
-    std::optional<std::vector<int>> enums(std::string_view key, Gw2Enum type) const {
+    std::optional<std::vector<int>> enums(BakedKey key, Gw2Enum type) const {
         const std::string* text = value(key);
         if (!text) return std::nullopt;
         std::vector<int> values;
@@ -114,7 +113,7 @@ public:
         return values;
     }
 
-    std::optional<std::vector<int>> ints(std::string_view key) const {
+    std::optional<std::vector<int>> ints(BakedKey key) const {
         const std::string* text = value(key);
         if (!text) return std::nullopt;
         std::vector<int> values;
@@ -123,19 +122,18 @@ public:
     }
 
     // ShowHideModifier and ToggleModifier: a category by its namespace, nothing when blank.
-    std::string category(std::string_view key) const {
+    std::string category(BakedKey key) const {
         const std::string* text = value(key);
         return text && !isBlank(*text) ? lowercase(*text) : std::string();
     }
 
-    std::optional<ScriptCall> script(std::string_view key) const {
+    std::optional<ScriptCall> script(BakedKey key) const {
         const std::string* text = value(key);
         return text ? parseScriptCall(*text) : std::nullopt;
     }
 
 private:
-    const pack::Pack& pack;
-    const pack::Pathable& pathable;
+    const EffectiveValues& effective;
 };
 
 void readFilters(const Reader& read, Behaviors* out) {
@@ -200,7 +198,7 @@ void readModifiers(const Reader& read, Behaviors* out) {
     }
 
     // TacO named it ToggleCategory, and that spelling wins when both are there.
-    out->toggle = read.category(read.value("togglecategory") ? "togglecategory" : "toggle");
+    out->toggle = read.value("togglecategory") ? read.category("togglecategory") : read.category("toggle");
     out->show = read.category("show");
     out->hide = read.category("hide");
 
@@ -224,28 +222,13 @@ void readScript(const Reader& read, bool is_marker, Behaviors* out) {
 
 // Every attribute a behavior reads, by key. "invertbehavior" and "autotrigger" do nothing
 // alone and so are not among what makes a marker worth reading.
-constexpr std::string_view kBehaviorKeys[] = {
+constexpr BakedKey kBehaviorKeys[] = {
     "festival",    "mount",        "profession",     "race",           "specialization", "maptype",       "schedule",
     "raid",        "behavior",     "info",           "bounce",         "bounce-delay",   "bounce-height", "bounce-duration",
     "copy",        "copy-message", "toggle",         "togglecategory", "show",           "hide",          "resetguid",
     "script-tick", "script-focus", "script-trigger", "script-filter",  "script-once",    "achievementid", "achievementbit",
 };
 
-bool namesBehavior(const pack::AttributeCollection& attributes) {
-    return std::any_of(attributes.all().begin(), attributes.all().end(), [](const pack::Attribute& attribute) {
-        return std::find(std::begin(kBehaviorKeys), std::end(kBehaviorKeys), attribute.key) != std::end(kBehaviorKeys);
-    });
-}
-
-// One walk up the chain looking at what is there, rather than one per attribute looking for
-// it: most markers have no behavior, and the bake reads 56k of them.
-bool mayHaveBehaviors(const pack::Pack& pack, const pack::Pathable& pathable) {
-    if (namesBehavior(pathable.attributes)) return true;
-    for (size_t category = pathable.category; category != pack::kNoIndex; category = pack.categories[category].parent) {
-        if (namesBehavior(pack.categories[category].attributes)) return true;
-    }
-    return false;
-}
 
 bool hasAny(const Behaviors& b) {
     return b.festivals || b.mounts || b.professions || b.races || b.specializations || b.map_types || b.schedule || b.raids || b.mode > 0 ||
@@ -313,9 +296,12 @@ std::string formatMessage(std::string_view message, std::string_view value) {
     return out;
 }
 
-std::shared_ptr<const Behaviors> bakeBehaviors(const pack::Pack& pack, const pack::Pathable& pathable, bool is_marker) {
-    if (!mayHaveBehaviors(pack, pathable)) return nullptr;
-    const Reader read(pack, pathable);
+std::shared_ptr<const Behaviors> bakeBehaviors(const EffectiveValues& values, bool is_marker) {
+    // Most markers have no behavior: they are let go before anything is allocated for them.
+    const Reader read(values);
+    if (std::none_of(std::begin(kBehaviorKeys), std::end(kBehaviorKeys), [&](BakedKey key) { return read.value(key) != nullptr; })) {
+        return nullptr;
+    }
     auto behaviors = std::make_shared<Behaviors>();
     readFilters(read, behaviors.get());
     if (is_marker) readModifiers(read, behaviors.get());

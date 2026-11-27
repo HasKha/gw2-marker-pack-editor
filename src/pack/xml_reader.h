@@ -12,8 +12,8 @@ namespace pack {
 // warnings so the rest of a pack still opens.
 Pack loadPack(const DataSource& source);
 
-// Parses one already-read XML document into an existing Pack. `file_index` is the index
-// of the matching entry in Pack::files.
-bool readXmlFile(Pack* pack, size_t file_index);
+// Builds the model from the documents already parsed into `pack->files`, in their order, into a
+// pack with no categories or pathables yet.
+void readDocuments(Pack* pack);
 
 } // namespace pack

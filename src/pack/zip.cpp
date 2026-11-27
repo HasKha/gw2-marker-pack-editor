@@ -1,9 +1,12 @@
 #include "pack/zip.h"
 
+#include <libdeflate.h>
 #include <miniz.h>
 
 #include <cstdio>
+#include <memory>
 #include <mutex>
+#include <vector>
 
 #ifdef _WIN32
     #ifndef NOMINMAX
@@ -29,6 +32,13 @@ struct Archive::Impl {
     std::mutex reading;
     // Ours to close: miniz leaves a file it was handed open.
     FILE* file = nullptr;
+
+    // What a deflated entry is inflated with: libdeflate, several times faster than miniz's own
+    // inflater, which was half of what loading the largest packs cost. Used under `reading`.
+    struct FreeDecompressor {
+        void operator()(libdeflate_decompressor* decompressor) const { libdeflate_free_decompressor(decompressor); }
+    };
+    std::unique_ptr<libdeflate_decompressor, FreeDecompressor> inflater{libdeflate_alloc_decompressor()};
 };
 
 namespace {
@@ -171,6 +181,23 @@ bool Archive::read(std::string_view path, std::vector<uint8_t>* out, std::string
 
     out->resize(static_cast<size_t>(stat.m_uncomp_size));
     if (stat.m_uncomp_size == 0) return true;
+
+    // A deflated entry's bytes as they are in the archive, inflated by libdeflate and checked
+    // against the CRC the directory gives, as miniz checks what it inflates. Anything else, a
+    // stored entry or a method neither reads, is miniz's.
+    if (stat.m_method == MZ_DEFLATED && impl->inflater) {
+        std::vector<uint8_t> compressed(static_cast<size_t>(stat.m_comp_size));
+        const bool inflated =
+            mz_zip_reader_extract_to_mem(&impl->zip, it->second, compressed.data(), compressed.size(), MZ_ZIP_FLAG_COMPRESSED_DATA) &&
+            libdeflate_deflate_decompress(impl->inflater.get(), compressed.data(), compressed.size(), out->data(), out->size(), nullptr) ==
+                LIBDEFLATE_SUCCESS &&
+            libdeflate_crc32(0, out->data(), out->size()) == stat.m_crc32;
+        if (!inflated) {
+            if (error) *error = "Could not extract " + std::string(path) + ": the entry is damaged";
+            out->clear();
+        }
+        return inflated;
+    }
 
     if (!mz_zip_reader_extract_to_mem(&impl->zip, it->second, out->data(), out->size(), 0)) {
         if (error) {

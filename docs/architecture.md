@@ -45,7 +45,7 @@ editor uses `viewer/` for the camera, textures and drawing; nothing in `viewer/`
 |---|---|---|
 | `markus_util` | static lib | `src/util/` — paths as UTF-8 text, small JSON files kept between sessions |
 | `markus_http` | static lib | `src/http/` — WinHTTP requests on a worker that cancel; `Background`, a one-job thread |
-| `markus_pack` | static lib | `src/pack/` — the format. pugixml, miniz, glm |
+| `markus_pack` | static lib | `src/pack/` — the format. pugixml, miniz, libdeflate, glm |
 | `markus_viewer` | static lib | `src/viewer/` — imgui, Nexus, Mumble, GoodRender, RTAPI, sol2 |
 | `markus_editor` | static lib | `src/editor/` — ImGuizmo, NFD |
 | `Markus` | DLL | `src/addon/entry.cpp` |
@@ -75,7 +75,7 @@ src/
   http/                http.*, background.h
   pack/
     source.*           DataSource: a zip or a folder; path normalization
-    zip.*              a .zip/.taco through miniz
+    zip.*              a .zip/.taco through miniz, its entries inflated by libdeflate
     attributes.*       the attribute table
     model.*            Pack / XmlFile / Category / Pathable, explicit vs effective values
     xml_reader.*       pugixml -> model

@@ -46,6 +46,9 @@ std::string categorySegment(std::string_view raw) {
 struct Reader {
     Pack* pack = nullptr;
     size_t file_index = kNoIndex;
+    // Every category by id, across the pack's files: the largest packs declare over ten thousand,
+    // which a scan per declaration made most of the read.
+    std::unordered_map<std::string, size_t>* by_id = nullptr;
 
     const std::string& path() const { return pack->files[file_index].path; }
 
@@ -64,21 +67,15 @@ struct Reader {
 
         std::string id = parent == kNoIndex ? key : pack->categories[parent].id + "." + key;
 
-        size_t index = kNoIndex;
-        for (size_t i = 0; i < pack->categories.size(); ++i) {
-            if (pack->categories[i].id == id) {
-                index = i;
-                break;
-            }
-        }
+        const auto [found, inserted] = by_id->try_emplace(id, pack->categories.size());
+        const size_t index = found->second;
 
-        if (index == kNoIndex) {
+        if (inserted) {
             Category category;
             category.name = raw_name;
             category.key = key;
-            category.id = id;
+            category.id = std::move(id);
             category.parent = parent;
-            index = pack->categories.size();
             pack->categories.push_back(std::move(category));
 
             if (parent == kNoIndex) {
@@ -156,11 +153,7 @@ struct Reader {
     }
 };
 
-void resolveCategories(Pack* pack) {
-    std::unordered_map<std::string_view, size_t> by_id;
-    by_id.reserve(pack->categories.size());
-    for (size_t i = 0; i < pack->categories.size(); ++i) by_id.emplace(pack->categories[i].id, i);
-
+void resolveCategories(Pack* pack, const std::unordered_map<std::string, size_t>& by_id) {
     for (Pathable& pathable : pack->pathables) {
         if (pathable.category_id.empty()) continue;
         auto it = by_id.find(pathable.category_id);
@@ -170,25 +163,24 @@ void resolveCategories(Pack* pack) {
 
 } // namespace
 
-bool readXmlFile(Pack* pack, size_t file_index) {
-    XmlFile& file = pack->files[file_index];
-    const std::string& path = file.path;
-    if (!file.document) return false;
+void readDocuments(Pack* pack) {
+    std::unordered_map<std::string, size_t> by_id;
+    for (size_t i = 0; i < pack->files.size(); ++i) {
+        // The root is <OverlayData>, but be forgiving about what wraps it.
+        bool found_root = false;
+        for (pugi::xml_node child : pack->files[i].document->children()) {
+            if (child.type() != pugi::node_element) continue;
+            if (lowered(child.name()) != "overlaydata") continue;
 
-    // The root is <OverlayData>, but be forgiving about what wraps it.
-    bool found_root = false;
-    for (pugi::xml_node child : file.document->children()) {
-        if (child.type() != pugi::node_element) continue;
-        if (lowered(child.name()) != "overlaydata") continue;
+            Reader reader{pack, i, &by_id};
+            reader.readRoot(child);
+            found_root = true;
+        }
 
-        Reader reader{pack, file_index};
-        reader.readRoot(child);
-        found_root = true;
+        if (!found_root) pack->addWarning(pack->files[i].path, "No <OverlayData> root element");
     }
 
-    if (!found_root) pack->addWarning(path, "No <OverlayData> root element");
-
-    return true;
+    resolveCategories(pack, by_id);
 }
 
 Pack loadPack(const DataSource& source) {
@@ -231,10 +223,7 @@ Pack loadPack(const DataSource& source) {
         loaded.files.push_back(std::move(file));
     }
 
-    for (size_t i = 0; i < loaded.files.size(); ++i) readXmlFile(&loaded, i);
-
-    resolveCategories(&loaded);
-
+    readDocuments(&loaded);
     return loaded;
 }
 

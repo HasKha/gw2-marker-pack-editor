@@ -8,21 +8,30 @@ namespace pack {
 
 namespace {
 
-// The one linear scan behind find / set / erase. Returns kNoIndex when the name is absent.
-//
-// `name` is normalized only when it has to be — see isAttributeKey. Attribute counts per
-// node are small enough that a linear scan beats anything with a hash in it.
-size_t indexOfName(const std::vector<Attribute>& attributes, std::string_view name) {
-    std::string owned;
-    if (!isAttributeKey(name)) {
-        owned = attributeKey(name);
-        name = owned;
-    }
+// `name` as a key, copied into `owned` only when it is not one already — see isAttributeKey.
+std::string_view keyOf(std::string_view name, std::string* owned) {
+    if (isAttributeKey(name)) return name;
+    *owned = attributeKey(name);
+    return *owned;
+}
 
+// The one linear scan behind every lookup, by a name already a key. Attribute counts per node are
+// small enough that a linear scan beats anything with a hash in it.
+size_t indexOfKey(const std::vector<Attribute>& attributes, std::string_view key) {
     for (size_t i = 0; i < attributes.size(); ++i) {
-        if (attributes[i].key == name) return i;
+        if (attributes[i].key == key) return i;
     }
     return kNoIndex;
+}
+
+size_t indexOfName(const std::vector<Attribute>& attributes, std::string_view name) {
+    std::string owned;
+    return indexOfKey(attributes, keyOf(name, &owned));
+}
+
+const std::string* valueOfKey(const AttributeCollection& collection, std::string_view key) {
+    const size_t at = indexOfKey(collection.all(), key);
+    return at == kNoIndex ? nullptr : &collection.all()[at].value;
 }
 
 } // namespace
@@ -84,15 +93,22 @@ const std::string* Pack::explicitValue(const Pathable& pathable, std::string_vie
     return pathable.attributes.value(key);
 }
 
-const std::string* Pack::effectiveValue(const Pathable& pathable, std::string_view key) const {
-    if (const std::string* own = pathable.attributes.value(key)) return own;
-    if (pathable.category == kNoIndex) return nullptr;
-    return effectiveValue(categories[pathable.category], key);
+// The key is made once, not once per ancestor.
+const std::string* Pack::effectiveValue(const Pathable& pathable, std::string_view name) const {
+    std::string owned;
+    const std::string_view key = keyOf(name, &owned);
+    if (const std::string* own = valueOfKey(pathable.attributes, key)) return own;
+    for (size_t at = pathable.category; at != kNoIndex; at = categories[at].parent) {
+        if (const std::string* value = valueOfKey(categories[at].attributes, key)) return value;
+    }
+    return nullptr;
 }
 
-const std::string* Pack::effectiveValue(const Category& category, std::string_view key) const {
+const std::string* Pack::effectiveValue(const Category& category, std::string_view name) const {
+    std::string owned;
+    const std::string_view key = keyOf(name, &owned);
     for (const Category* current = &category; current != nullptr;) {
-        if (const std::string* value = current->attributes.value(key)) return value;
+        if (const std::string* value = valueOfKey(current->attributes, key)) return value;
         current = current->parent == kNoIndex ? nullptr : &categories[current->parent];
     }
     return nullptr;

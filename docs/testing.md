@@ -74,6 +74,15 @@ minimap, and drawing the full map's trails and icons at three zooms. Run it befo
 bin/Release/markus_viewer_test.exe "[.bench]"
 ```
 
+**What loading a pack costs** is the same tag's per-pack table: the archive's index, inflating and parsing
+the XML, building the model, the bake, the `.trl` files, sampling trail colours, the scripts, and
+`registry::loadPack`'s own total. Run it before and after a change to anything `loadPack` calls. The comma
+is escaped because Catch2 reads a bare one as "or":
+
+```bash
+bin/Release/markus_viewer_test.exe "loading each pack\, timed"
+```
+
 The same tag times what unload frees: the corpus's packs, a live map and its scripts. Measured at about
 100 ms in Release and under a second in Debug, so a slow unload is waiting on a thread, most often the
 pack loader still reading packs, rather than freeing.

@@ -11,24 +11,24 @@ namespace {
 
 constexpr float kDegreesToRadians = 3.14159265358979323846f / 180.0f;
 
-ImU32 tintOf(const pack::Pack& pack, const pack::Pathable& pathable) {
+ImU32 tintOf(const EffectiveValues& values) {
     // `tint` and `color` are aliases; whichever the author used wins.
-    const std::string* text = pack.effectiveValue(pathable, "color");
-    if (!text) text = pack.effectiveValue(pathable, "tint");
+    const std::string* text = values.value("color");
+    if (!text) text = values.value("tint");
     const uint32_t argb = text ? pack::parseColor(*text).value_or(0xFFFFFFFFu) : 0xFFFFFFFFu;
 
     return IM_COL32((argb >> 16) & 0xFF, (argb >> 8) & 0xFF, argb & 0xFF, (argb >> 24) & 0xFF);
 }
 
-std::string stringOf(const pack::Pack& pack, const pack::Pathable& pathable, const char* key) {
-    const std::string* value = pack.effectiveValue(pathable, key);
+std::string stringOf(const EffectiveValues& values, BakedKey key) {
+    const std::string* value = values.value(key);
     return value ? *value : std::string();
 }
 
 // `guid` is the one identity attribute that inherits, as format.md says of every pathable
 // attribute in Pathing. Empty or missing gets a fresh one (Populate_Guid).
-Guid guidOf(const pack::Pack& pack, const pack::Pathable& pathable) {
-    const std::string* text = pack.effectiveValue(pathable, "guid");
+Guid guidOf(const EffectiveValues& values) {
+    const std::string* text = values.value("guid");
     return text && !text->empty() ? guidFromText(*text) : newGuid();
 }
 
@@ -55,19 +55,19 @@ void applyRotateList(std::string_view text, glm::vec3* out) {
 //
 // Note it takes rotate="90" the way applyRotateList does — one component, the rest zero —
 // rather than demanding all three. Blish is the lenient one here, so we are too.
-bool resolveRotation(const pack::Pack& pack, const pack::Pathable& pathable, glm::vec3* out) {
+bool resolveRotation(const EffectiveValues& values, glm::vec3* out) {
     bool present = false;
     *out = glm::vec3(0.0f);
 
-    if (const std::string* text = pack.effectiveValue(pathable, "rotate")) {
+    if (const std::string* text = values.value("rotate")) {
         applyRotateList(*text, out);
         present = true;
     }
 
     // The per-axis forms are applied after, and win, matching the reference order.
-    static constexpr const char* kAxisKeys[3] = {"rotate-x", "rotate-y", "rotate-z"};
+    static constexpr BakedKey kAxisKeys[3] = {"rotate-x", "rotate-y", "rotate-z"};
     for (int axis = 0; axis < 3; ++axis) {
-        if (const std::string* text = pack.effectiveValue(pathable, kAxisKeys[axis])) {
+        if (const std::string* text = values.value(kAxisKeys[axis])) {
             if (const std::optional<float> degrees = pack::parseFloat(*text)) (*out)[axis] = *degrees * kDegreesToRadians;
             present = true;
         }
@@ -76,8 +76,8 @@ bool resolveRotation(const pack::Pack& pack, const pack::Pathable& pathable, glm
     return present;
 }
 
-std::optional<Occlusion> occlusionOf(const pack::Pack& pack, const pack::Pathable& pathable) {
-    const std::string* value = pack.effectiveValue(pathable, "occlusion");
+std::optional<Occlusion> occlusionOf(const EffectiveValues& values) {
+    const std::string* value = values.value("occlusion");
     return value ? parseOcclusion(*value) : std::nullopt;
 }
 
@@ -89,12 +89,74 @@ bool equalsLowercase(std::string_view value, std::string_view lowercase_name) {
 }
 
 // GetValueAsEnum<CullDirection>: a name in any case, untrimmed; anything else is None.
-Cull cullOf(const pack::Pack& pack, const pack::Pathable& pathable) {
-    const std::string* value = pack.effectiveValue(pathable, "cull");
+Cull cullOf(const EffectiveValues& values) {
+    const std::string* value = values.value("cull");
     if (!value) return Cull::None;
     if (equalsLowercase(*value, "clockwise")) return Cull::Clockwise;
     if (equalsLowercase(*value, "counterclockwise")) return Cull::CounterClockwise;
     return Cull::None;
+}
+
+// Populate_Position: each coordinate as its category chain gives it, 0 when none does or it does
+// not read. A POI with no position at all is still a marker, at the origin: Hero's pack keeps hidden
+// anchors of that kind on its maps, which its scripts look up by guid.
+MarkerTransform transformOf(const EffectiveValues& values) {
+    const auto coordinate = [&](BakedKey key) {
+        const std::string* value = values.value(key);
+        return value ? pack::parseFloat(*value).value_or(0.0f) : 0.0f;
+    };
+
+    MarkerTransform out;
+    out.height_offset = values.number("heightoffset");
+    // Where it is drawn, not its bare coordinate — which is what the gizmo has to sit on.
+    out.position = glm::vec3(coordinate("xpos"), coordinate("ypos") + out.height_offset, coordinate("zpos"));
+    out.has_rotation = resolveRotation(values, &out.rotation);
+    return out;
+}
+
+// `pathable` is a POI; `values` are its own.
+BakedMarker markerOf(const pack::Pack& pack, const pack::Pathable& pathable, const EffectiveValues& values) {
+    const MarkerTransform transform = transformOf(values);
+
+    BakedMarker out;
+    out.category = pathable.category;
+    out.map_id = values.integer("mapid");
+    out.position = transform.position;
+    out.height_offset = transform.height_offset;
+    out.has_rotation = transform.has_rotation;
+    out.rotation = transform.rotation;
+    out.icon_size = values.number("iconsize");
+    out.alpha = values.number("alpha");
+    out.min_size = values.number("minsize");
+    out.max_size = values.number("maxsize");
+    out.fade_near = values.number("fadenear");
+    out.fade_far = values.number("fadefar");
+    out.tint = tintOf(values);
+    out.icon = stringOf(values, "iconfile");
+    out.guid = guidOf(values);
+    if (const std::string* tip_name = values.value("tip-name")) {
+        out.tip_name = *tip_name;
+    } else if (pathable.category != pack::kNoIndex) {
+        out.tip_name = pack.categories[pathable.category].displayName();
+    }
+    out.tip_description = stringOf(values, "tip-description");
+    out.in_game_visibility = values.flag("ingamevisibility");
+    out.map_visibility = values.flag("mapvisibility");
+    out.minimap_visibility = values.flag("minimapvisibility");
+    out.occlusion = occlusionOf(values);
+    out.cull = cullOf(values);
+    out.map_display_size = values.number("mapdisplaysize");
+    out.scale_on_map_with_zoom = values.flag("scaleonmapwithzoom");
+    // inforange is an alias, taken only while triggerrange is still the default.
+    out.trigger_range = values.number("triggerrange");
+    if (out.trigger_range == EffectiveValues{}.number("triggerrange")) {
+        if (const std::string* info_range = values.value("inforange")) {
+            out.trigger_range = pack::parseFloat(*info_range).value_or(out.trigger_range);
+        }
+    }
+    out.reset_length = values.number("resetlength");
+    out.behaviors = behaviors::bakeBehaviors(values, true);
+    return out;
 }
 
 } // namespace
@@ -112,108 +174,52 @@ const ImVec2 kBillboardUv[4] = {{0, 1}, {1, 1}, {1, 0}, {0, 0}};
 
 std::optional<MarkerTransform> markerTransform(const pack::Pack& pack, const pack::Pathable& pathable) {
     if (pathable.type != pack::PathableType::Poi) return std::nullopt;
-
-    // Populate_Position: each coordinate as its category chain gives it, 0 when none does or it
-    // does not read. A POI with no position at all is still a marker, at the origin: Hero's pack
-    // keeps hidden anchors of that kind on its maps, which its scripts look up by guid.
-    const auto coordinate = [&](const char* name) {
-        const std::string* value = pack.effectiveValue(pathable, name);
-        return value ? pack::parseFloat(*value).value_or(0.0f) : 0.0f;
-    };
-
-    MarkerTransform out;
-    out.height_offset = pack.effectiveFloat(pathable, "heightoffset");
-    // Where it is drawn, not its bare coordinate — which is what the gizmo has to sit on.
-    out.position = glm::vec3(coordinate("xpos"), coordinate("ypos") + out.height_offset, coordinate("zpos"));
-    out.has_rotation = resolveRotation(pack, pathable, &out.rotation);
-    return out;
+    return transformOf(effectiveValues(pack, pathable));
 }
 
 std::optional<BakedMarker> bakeMarker(const pack::Pack& pack, const pack::Pathable& pathable) {
-    const std::optional<MarkerTransform> transform = markerTransform(pack, pathable);
-    if (!transform) return std::nullopt;
-
-    BakedMarker baked;
-    BakedMarker* out = &baked;
-    out->category = pathable.category;
-    out->map_id = pack.effectiveInt(pathable, "mapid");
-    out->position = transform->position;
-    out->height_offset = transform->height_offset;
-    out->has_rotation = transform->has_rotation;
-    out->rotation = transform->rotation;
-    out->icon_size = pack.effectiveFloat(pathable, "iconsize");
-    out->alpha = pack.effectiveFloat(pathable, "alpha");
-    out->min_size = pack.effectiveFloat(pathable, "minsize");
-    out->max_size = pack.effectiveFloat(pathable, "maxsize");
-    out->fade_near = pack.effectiveFloat(pathable, "fadenear");
-    out->fade_far = pack.effectiveFloat(pathable, "fadefar");
-    out->tint = tintOf(pack, pathable);
-    out->icon = stringOf(pack, pathable, "iconfile");
-    out->guid = guidOf(pack, pathable);
-    const std::string* tip_name = pack.effectiveValue(pathable, "tip-name");
-    if (tip_name) {
-        out->tip_name = *tip_name;
-    } else if (pathable.category != pack::kNoIndex) {
-        out->tip_name = pack.categories[pathable.category].displayName();
-    }
-    out->tip_description = stringOf(pack, pathable, "tip-description");
-    out->in_game_visibility = pack.effectiveBool(pathable, "ingamevisibility");
-    out->map_visibility = pack.effectiveBool(pathable, "mapvisibility");
-    out->minimap_visibility = pack.effectiveBool(pathable, "minimapvisibility");
-    out->occlusion = occlusionOf(pack, pathable);
-    out->cull = cullOf(pack, pathable);
-    out->map_display_size = pack.effectiveFloat(pathable, "mapdisplaysize");
-    out->scale_on_map_with_zoom = pack.effectiveBool(pathable, "scaleonmapwithzoom");
-    // inforange is an alias, taken only while triggerrange is still the default.
-    out->trigger_range = pack.effectiveFloat(pathable, "triggerrange");
-    if (out->trigger_range == pack::defaultFloat("triggerrange")) {
-        if (const std::string* info_range = pack.effectiveValue(pathable, "inforange")) {
-            out->trigger_range = pack::parseFloat(*info_range).value_or(out->trigger_range);
-        }
-    }
-    out->reset_length = pack.effectiveFloat(pathable, "resetlength");
-    out->behaviors = behaviors::bakeBehaviors(pack, pathable, true);
-    return baked;
+    if (pathable.type != pack::PathableType::Poi) return std::nullopt;
+    return markerOf(pack, pathable, effectiveValues(pack, pathable));
 }
 
 BakedPathables bake(const pack::Pack& pack) {
     BakedPathables out;
+    const EffectiveTable table(pack);
 
     for (size_t i = 0; i < pack.pathables.size(); ++i) {
         const pack::Pathable& pathable = pack.pathables[i];
         if (pathable.grave.deleted) continue;
         if (pathable.type == pack::PathableType::Route) continue; // deprecated, never drawn
 
+        const EffectiveValues values = table.of(pathable);
         if (pathable.type == pack::PathableType::Poi) {
-            std::optional<BakedMarker> marker = bakeMarker(pack, pathable);
-            if (!marker) continue;
-            marker->pathable = i;
-            out.markers.push_back(std::move(*marker));
+            out.markers.push_back(markerOf(pack, pathable, values));
+            out.markers.back().pathable = i;
         } else {
             BakedTrail trail;
             trail.pathable = i;
             trail.category = pathable.category;
-            trail.alpha = pack.effectiveFloat(pathable, "alpha");
-            trail.scale = pack.effectiveFloat(pathable, "trailscale");
-            trail.anim_speed = pack.effectiveFloat(pathable, "animspeed");
-            trail.is_wall = pack.effectiveBool(pathable, "iswall");
-            trail.tint = tintOf(pack, pathable);
-            if (pack.effectiveValue(pathable, "color") || pack.effectiveValue(pathable, "tint")) trail.sample_colour = trail.tint;
-            trail.texture = stringOf(pack, pathable, "texture");
+            trail.alpha = values.number("alpha");
+            trail.scale = values.number("trailscale");
+            trail.anim_speed = values.number("animspeed");
+            trail.is_wall = values.flag("iswall");
+            trail.tint = tintOf(values);
+            if (values.value("color") || values.value("tint")) trail.sample_colour = trail.tint;
+            trail.texture = stringOf(values, "texture");
             trail.sample_pending = trail.sample_colour == IM_COL32_WHITE && !trail.texture.empty();
-            trail.data = stringOf(pack, pathable, "traildata");
-            trail.guid = guidOf(pack, pathable);
-            trail.in_game_visibility = pack.effectiveBool(pathable, "ingamevisibility");
-            trail.map_visibility = pack.effectiveBool(pathable, "mapvisibility");
-            trail.minimap_visibility = pack.effectiveBool(pathable, "minimapvisibility");
-            trail.occlusion = occlusionOf(pack, pathable);
-            trail.cull = cullOf(pack, pathable);
-            trail.behaviors = behaviors::bakeBehaviors(pack, pathable, false);
+            trail.data = stringOf(values, "traildata");
+            trail.guid = guidOf(values);
+            trail.in_game_visibility = values.flag("ingamevisibility");
+            trail.map_visibility = values.flag("mapvisibility");
+            trail.minimap_visibility = values.flag("minimapvisibility");
+            trail.occlusion = occlusionOf(values);
+            trail.cull = cullOf(values);
+            trail.behaviors = behaviors::bakeBehaviors(values, false);
 
             // Trails default to 700/900 where markers default to disabled, so the table's
             // marker defaults cannot be used here. See docs/format.md.
-            const std::string* near_text = pack.effectiveValue(pathable, "fadenear");
-            const std::string* far_text = pack.effectiveValue(pathable, "fadefar");
+            const std::string* near_text = values.value("fadenear");
+            const std::string* far_text = values.value("fadefar");
             trail.fade_near = near_text ? pack::parseFloat(*near_text).value_or(700.0f) : 700.0f;
             trail.fade_far = far_text ? pack::parseFloat(*far_text).value_or(900.0f) : 900.0f;
 

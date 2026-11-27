@@ -20,6 +20,7 @@
 #include "pack/writer.h"
 #include "pack/xml_reader.h"
 #include "viewer/live/bake.h"
+#include "viewer/live/effective_values.h"
 
 namespace {
 
@@ -114,7 +115,7 @@ TEST_CASE("every pack in the corpus holds its invariants", "[corpus]") {
                 reparsed.files[i].document = std::make_unique<pugi::xml_document>();
                 REQUIRE(reparsed.files[i].document->load_buffer(first[i].data(), first[i].size(), pugi::parse_full));
             }
-            for (size_t i = 0; i < reparsed.files.size(); ++i) pack::readXmlFile(&reparsed, i);
+            pack::readDocuments(&reparsed);
 
             const std::vector<std::string> second = rewriteAll(reparsed);
 
@@ -212,6 +213,15 @@ TEST_CASE("every pack in the corpus holds its invariants", "[corpus]") {
                 if (marker.icon != (icon ? *icon : std::string())) ++mismatches;
             }
             CHECK(mismatches == 0);
+
+            // The bake reads through a table of every category's values, the pathable's own laid
+            // over its category's row: for every pathable and every key, what the chain gives.
+            const viewer::EffectiveTable table(model);
+            size_t table_mismatches = 0;
+            for (const pack::Pathable& pathable : model.pathables) {
+                if (table.of(pathable).values != viewer::effectiveValues(model, pathable).values) ++table_mismatches;
+            }
+            CHECK(table_mismatches == 0);
         }
     }
 }

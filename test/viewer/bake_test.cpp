@@ -15,6 +15,7 @@
 #include "pack/source.h"
 #include "pack/xml_reader.h"
 #include "viewer/live/bake.h"
+#include "viewer/live/effective_values.h"
 
 using Catch::Approx;
 
@@ -181,6 +182,43 @@ TEST_CASE("cull is inherited, a name in any case, and anything else culls nothin
     CHECK(baked.markers[3].cull == viewer::Cull::None); // untrimmed
     REQUIRE(baked.trails.size() == 1);
     CHECK(baked.trails[0].cull == viewer::Cull::CounterClockwise);
+}
+
+// The bake reads a table of each category's values rather than walking the chain: the nearest
+// declaration wins, a pathable's own over all of them, a category split across two declarations
+// takes both, and a missing value is the table's default.
+TEST_CASE("what the bake inherits is the nearest value up the category chain", "[bake]") {
+    const corpus::TempDir temp("bake_inherit");
+    const Loaded loaded = loadXml(temp, R"(<MarkerCategory name="a" iconSize="2" alpha="0.5" mapid="15">
+        <MarkerCategory name="b" iconsize="3">
+            <MarkerCategory name="d" mapid="50"/>
+        </MarkerCategory>
+    </MarkerCategory>
+    <MarkerCategory name="a"><MarkerCategory name="b" fadeFar="900"/></MarkerCategory>
+    <POIs>
+        <POI type="a.b.d" xpos="0" ypos="0" zpos="0"/>
+        <POI type="a.b.d" xpos="0" ypos="0" zpos="0" IconSize="4"/>
+        <POI type="a" xpos="0" ypos="0" zpos="0"/>
+        <POI type="missing" xpos="0" ypos="0" zpos="0"/>
+    </POIs>)");
+
+    const viewer::EffectiveTable table(loaded.model);
+    for (const pack::Pathable& pathable : loaded.model.pathables) {
+        CHECK(table.of(pathable).values == viewer::effectiveValues(loaded.model, pathable).values);
+    }
+
+    const viewer::BakedPathables baked = viewer::bake(loaded.model);
+    REQUIRE(baked.markers.size() == 4);
+    CHECK(baked.markers[0].icon_size == 3.0f);
+    CHECK(baked.markers[0].map_id == 50);
+    CHECK(baked.markers[0].alpha == 0.5f);
+    CHECK(baked.markers[0].fade_far == 900.0f);
+    CHECK(baked.markers[1].icon_size == 4.0f);
+    CHECK(baked.markers[2].icon_size == 2.0f);
+    CHECK(baked.markers[2].map_id == 15);
+    CHECK(baked.markers[2].fade_far == pack::defaultFloat("fadefar"));
+    CHECK(baked.markers[3].icon_size == pack::defaultFloat("iconsize"));
+    CHECK(baked.markers[3].alpha == pack::defaultFloat("alpha"));
 }
 
 TEST_CASE("tint and color are the same attribute", "[bake]") {

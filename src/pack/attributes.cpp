@@ -1,7 +1,6 @@
 #include "pack/attributes.h"
 
 #include <algorithm>
-#include <cctype>
 #include <charconv>
 #include <format>
 #include <random>
@@ -180,10 +179,20 @@ const std::unordered_map<std::string_view, const AttributeDef*>& index() {
     return map;
 }
 
+// What <cctype> answers in the C locale, without asking the locale: an attribute key is checked
+// at every lookup, and a call per character through the locale cost more than the lookup itself. It
+// also keeps a locale the game sets from folding the bytes of UTF-8 text.
+bool isSpace(char c) {
+    return c == ' ' || (c >= '\t' && c <= '\r');
+}
+
+bool isUpper(char c) {
+    return c >= 'A' && c <= 'Z';
+}
+
 std::string_view trim(std::string_view text) {
-    auto is_space = [](char c) { return std::isspace(static_cast<unsigned char>(c)) != 0; };
-    while (!text.empty() && is_space(text.front())) text.remove_prefix(1);
-    while (!text.empty() && is_space(text.back())) text.remove_suffix(1);
+    while (!text.empty() && isSpace(text.front())) text.remove_prefix(1);
+    while (!text.empty() && isSpace(text.back())) text.remove_suffix(1);
     return text;
 }
 
@@ -220,18 +229,14 @@ const AttributeDef* findAttribute(std::string_view name) {
 
 std::string attributeKey(std::string_view name) {
     std::string key(trim(name));
-    std::transform(key.begin(), key.end(), key.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    std::transform(key.begin(), key.end(), key.begin(), [](char c) { return isUpper(c) ? static_cast<char>(c - 'A' + 'a') : c; });
     return key;
 }
 
 bool isAttributeKey(std::string_view name) {
     // Interior whitespace would survive attributeKey untouched, but rejecting it here only
     // costs the slow path, and telling "interior" from "surrounding" is not worth it.
-    for (char c : name) {
-        const unsigned char value = static_cast<unsigned char>(c);
-        if (std::isupper(value) || std::isspace(value)) return false;
-    }
-    return true;
+    return std::none_of(name.begin(), name.end(), [](char c) { return isUpper(c) || isSpace(c); });
 }
 
 std::optional<int> parseInt(std::string_view text) {

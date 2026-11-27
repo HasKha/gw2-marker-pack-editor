@@ -11,6 +11,7 @@ target_link_libraries(markus_pack PUBLIC
     glm::glm
     pugixml::pugixml
     miniz
+    libdeflate::libdeflate_static
 )
 
 markus_layering(ALLOWS util)
