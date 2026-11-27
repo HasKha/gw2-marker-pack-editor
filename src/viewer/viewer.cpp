@@ -290,10 +290,6 @@ void Session::showIcon(bool show) {
 }
 
 void Session::drawItems(bool separator) {
-    if (live_map.map_id != show_all_map) {
-        show_all_menus.clear();
-        show_all_map = live_map.map_id;
-    }
     // Walked while the menu is open only, and a map holds thousands at most.
     const std::vector<char> on_map = persisted.smart_categories ? runtime::nodesOnMap(installed.tree, live_map) : std::vector<char>{};
 
@@ -310,6 +306,7 @@ void Session::drawItems(bool separator) {
     context.auto_hide = persisted.allow_auto_hide;
     context.achievements = &achievement_details;
     context.achievement_tooltips = persisted.achievement_tooltips;
+    context.select_all = persisted.menu_select_all;
     context.separator = separator;
     // Our font for its icons, pushed here since Nexus draws its menu and our icon's outside our render.
     ui::fonts::push();

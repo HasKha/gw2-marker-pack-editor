@@ -53,7 +53,24 @@ float buttonWidth(std::initializer_list<const char*> labels) {
 
 void subheading(const char* icon, const char* text) {
     ImGui::Spacing();
-    ImGui::TextColored(ACCENT, "%s", fonts::label(icon, text).c_str());
+    ImGui::TextUnformatted(fonts::label(icon, text).c_str());
+}
+
+bool triStateCheckbox(const char* label, TriState state) {
+    // The dot's radius, in the box's size: about as wide as imgui's own mixed square.
+    constexpr float kDotRadius = 0.22f;
+    bool value = state == TriState::On;
+    const bool clicked = ImGui::Checkbox(label, &value);
+    if (state == TriState::Mixed) {
+        // The box is the item's first frame-high square, the label after it.
+        const float size = ImGui::GetFrameHeight();
+        const ImVec2 min = ImGui::GetItemRectMin();
+        ImGui::GetWindowDrawList()->AddCircleFilled(
+            ImVec2(min.x + size * 0.5f, min.y + size * 0.5f),
+            size * kDotRadius,
+            ImGui::GetColorU32(ImGuiCol_CheckMark));
+    }
+    return clicked;
 }
 
 bool section(const char* id, const char* icon, const char* label, bool default_open) {

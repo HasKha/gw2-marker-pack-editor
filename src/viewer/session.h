@@ -39,6 +39,7 @@
 #include "viewer/ui/diagnostics.h"
 #include "viewer/ui/fonts.h"
 #include "viewer/ui/import_window.h"
+#include "viewer/ui/main_menu.h"
 #include "viewer/ui/map_menu.h"
 #include "viewer/ui/pack_catalog.h"
 #include "viewer/utc.h"
@@ -250,10 +251,9 @@ private:
     // Where Nexus shows the menu now: see showInNexusMenu and showIcon.
     bool in_nexus_menu = false;
     bool icon_shown = false;
-    // Pathing's smart categories: the menus whose hidden categories were asked for, until the
-    // map changes.
-    std::set<size_t> show_all_menus;
-    int show_all_map = 0;
+    // Pathing's smart categories: the menus whose hidden categories were asked for, until they
+    // close.
+    ui::main_menu::ShowAll show_all_menus;
 };
 
 } // namespace viewer

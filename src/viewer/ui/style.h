@@ -8,8 +8,7 @@
 // that every form should draw the same way. The editor's windows use it too.
 namespace viewer::ui::style {
 
-// Titles: a pack's name in the library, a group's heading in a form. Near the gold the game
-// titles its own windows with.
+// Titles: a pack's name in the library. Near the gold the game titles its own windows with.
 inline const ImVec4 ACCENT(0.96f, 0.82f, 0.52f, 1.0f);
 inline const ImVec4 LINK(0.35f, 0.65f, 1.0f, 1.0f);
 inline const ImVec4 LINK_HOVERED(0.60f, 0.80f, 1.0f, 1.0f);
@@ -41,9 +40,16 @@ bool button(const char* label, bool enabled = true, float width = 0.0f);
 // The width of the widest of `labels` as a button, for a group of buttons drawn alike.
 float buttonWidth(std::initializer_list<const char*> labels);
 
-// A heading inside a form or a section: `icon` and `text` in the accent colour, a little space
-// above it.
+// A heading inside a form or a section: `icon` and `text`, a little space above it.
 void subheading(const char* icon, const char* text);
+
+// What a box for many things shows: none of them on, some, or all.
+enum class TriState { Off, Mixed, On };
+
+// A checkbox showing `state`: ticked when On, empty when Off, a dot when Mixed, which imgui 1.80's
+// own mixed checkbox draws as a square. True when clicked; what that turns things to is the
+// caller's.
+bool triStateCheckbox(const char* label, TriState state);
 
 // A section of a page: a tree node of `icon` and `label`, its whole row clickable, open at first
 // when `default_open`. `id` names it, so that the label can change and the icon draw or not

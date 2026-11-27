@@ -27,6 +27,7 @@ struct Settings {
     bool smart_categories = true; // "Enable Smart Categories": the menu leaves out other maps'
     bool show_interact_prompt = true; // "Allow Markers to Show Interact Gear On-Screen"
     bool achievement_tooltips = true; // "Show Tooltips for Achievements": over a category in the menu
+    bool menu_select_all = true; // ours, "Show "Select All"": main_menu::Context::select_all
     int clipboard_consent = 0; // behaviors::ClipboardConsent: Always
 
     // The key that interacts with a focused marker: Blish HUD's own interact binding, F

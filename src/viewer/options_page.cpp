@@ -259,6 +259,19 @@ void Session::drawOptionsPage() {
         ImGui::TreePop();
     }
 
+    // The menu of categories, wherever it is shown.
+    if (ui::style::section("menu", ICON_FA_BARS, "Menu")) {
+        bool changed = ImGui::Checkbox("Smart categories", &persisted.smart_categories);
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("Leaves categories with nothing on the current map out of the menu.");
+        changed |= ImGui::Checkbox("Show tooltips for achievements", &persisted.achievement_tooltips);
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Shows the achievement when you point at a category in the menu that is tied to one.");
+        changed |= ImGui::Checkbox("Show \"Select All\"", &persisted.menu_select_all);
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("Ends each menu of categories with a box that turns all of them on or off.");
+        if (changed) saveSettings();
+        ImGui::TreePop();
+    }
+
     if (ui::style::section("markers", ICON_FA_LOCATION_DOT, "Markers in World")) {
         bool changed = ImGui::Checkbox("Show markers in the world", &persisted.world_pathables);
 
@@ -335,14 +348,6 @@ void Session::drawOptionsPage() {
         ImGui::SetNextItemWidth(ImGui::GetFontSize() * kFieldWidthEms);
         changed |= ImGui::Combo("Marker info text", &persisted.info_display, kInfoDisplays, IM_ARRAYSIZE(kInfoDisplays));
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("Text some markers show at the top of the screen while you are near them.");
-        ui::style::endSubsection();
-
-        ui::style::beginSubsection(ICON_FA_BARS, "Menu");
-        changed |= ImGui::Checkbox("Smart categories", &persisted.smart_categories);
-        if (ImGui::IsItemHovered()) ImGui::SetTooltip("Leaves categories with nothing on the current map out of the menu.");
-        changed |= ImGui::Checkbox("Show tooltips for achievements", &persisted.achievement_tooltips);
-        if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("Shows the achievement when you point at a category in the menu that is tied to one.");
         ui::style::endSubsection();
         if (changed) saveSettings();
         ImGui::TreePop();

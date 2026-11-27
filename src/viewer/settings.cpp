@@ -25,6 +25,7 @@ constexpr Field<bool> kBools[] = {
     {"smart_categories", &Settings::smart_categories},
     {"show_interact_prompt", &Settings::show_interact_prompt},
     {"achievement_tooltips", &Settings::achievement_tooltips},
+    {"menu_select_all", &Settings::menu_select_all},
     {"menu_in_nexus", &Settings::menu_in_nexus},
     {"menu_icon", &Settings::menu_icon},
     {"world_pathables", &Settings::world_pathables},

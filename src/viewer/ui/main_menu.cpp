@@ -49,15 +49,16 @@ bool row(const char* name, const bool* checked, bool has_children, bool* open, b
 }
 
 // Per child of a menu, whether it is drawn: smart categories leave out what is not on the map,
-// and a separator stays only above something drawn. How many categories were left out.
+// unless the menu shows `everything`, and a separator stays only above something drawn. How
+// many categories were left out.
 size_t chooseShown(
     const registry::CategoryTree& tree,
     const std::vector<size_t>& children,
     const Context& context,
-    size_t parent,
+    bool everything,
     std::vector<char>* shown) {
     shown->assign(children.size(), 1);
-    const bool filtered = context.on_map && !(context.show_all && context.show_all->count(parent));
+    const bool filtered = context.on_map && !everything;
     size_t skipped = 0;
     bool below = false; // something drawn below, up to the next separator
     for (size_t i = children.size(); i-- > 0;) {
@@ -77,11 +78,40 @@ size_t chooseShown(
     return skipped;
 }
 
-bool drawChildren(const registry::CategoryTree& tree, const std::vector<size_t>& children, size_t parent, const Context& context);
+// PathingCategoryNode: shown off once its achievement is done, the player's own choice kept
+// underneath, and not to be turned on or off. Its markers hide by their own achievement filter,
+// which they inherit.
+bool locked(const registry::Category& node, const Context& context) {
+    return context.auto_hide && context.account && node.achievement_id &&
+           context.account->achievementHidden(*node.achievement_id, node.achievement_bit);
+}
 
-// One category, and its children in a menu of their own while it is hovered. Pathing leaves out
-// what `ishidden` hides, and what is under it.
-bool drawCategory(const registry::CategoryTree& tree, size_t index, const Context& context) {
+// Select All, under a separator, a row as a category's is: its box or its name turns every one
+// of `targets` on, or off when all of them are. Nothing when there is nothing to turn.
+bool drawSelectAll(const registry::CategoryTree& tree, const std::vector<size_t>& targets, const Context& context) {
+    if (targets.empty()) return false;
+    ImGui::Separator();
+    ImGui::PushID("select_all");
+    const style::TriState state = enabledOf(tree, targets, context);
+    const bool box = style::triStateCheckbox("##on", state);
+    ImGui::SameLine();
+    const bool name = ImGui::Selectable("Select All", false, ImGuiSelectableFlags_DontClosePopups);
+    ImGui::PopID();
+    if (!box && !name) return false;
+    selectAll(tree, targets, state != style::TriState::On, context);
+    return true;
+}
+
+bool drawChildren(
+    const registry::CategoryTree& tree,
+    const std::vector<size_t>& children,
+    size_t parent,
+    bool inherited,
+    const Context& context);
+
+// One category, and its children in a menu of their own while it is hovered, showing every one of
+// them when `everything`. Pathing leaves out what `ishidden` hides, and what is under it.
+bool drawCategory(const registry::CategoryTree& tree, size_t index, bool everything, const Context& context) {
     const registry::Category& node = tree.nodes[index];
     store::CategoryStates* states = context.states;
 
@@ -93,10 +123,7 @@ bool drawCategory(const registry::CategoryTree& tree, size_t index, const Contex
     }
 
     ImGui::PushID(static_cast<int>(index));
-    // PathingCategoryNode: shown off once its achievement is done, the player's own choice kept
-    // underneath. Its markers hide by their own achievement filter, which they inherit.
-    const bool done = context.auto_hide && context.account && node.achievement_id &&
-                      context.account->achievementHidden(*node.achievement_id, node.achievement_bit);
+    const bool done = locked(node, context);
     const bool enabled = !done && states->enabled(node.id, node.default_toggle);
     bool open = false;
     bool changed = false;
@@ -118,20 +145,31 @@ bool drawCategory(const registry::CategoryTree& tree, size_t index, const Contex
         }
     }
     if (open) {
-        changed |= drawChildren(tree, node.children, index, context);
+        changed |= drawChildren(tree, node.children, index, everything, context);
         ImGui::EndMenu();
     }
     ImGui::PopID();
     return changed;
 }
 
-// A menu's categories, and Pathing's "N Categories Are Hidden" under them, which shows them.
-bool drawChildren(const registry::CategoryTree& tree, const std::vector<size_t>& children, size_t parent, const Context& context) {
+// A menu's categories, Pathing's "N Categories Are Hidden" under them, which shows them, and
+// our Select All at the foot.
+// `inherited` when a menu above it shows all of its own, which shows all of this one's too, as
+// Pathing hands its forceShowAll down to every submenu it makes.
+bool drawChildren(
+    const registry::CategoryTree& tree,
+    const std::vector<size_t>& children,
+    size_t parent,
+    bool inherited,
+    const Context& context) {
+    const std::string menu = menuId(tree, parent);
+    if (context.show_all) context.show_all->drawn(menu);
+    const bool everything = inherited || showsAll(tree, parent, context);
     std::vector<char> shown;
-    const size_t skipped = chooseShown(tree, children, context, parent, &shown);
+    const size_t skipped = chooseShown(tree, children, context, everything, &shown);
     bool changed = false;
     for (size_t i = 0; i < children.size(); ++i) {
-        if (shown[i]) changed |= drawCategory(tree, children[i], context);
+        if (shown[i]) changed |= drawCategory(tree, children[i], everything, context);
     }
     if (skipped > 0) {
         const std::string label = fonts::label(
@@ -139,11 +177,12 @@ bool drawChildren(const registry::CategoryTree& tree, const std::vector<size_t>&
             (std::to_string(skipped) + (skipped == 1 ? " Category Is Hidden" : " Categories Are Hidden")).c_str());
         ImGui::PushStyleColor(ImGuiCol_Text, style::muted());
         if (ImGui::Selectable(label.c_str(), false, ImGuiSelectableFlags_DontClosePopups) && context.show_all) {
-            context.show_all->insert(parent);
+            context.show_all->menus.insert(menu);
         }
         ImGui::PopStyleColor();
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("Hidden because they have nothing on this map. Click to show them.");
     }
+    if (context.select_all) changed |= drawSelectAll(tree, selectAllTargets(tree, children, context), context);
     return changed;
 }
 
@@ -168,6 +207,50 @@ void drawScriptEntry(script::Engine* engine, size_t index) {
 }
 
 } // namespace
+
+std::string menuId(const registry::CategoryTree& tree, size_t parent) {
+    return parent == pack::kNoIndex ? std::string() : tree.nodes[parent].id;
+}
+
+bool showsAll(const registry::CategoryTree& tree, size_t parent, const Context& context) {
+    return context.show_all && context.show_all->menus.count(menuId(tree, parent));
+}
+
+void ShowAll::begin(int now) {
+    if (frame < now - 1) menus.clear();
+    frame = now;
+    open.clear();
+}
+
+void ShowAll::end() {
+    std::erase_if(menus, [this](const std::string& menu) { return !open.count(menu); });
+}
+
+std::vector<size_t> selectAllTargets(const registry::CategoryTree& tree, const std::vector<size_t>& children, const Context& context) {
+    std::vector<size_t> targets;
+    for (size_t index : children) {
+        const registry::Category& node = tree.nodes[index];
+        if (!node.is_separator && !node.is_hidden && !locked(node, context)) targets.push_back(index);
+    }
+    return targets;
+}
+
+style::TriState enabledOf(const registry::CategoryTree& tree, const std::vector<size_t>& targets, const Context& context) {
+    size_t on = 0;
+    for (size_t index : targets) {
+        const registry::Category& node = tree.nodes[index];
+        on += context.states->enabled(node.id, node.default_toggle) ? 1 : 0;
+    }
+    if (on == 0) return style::TriState::Off;
+    return on == targets.size() ? style::TriState::On : style::TriState::Mixed;
+}
+
+void selectAll(const registry::CategoryTree& tree, const std::vector<size_t>& targets, bool on, const Context& context) {
+    for (size_t index : targets) {
+        const registry::Category& node = tree.nodes[index];
+        context.states->set(node.id, on, node.default_toggle);
+    }
+}
 
 // Nexus's bar is an ImGui window, and ImGui keeps the rectangle of the button last clicked as its
 // nav focus (SetFocusID in imgui.cpp): our icon, while it holds the mouse.
@@ -195,6 +278,7 @@ void placeUnderIcon() {
 
 bool drawItems(const Context& context) {
     bool changed = false;
+    if (context.show_all) context.show_all->begin(ImGui::GetFrameCount());
 
     ImGui::PushID("all_markers");
     const bool all_on = context.states->enabled(runtime::ALL_MARKERS, true);
@@ -206,7 +290,7 @@ bool drawItems(const Context& context) {
     }
     if (open) {
         if (context.tree->roots.empty()) ImGui::TextDisabled("No packs loaded.");
-        changed |= drawChildren(*context.tree, context.tree->roots, pack::kNoIndex, context);
+        changed |= drawChildren(*context.tree, context.tree->roots, pack::kNoIndex, false, context);
         ImGui::EndMenu();
     }
     ImGui::PopID();
@@ -228,6 +312,7 @@ bool drawItems(const Context& context) {
     if (ImGui::Selectable(fonts::label(ICON_FA_BOX_ARCHIVE, "Manage Packs").c_str()) && context.manage_packs) context.manage_packs();
     if (ImGui::Selectable(fonts::label(ICON_FA_GEAR, "Options").c_str()) && context.open_options) context.open_options();
     if (context.open_editor && ImGui::Selectable(fonts::label(ICON_FA_PEN_TO_SQUARE, "Open Editor...").c_str())) context.open_editor();
+    if (context.show_all) context.show_all->end();
     return changed;
 }
 
