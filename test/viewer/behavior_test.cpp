@@ -392,6 +392,39 @@ TEST_CASE("toggle, show and hide change categories", "[behaviors]") {
     CHECK(on());
 }
 
+TEST_CASE("a marker with no behaviors is focused in its range too, for scripts that read Focused", "[behaviors][regression]") {
+    // Teh's Trails' heart follower waits for a plain heart icon to be focused; while none ever
+    // was, the follower and its info stayed with the player for good.
+    Behaving world("behave_plain_focus", {"type=\"c.target\"", "triggerrange=\"10\" info=\"Far\""});
+    REQUIRE_FALSE(world.live.markers.at(0).marker.behaviors);
+    world.standAt(0);
+    world.tick();
+    CHECK(world.state(0).focused);
+    world.standAt(1);
+    world.tick();
+    CHECK_FALSE(world.state(0).focused);
+
+    world.standAt(0);
+    world.tick();
+    world.categories.set("c.target", false, true);
+    world.tick();
+    CHECK_FALSE(world.state(0).focused);
+}
+
+TEST_CASE("interacting passes over a focused marker with no behaviors", "[behaviors][regression]") {
+    // Once plain markers could be focused, the key read the behaviors of every focused marker,
+    // and a plain one's are none: the game crashed on interact beside any plain marker in range.
+    Behaving world("behave_plain_interact", {"", "behavior=\"1\" triggerrange=\"150\""});
+    REQUIRE_FALSE(world.live.markers.at(0).marker.behaviors);
+    world.standAt(0);
+    world.tick();
+    REQUIRE(world.state(0).focused);
+    REQUIRE(world.state(1).focused);
+    world.press();
+    world.tick();
+    CHECK(world.filtered(1));
+}
+
 TEST_CASE("a category turned off lets go of its markers", "[behaviors]") {
     Behaving world("behave_inactive", {"type=\"c.target\" info=\"Inside\""});
     world.standAt(0);

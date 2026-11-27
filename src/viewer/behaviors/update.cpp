@@ -364,25 +364,40 @@ void update(runtime::LiveMap* live, const std::vector<char>& visible, const Host
 
     // By index throughout, and the size read every time: scripts called from here may add
     // markers, which run this same frame.
+    //
+    // Every marker is focused or not, behaviors or none, as StandardMarker.HandleBehavior runs for
+    // each: a script reads Focused of any. Teh's Trails' heart follower waits for a plain heart
+    // icon to be, and without it never goes.
     for (size_t i = 0; i < live->markers.size(); ++i) {
-        if (!live->markers[i].marker.behaviors) continue;
+        const bool behaves = live->markers[i].marker.behaviors != nullptr;
 
         // A category turned off, or a marker a script removed, loses focus on the way out.
         if (live->markers[i].removed || !runtime::nodeVisible(live->markers[i].node, visible)) {
-            if (!live->markers[i].behavior.inactive) runner.unfocus(i);
+            if (!live->markers[i].behavior.inactive) {
+                if (behaves) {
+                    runner.unfocus(i);
+                } else {
+                    live->markers[i].behavior.focused = false;
+                }
+            }
             live->markers[i].behavior.inactive = true;
             continue;
         }
         live->markers[i].behavior.inactive = false;
 
-        runner.filter(Entity{false, i});
-        const LiveMarker& marker = live->markers[i];
-        if (runner.distanceToPlayer(marker.marker) <= marker.marker.trigger_range) {
-            runner.focus(i);
+        if (behaves) {
+            runner.filter(Entity{false, i});
+            const LiveMarker& marker = live->markers[i];
+            if (runner.distanceToPlayer(marker.marker) <= marker.marker.trigger_range) {
+                runner.focus(i);
+            } else {
+                runner.unfocus(i);
+            }
+            runner.refreshInfo(i);
         } else {
-            runner.unfocus(i);
+            LiveMarker& marker = live->markers[i];
+            marker.behavior.focused = runner.distanceToPlayer(marker.marker) <= marker.marker.trigger_range;
         }
-        runner.refreshInfo(i);
     }
 
     for (size_t i = 0; i < live->trails.size(); ++i) {
@@ -395,7 +410,8 @@ void update(runtime::LiveMap* live, const std::vector<char>& visible, const Host
 void interact(runtime::LiveMap* live, const Host& host, const Frame& frame) {
     Runner runner(live, host, frame);
     for (size_t i = 0; i < live->markers.size(); ++i) {
-        if (live->markers[i].behavior.focused) runner.interact(i, false);
+        // A plain marker is focused too, for scripts, but has nothing to interact with.
+        if (live->markers[i].behavior.focused && live->markers[i].marker.behaviors) runner.interact(i, false);
     }
 }
 
