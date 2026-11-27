@@ -106,7 +106,7 @@ public:
     Console console;
     const Census& census() const { return script_census; }
 
-    // Menu entries scripts made; [0] is the "Scripts" root, which is never shown alone.
+    // Menu entries scripts made; [0] is the "Scripts" root, which the menu shows always.
     const std::vector<MenuNode>& menus() const;
     // As Pathing's menu item does: flips `checked` when it can be checked, then calls the
     // entry's handler with the entry.

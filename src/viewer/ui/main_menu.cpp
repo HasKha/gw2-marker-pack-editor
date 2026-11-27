@@ -295,18 +295,24 @@ bool drawItems(const Context& context) {
     }
     ImGui::PopID();
 
-    if (context.scripts) {
-        const std::vector<script::MenuNode>& menus = context.scripts->menus();
-        if (!menus.empty() && !menus.front().children.empty()) {
-            ImGui::PushID("scripts");
-            if (ImGui::BeginMenu((fonts::label(ICON_FA_SCROLL, "Scripts") + "###scripts").c_str())) {
+    // Always drawn, unlike Pathing's, which adds it once a script does: the scripts only run once
+    // every pack is in, and an item that appeared then would move every item under it.
+    ImGui::PushID("scripts");
+    if (ImGui::BeginMenu((fonts::label(ICON_FA_SCROLL, "Scripts") + "###scripts").c_str())) {
+        if (!context.scripts) {
+            ImGui::TextDisabled("Lua scripts are off.");
+        } else {
+            const std::vector<script::MenuNode>& menus = context.scripts->menus();
+            if (menus.empty() || menus.front().children.empty()) {
+                ImGui::TextDisabled("No script entries.");
+            } else {
                 const std::vector<size_t> children = menus.front().children;
                 for (size_t child : children) drawScriptEntry(context.scripts, child);
-                ImGui::EndMenu();
             }
-            ImGui::PopID();
         }
+        ImGui::EndMenu();
     }
+    ImGui::PopID();
 
     if (context.separator) ImGui::Separator();
     if (ImGui::Selectable(fonts::label(ICON_FA_BOX_ARCHIVE, "Manage Packs").c_str()) && context.manage_packs) context.manage_packs();
