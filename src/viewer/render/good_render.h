@@ -6,6 +6,7 @@
 #include <glm/vec2.hpp>
 
 #include "viewer/game/camera.h"
+#include "viewer/maps/map_scene.h"
 #include "viewer/render/scene.h"
 
 // The sink that draws the published scenes into the game's frame through GoodRender: the world at
@@ -53,6 +54,11 @@ struct Drawn {
     bool world = false;
 };
 Drawn takeDrawn();
+
+// What the moments of the frame being presented said of the full map: from PreRender, as every
+// moment of a frame comes before its Present, and before the Render's takeDrawn() starts the next.
+// Meaningful only while the service serves us (Subscription::service()).
+map_scene::GameFrame frameMap();
 
 // The callback a Subscription subscribes: the published scenes into whichever moment this is. Apart so a
 // test can run a frame's moments of its own.

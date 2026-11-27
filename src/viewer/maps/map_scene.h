@@ -180,6 +180,20 @@ private:
     double since_ = 0.0;
 };
 
+// The full map as the game draws it in a frame, which GoodRender reads from the client and hands
+// its moments (good_render::Map): the game's own numbers, where FullMapZoom's are measured.
+struct GameMap {
+    bool closing = false;
+    float zoom = 1.0f; // MapScene::zoom: 20 as it starts opening, 1 once open
+    float fade = 1.0f; // the map's opacity
+};
+
+// What GoodRender's moments said of the full map in the frame being presented.
+struct GameFrame {
+    bool moment = false; // one came at all: the game drew its world
+    std::optional<GameMap> map; // the map they handed, none with no map up or none read
+};
+
 // The game's full map opening and closing. It draws the map at the view MumbleLink describes and
 // scales the whole picture, its icons too, about the screen's centre, linearly in the scale:
 // opening, down to 1 a set time after IsMapOpen comes on; closing, up from 1 a little after the
@@ -191,19 +205,30 @@ private:
 // with it; they come back on the closing's first frame. Without GoodRender, or when the map
 // closes before it was fully open, the closing is not seen and the map stays still until
 // IsMapOpen goes off.
+//
+// **With GoodRender handing the game's own map**, none of that is estimated: its zoom and fade are
+// the frame's. Once it has been handed this time the map is up, GoodRender is taken at its word
+// until IsMapOpen goes off: a frame with no moment is the map fully open, and a moment with no
+// map, after the closing, the map gone. Before, and without the service, the estimate stands.
 class FullMapZoom
 {
 public:
     struct Frame {
         float zoom = 1.0f; // MapScene::zoom
-        float opacity = 1.0f; // the closing's fade, under FadeIn's
+        float opacity = 1.0f; // the closing's fade, under FadeIn's; the whole fade when `game`
+        bool game = false; // the game's own, from GoodRender (GameMap), and not estimated
     };
 
     // At Present: whether MumbleLink has the full map up, whether a GoodRender moment came for the
-    // world in the frame before (good_render_sink::Drawn::world), and the time.
-    Frame update(bool map_open, bool world_drawn, double seconds);
+    // world in the frame before (good_render_sink::Drawn::world), the time, and what GoodRender's
+    // moments said of the map in the frame being presented, none without a service serving us.
+    Frame update(bool map_open, bool world_drawn, double seconds, const std::optional<GameFrame>& game = std::nullopt);
 
 private:
+    // The figures' zoom and fade, as without GoodRender's map.
+    Frame estimate(bool map_open, bool world_drawn, double seconds);
+
+    std::optional<GameMap> game_map_; // the last GoodRender handed since IsMapOpen came on
     bool map_open_ = false;
     double opened_at_ = 0.0;
     int frames_without_world_ = 0;

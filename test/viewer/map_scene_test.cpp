@@ -766,6 +766,62 @@ TEST_CASE("map scene: without GoodRender the closing is not seen, and the map st
     }
 }
 
+namespace {
+
+map_scene::GameFrame gameFrame(bool closing, float zoom, float fade) {
+    return map_scene::GameFrame{true, map_scene::GameMap{closing, zoom, fade}};
+}
+
+} // namespace
+
+TEST_CASE("map scene: with GoodRender's map, the full map zooms and fades as the game says, not as estimated") {
+    map_scene::FullMapZoom zoom;
+    // Before the game's map is handed, the estimate.
+    const map_scene::FullMapZoom::Frame first = zoom.update(true, true, 0.0, map_scene::GameFrame{true, std::nullopt});
+    CHECK_FALSE(first.game);
+    CHECK(first.zoom == Approx(1.0 + 39.5 * 0.54));
+
+    const map_scene::FullMapZoom::Frame opening = zoom.update(true, true, 0.1, gameFrame(false, 12.0f, 0.4f));
+    CHECK(opening.game);
+    CHECK(opening.zoom == 12.0f);
+    CHECK(opening.opacity == 0.4f);
+
+    // Fully open: no world, so no moment.
+    const map_scene::FullMapZoom::Frame open = zoom.update(true, false, 0.7, map_scene::GameFrame{});
+    CHECK(open.game);
+    CHECK(open.zoom == 1.0f);
+    CHECK(open.opacity == 1.0f);
+
+    SECTION("a moment GoodRender could not read the map in keeps the last") {
+        zoom.update(true, true, 0.2, gameFrame(false, 8.0f, 0.6f));
+        const map_scene::FullMapZoom::Frame missed = zoom.update(true, true, 0.21, map_scene::GameFrame{true, std::nullopt});
+        CHECK(missed.game);
+        CHECK(missed.zoom == 8.0f);
+        CHECK(missed.opacity == 0.6f);
+    }
+
+    SECTION("the closing, then the map gone while IsMapOpen is still on") {
+        const map_scene::FullMapZoom::Frame closing = zoom.update(true, true, 2.0, gameFrame(true, 5.0f, 0.5f));
+        CHECK(closing.zoom == 5.0f);
+        CHECK(closing.opacity == 0.5f);
+        const map_scene::FullMapZoom::Frame gone = zoom.update(true, true, 2.6, map_scene::GameFrame{true, std::nullopt});
+        CHECK(gone.game);
+        CHECK(gone.opacity == 0.0f);
+        // Down at last; the next opening waits for the game's map again.
+        zoom.update(false, true, 3.0, map_scene::GameFrame{true, std::nullopt});
+        CHECK_FALSE(zoom.update(true, true, 4.0, map_scene::GameFrame{true, std::nullopt}).game);
+    }
+}
+
+TEST_CASE("map scene: a service that stops handing the map leaves the estimate where it had got to") {
+    map_scene::FullMapZoom zoom;
+    zoom.update(true, true, 0.0, gameFrame(false, 20.0f, 0.0f));
+    // No service now: the estimate, which ran on underneath, 0.44 s into its opening.
+    const map_scene::FullMapZoom::Frame estimated = zoom.update(true, true, 0.44);
+    CHECK_FALSE(estimated.game);
+    CHECK(estimated.zoom == Approx(1.0 + 39.5 * 0.1));
+}
+
 TEST_CASE("map scene: the compass is kept from the full map coming up until MumbleLink gives its fields back") {
     map_scene::CompassKeeper keeper;
     const MumbleState compass = mumble();

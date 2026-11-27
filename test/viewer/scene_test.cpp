@@ -838,6 +838,28 @@ TEST_CASE("the whole world is drawn at WORLD_FINISHED, under the game's HUD", "[
     viewer::publish(nullptr);
 }
 
+TEST_CASE("the full map a frame's moments hand is the frame's, until the render takes what they drew", "[good_render]") {
+    viewer::good_render_sink::takeDrawn();
+    CHECK_FALSE(viewer::good_render_sink::frameMap().moment);
+
+    const good_render::Map map{good_render::MAP_CLOSING, 0.5f, {100.0f, 200.0f}, 2.0f, 6.0f, 0.25f};
+    good_render::Moment moment{};
+    moment.moment = good_render::MOMENT_AFTER_OPAQUE;
+    moment.map = &map;
+    viewer::good_render_sink::onMoment(&moment);
+
+    const viewer::map_scene::GameFrame frame = viewer::good_render_sink::frameMap();
+    CHECK(frame.moment);
+    REQUIRE(frame.map);
+    CHECK(frame.map->closing);
+    CHECK(frame.map->zoom == 6.0f);
+    CHECK(frame.map->fade == 0.25f);
+
+    viewer::good_render_sink::takeDrawn();
+    CHECK_FALSE(viewer::good_render_sink::frameMap().moment);
+    CHECK_FALSE(viewer::good_render_sink::frameMap().map);
+}
+
 TEST_CASE("the world is drawn at WORLD_FINISHED with the map open, under it", "[good_render]") {
     // GoodRender hands a camera with the map open, and the world is still on screen while the
     // map opens and closes.

@@ -45,6 +45,8 @@ struct Figures {
     good_render_sink::Service service = good_render_sink::Service::None;
     good_render_sink::Drawn drawn; // what GoodRender's moments drew last frame
     CameraSource camera = CameraSource::None; // what the scene was built with, at Present
+    bool full_map_up = false;
+    bool full_map_from_game = false; // its open and close as GoodRender read them, not estimated
     size_t scene_items = 0;
     double present_ms = 0.0;
     double present_peak_ms = 0.0;

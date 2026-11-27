@@ -218,13 +218,36 @@ float FadeIn::update(const MumbleState& mumble, double seconds) {
     return static_cast<float>(std::clamp((seconds - since_) / kFadeSeconds, 0.0, 1.0));
 }
 
-FullMapZoom::Frame FullMapZoom::update(bool map_open, bool world_drawn, double seconds) {
+FullMapZoom::Frame FullMapZoom::update(bool map_open, bool world_drawn, double seconds, const std::optional<GameFrame>& game) {
+    // Kept going under the game's map too, so it carries on where GoodRender stops handing one.
+    const Frame estimated = estimate(map_open, world_drawn, seconds);
     if (!map_open) {
-        *this = FullMapZoom{};
+        game_map_.reset();
+        return estimated;
+    }
+    if (game && game->map) {
+        game_map_ = game->map;
+        return Frame{game_map_->zoom, game_map_->fade, true};
+    }
+    if (game && game_map_) {
+        // No world is the map fully open over it. A moment with no map after the closing is the
+        // closing played out; before, a frame GoodRender could not read the map in, which keeps the last.
+        if (!game->moment) return Frame{1.0f, 1.0f, true};
+        return Frame{game_map_->zoom, game_map_->closing ? 0.0f : game_map_->fade, true};
+    }
+    return estimated;
+}
+
+FullMapZoom::Frame FullMapZoom::estimate(bool map_open, bool world_drawn, double seconds) {
+    if (!map_open) {
+        map_open_ = false;
+        frames_without_world_ = 0;
+        closing_at_.reset();
         return Frame{};
     }
     if (!map_open_) {
-        *this = FullMapZoom{};
+        frames_without_world_ = 0;
+        closing_at_.reset();
         map_open_ = true;
         opened_at_ = seconds;
     }

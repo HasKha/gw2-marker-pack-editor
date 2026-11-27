@@ -201,7 +201,11 @@ Pathing's FlatMap and `RenderToMiniMap`, in `map.*` and `map_scene.*`.
 - **Trails are laid on the continent once per live map**; a frame picks which show.
 - **Clipped by hand**: a GoodRender draw list ignores clip rectangles.
 - **The full map zooms as the game's does** while it opens and closes (`FullMapZoom`): MumbleLink only
-  describes where it lands. The closing is told by GoodRender's moments coming back, long before `IsMapOpen`
+  describes where it lands. A GoodRender that hands `Moment::map` gives the game's own zoom and fade for the
+  frame being presented, read at PreRender (`good_render_sink::frameMap`), and the estimate is not used; the
+  Development section's *Full map* line says which one the map is drawn with. To check it in game: open and
+  close the map over a pack whose markers sit on the game's own icons, and ours stay on them throughout.
+  Without that, the estimate: the closing is told by GoodRender's moments coming back, long before `IsMapOpen`
   goes off; without the service the map stays still until then. The figures come from recordings, through
   `scripts/measure_map_zoom.py`: record the map opening and closing over a busy part of a map, and give it a
   frame of the settled map and what to leave out (addon windows, chat, the skill bar). With a pack whose

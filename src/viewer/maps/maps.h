@@ -3,6 +3,7 @@
 #include <imgui.h>
 
 #include <filesystem>
+#include <optional>
 #include <vector>
 
 #include "viewer/game/mumble.h"
@@ -33,6 +34,9 @@ public:
         const MumbleState* mumble = nullptr;
         bool in_gameplay = true;
         bool world_drawn = false; // a GoodRender moment drew the world in the frame before
+        // What GoodRender's moments said of the full map in the frame being presented: none without
+        // a service serving us (good_render_sink::frameMap).
+        std::optional<map_scene::GameFrame> game_map;
         double seconds = 0.0;
 
         const runtime::LiveMap* live = nullptr;
@@ -53,11 +57,15 @@ public:
     // map the API has not described, as in Pathing, nor on a loading screen.
     void build(const Frame& frame);
 
+    // Whether the full map published last opens and closes as the game said, rather than estimated.
+    bool fullMapFromGame() const { return full_map_from_game_; }
+
 private:
     map::Catalog catalog_;
     map_scene::FadeIn minimap_fade_;
     map_scene::FadeIn full_map_fade_;
     map_scene::FullMapZoom full_map_zoom_;
+    bool full_map_from_game_ = false;
     map_scene::CompassKeeper compass_;
     map_scene::TrailCache trails_;
     map_scene::TrailCache edited_trails_;

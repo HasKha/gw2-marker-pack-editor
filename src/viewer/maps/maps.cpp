@@ -30,7 +30,11 @@ void Maps::build(const Frame& frame) {
     const MumbleState on_compass = map_scene::withCompass(mumble, kept.compass);
     const float minimap_opacity = minimap_fade_.update(on_compass, frame.seconds);
     const float full_map_opacity = full_map_fade_.update(mumble, frame.seconds);
-    const map_scene::FullMapZoom::Frame zoom = full_map_zoom_.update(mumble.is_map_open, frame.world_drawn, frame.seconds);
+    const map_scene::FullMapZoom::Frame zoom =
+        full_map_zoom_.update(mumble.is_map_open, frame.world_drawn, frame.seconds, frame.game_map);
+    full_map_from_game_ = mumble.is_map_open && zoom.game;
+    // The game's fade is the map's whole fade, FlatMap's fade-in being an estimate of it.
+    const float full_map_fade = zoom.game ? zoom.opacity : full_map_opacity * zoom.opacity;
 
     const std::shared_ptr<map_scene::MapScene> minimap = minimap_scenes_.take();
     std::shared_ptr<map_scene::MapScene> full_map;
@@ -43,7 +47,7 @@ void Maps::build(const Frame& frame) {
         minimap->below = frame.below;
         if (mumble.is_map_open) {
             full_map = full_map_scenes_.take();
-            map_scene::build(layers, *details, mumble, frame.options, full_map_opacity * zoom.opacity, frame.ui_scale, full_map.get());
+            map_scene::build(layers, *details, mumble, frame.options, full_map_fade, frame.ui_scale, full_map.get());
             full_map->zoom = zoom.zoom;
             full_map->above = frame.above;
             full_map->below = frame.below;

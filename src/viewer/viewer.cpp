@@ -712,6 +712,7 @@ Maps::Frame Session::mapFrame(const TextureLookup& texture) {
     frame.mumble = &mumble_state_;
     frame.in_gameplay = inGameplay();
     frame.world_drawn = stats_.last_drawn.world;
+    if (good_render_ && good_render_->service() == good_render_sink::Service::Serving) frame.game_map = good_render_sink::frameMap();
     frame.seconds = ImGui::GetTime();
     frame.live = &live_;
     frame.visible = &visible_.nodes;
@@ -965,6 +966,8 @@ ui::diagnostics::Figures Session::diagnosticFigures() {
     figures.service = good_render_ ? good_render_->service() : good_render_sink::Service::None;
     figures.drawn = stats_.last_drawn;
     figures.camera = stats_.scene_camera;
+    figures.full_map_up = mumble_state_.is_map_open;
+    figures.full_map_from_game = maps_.fullMapFromGame();
     if (const std::shared_ptr<const Scene> scene = published()) figures.scene_items = scene->items.size();
     figures.present_ms = stats_.present_times.last();
     figures.present_peak_ms = stats_.present_times.peak();

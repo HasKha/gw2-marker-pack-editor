@@ -4,6 +4,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <mutex>
 
 #include "viewer/maps/map_scene.h"
 #include "viewer/render/overlay.h"
@@ -21,6 +22,11 @@ std::atomic<bool> occluded_drawn{false};
 std::atomic<bool> over_drawn{false};
 std::atomic<bool> map_drawn{false};
 std::atomic<bool> world_moment{false};
+
+// The full map as this frame's moments handed it, for frameMap(): every moment of a frame hands the
+// same, taken by GoodRender at the Present before. Cleared with the rest by takeDrawn().
+std::mutex frame_map_mutex;
+map_scene::GameFrame frame_map;
 
 // The time spent in the moments since takeMomentMilliseconds last took it.
 std::atomic<int64_t> moment_nanoseconds{0};
@@ -44,6 +50,17 @@ glm::vec2 windowSize(const good_render::Moment& moment) {
 
 void onMoment(const good_render::Moment* moment) {
     const MomentTimer timer;
+
+    {
+        const std::lock_guard lock(frame_map_mutex);
+        frame_map.moment = true;
+        if (moment->map) {
+            frame_map.map = map_scene::GameMap{
+                moment->map->transition == good_render::MAP_CLOSING,
+                moment->map->zoom,
+                moment->map->fade};
+        }
+    }
 
     // In the game's UI, over its HUD: the minimap, where the game draws its own map markers.
     // Under the full map as it opens and closes over the compass. The full map is the overlay's:
@@ -104,7 +121,14 @@ Drawn takeDrawn() {
     drawn.over = over_drawn.exchange(false);
     drawn.map = map_drawn.exchange(false);
     drawn.world = world_moment.exchange(false);
+    const std::lock_guard lock(frame_map_mutex);
+    frame_map = map_scene::GameFrame{};
     return drawn;
+}
+
+map_scene::GameFrame frameMap() {
+    const std::lock_guard lock(frame_map_mutex);
+    return frame_map;
 }
 
 Camera cameraFromMoment(const good_render::Camera& source, glm::vec2 viewport) {
