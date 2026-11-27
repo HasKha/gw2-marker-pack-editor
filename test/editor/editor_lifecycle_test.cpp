@@ -31,7 +31,7 @@ class Frames
 {
 public:
     Frames()
-        : context_(ImGui::CreateContext()) {
+        : context(ImGui::CreateContext()) {
         ImGuiIO& io = ImGui::GetIO();
         io.IniFilename = nullptr;
         io.DisplaySize = ImVec2(1280.0f, 720.0f);
@@ -41,7 +41,7 @@ public:
         int height = 0;
         io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
     }
-    ~Frames() { ImGui::DestroyContext(context_); }
+    ~Frames() { ImGui::DestroyContext(context); }
 
     Frames(const Frames&) = delete;
     Frames& operator=(const Frames&) = delete;
@@ -53,7 +53,7 @@ public:
     }
 
 private:
-    ImGuiContext* context_;
+    ImGuiContext* context;
 };
 
 } // namespace

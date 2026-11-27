@@ -27,7 +27,7 @@ public:
     void stop();
 
     // The map's rectangles, or null for a map neither the API nor the cache knows.
-    const map::MapDetails* find(int map_id) const { return catalog_.find(map_id); }
+    const map::MapDetails* find(int map_id) const { return catalog.find(map_id); }
 
     // What a frame at Present hands the maps.
     struct Frame {
@@ -58,19 +58,19 @@ public:
     void build(const Frame& frame);
 
     // Whether the full map published last opens and closes as the game said, rather than estimated.
-    bool fullMapFromGame() const { return full_map_from_game_; }
+    bool fullMapFromGame() const { return full_map_from_game; }
 
 private:
-    map::Catalog catalog_;
-    map_scene::FadeIn minimap_fade_;
-    map_scene::FadeIn full_map_fade_;
-    map_scene::FullMapZoom full_map_zoom_;
-    bool full_map_from_game_ = false;
-    map_scene::CompassKeeper compass_;
-    map_scene::TrailCache trails_;
-    map_scene::TrailCache edited_trails_;
-    Recycled<map_scene::MapScene> minimap_scenes_;
-    Recycled<map_scene::MapScene> full_map_scenes_;
+    map::Catalog catalog;
+    map_scene::FadeIn minimap_fade;
+    map_scene::FadeIn full_map_fade;
+    map_scene::FullMapZoom full_map_zoom;
+    bool full_map_from_game = false;
+    map_scene::CompassKeeper compass;
+    map_scene::TrailCache trails;
+    map_scene::TrailCache edited_trails;
+    Recycled<map_scene::MapScene> minimap_scenes;
+    Recycled<map_scene::MapScene> full_map_scenes;
 };
 
 } // namespace viewer

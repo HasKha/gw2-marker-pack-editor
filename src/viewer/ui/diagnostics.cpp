@@ -36,13 +36,13 @@ const char* cameraName(CameraSource source) {
 } // namespace
 
 void FrameTimes::add(double milliseconds) {
-    times_[next_] = milliseconds;
-    next_ = (next_ + 1) % KEPT;
-    last_ = milliseconds;
+    times[next] = milliseconds;
+    next = (next + 1) % KEPT;
+    latest = milliseconds;
 }
 
 double FrameTimes::peak() const {
-    return *std::max_element(times_.begin(), times_.end());
+    return *std::max_element(times.begin(), times.end());
 }
 
 std::vector<Line> describe(const Figures& figures) {
@@ -70,8 +70,9 @@ std::vector<Line> describe(const Figures& figures) {
     }
     text(figures.drawn.map ? "Minimap: drawn by GoodRender, under the game's windows" : "Minimap: the overlay, over everything");
     if (figures.full_map_up) {
-        text(figures.full_map_from_game ? "Full map: opens and closes as the game draws it, from GoodRender"
-                                        : "Full map: its opening and closing estimated");
+        text(
+            figures.full_map_from_game ? "Full map: opens and closes as the game draws it, from GoodRender"
+                                       : "Full map: its opening and closing estimated");
     }
     // The scene is built at Present with the game's camera, which sorts, culls and places the
     // player fades go by; a moment draws it with GoodRender's own. The overlay draws with the

@@ -24,12 +24,12 @@ public:
     std::optional<UtcMillis> next(UtcMillis from) const;
 
 private:
-    uint64_t seconds_ = 0; // bit per value
-    uint64_t minutes_ = 0;
-    uint32_t hours_ = 0;
-    uint32_t days_ = 0; // of the month, bits 1..31
-    uint16_t months_ = 0; // bits 1..12
-    uint8_t weekdays_ = 0; // bits 0..6, Sunday first
+    uint64_t second_bits = 0; // bit per value
+    uint64_t minute_bits = 0;
+    uint32_t hour_bits = 0;
+    uint32_t day_bits = 0; // of the month, bits 1..31
+    uint16_t month_bits = 0; // bits 1..12
+    uint8_t weekday_bits = 0; // bits 0..6, Sunday first
 
     // The time of day, in seconds, of the first match at or after `start` seconds into a day.
     std::optional<int> firstTimeOfDay(int start) const;

@@ -12,9 +12,9 @@ namespace viewer {
 class InteractKey
 {
 public:
-    // Reads the binds from `file`, Nexus's GameBinds.xml. read() after that runs only on the
+    // Reads the binds from `binds_file`, Nexus's GameBinds.xml. read() after that runs only on the
     // worker: the write time is its alone.
-    void open(std::filesystem::path file);
+    void open(std::filesystem::path binds_file);
 
     // Reads the binds again when the file changed: the player rebinding Interact in Nexus.
     void read();
@@ -32,9 +32,9 @@ private:
     // none. F, the game's default, when Nexus's file does not name Interact at all. Bound to the
     // mouse or to keys not known here, it has no key: F then may well be some other action's, and
     // a marker interacting on it would be a surprise.
-    std::atomic<uint32_t> binds_[2] = {'F', 0};
-    std::filesystem::path file_;
-    std::filesystem::file_time_type written_{};
+    std::atomic<uint32_t> binds[2] = {'F', 0};
+    std::filesystem::path file;
+    std::filesystem::file_time_type written{};
 };
 
 } // namespace viewer

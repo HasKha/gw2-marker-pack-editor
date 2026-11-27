@@ -199,7 +199,7 @@ Listing list(const catalog::Library& library, const std::vector<catalog::LocalPa
             row.package = &package;
             row.local = catalog::findLocal(package, local);
             row.state = catalog::state(package, row.local);
-            row.download = library.downloads().status(package.file_name);
+            row.download = library.downloads.status(package.file_name);
             row.keep_updated = library.keepUpdated(package.name);
             if (row.state == catalog::State::Absent) ++absent;
             listing.rows.push_back(row);

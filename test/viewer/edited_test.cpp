@@ -81,20 +81,20 @@ TEST_CASE("the edited pack's live map holds its markers on the current map", "[e
     viewer::edited::EditedLive edited;
     viewer::edited::Report report{temp.path(), &model, 1, nullptr};
     edited.update(report, kMap, trails.lookup());
-    REQUIRE(edited.live().markers.size() == 2);
-    CHECK(edited.live().markers[0].marker.pathable == 0);
-    CHECK(edited.live().markers[1].marker.pathable == 1);
-    CHECK(edited.live().markers[0].node == pack::kNoIndex);
-    CHECK(edited.live().trails.empty());
+    REQUIRE(edited.live.markers.size() == 2);
+    CHECK(edited.live.markers[0].marker.pathable == 0);
+    CHECK(edited.live.markers[1].marker.pathable == 1);
+    CHECK(edited.live.markers[0].node == pack::kNoIndex);
+    CHECK(edited.live.trails.empty());
 
     edited.update(report, 16, trails.lookup());
-    REQUIRE(edited.live().markers.size() == 1);
-    CHECK(edited.live().markers[0].marker.pathable == 2);
+    REQUIRE(edited.live.markers.size() == 1);
+    CHECK(edited.live.markers[0].marker.pathable == 2);
 
     // The trail's map is its file's.
     edited.update(report, kTrailMap, trails.lookup());
-    REQUIRE(edited.live().trails.size() == 1);
-    CHECK(edited.live().trails[0].trail.geometry != nullptr);
+    REQUIRE(edited.live.trails.size() == 1);
+    CHECK(edited.live.trails[0].trail.geometry != nullptr);
 }
 
 TEST_CASE("an edit is baked again when the revision moves, and not before", "[edited]") {
@@ -104,25 +104,25 @@ TEST_CASE("an edit is baked again when the revision moves, and not before", "[ed
 
     viewer::edited::EditedLive edited;
     CHECK(edited.update({temp.path(), &model, 1, nullptr}, kMap, trails.lookup()));
-    REQUIRE(edited.live().markers.size() == 2);
-    CHECK(zOf(edited.live().markers[0]) == Approx(5.0f));
+    REQUIRE(edited.live.markers.size() == 2);
+    CHECK(zOf(edited.live.markers[0]) == Approx(5.0f));
 
     model.pathables[0].attributes.set("zpos", "9");
     CHECK_FALSE(edited.update({temp.path(), &model, 1, nullptr}, kMap, trails.lookup()));
-    CHECK(zOf(edited.live().markers[0]) == Approx(5.0f));
+    CHECK(zOf(edited.live.markers[0]) == Approx(5.0f));
 
     CHECK(edited.update({temp.path(), &model, 2, nullptr}, kMap, trails.lookup()));
-    CHECK(zOf(edited.live().markers[0]) == Approx(9.0f));
+    CHECK(zOf(edited.live.markers[0]) == Approx(9.0f));
 
     // Each build is a revision of its own, which the map's trail lines go by.
-    const uint64_t built = edited.live().revision;
+    const uint64_t built = edited.live.revision;
     CHECK(edited.update({temp.path(), &model, 3, nullptr}, kMap, trails.lookup()));
-    CHECK(edited.live().revision > built);
+    CHECK(edited.live.revision > built);
 
     // A behavior's state stays between frames while nothing changed.
-    edited.live().markers[0].behavior.filtered = true;
+    edited.live.markers[0].behavior.filtered = true;
     CHECK_FALSE(edited.update({temp.path(), &model, 3, nullptr}, kMap, trails.lookup()));
-    CHECK(edited.live().markers[0].behavior.filtered);
+    CHECK(edited.live.markers[0].behavior.filtered);
 }
 
 TEST_CASE("what the editor's tree hides is not in the edited live map", "[edited]") {
@@ -133,13 +133,13 @@ TEST_CASE("what the editor's tree hides is not in the edited live map", "[edited
     viewer::edited::EditedLive edited;
     std::vector<char> shown{1, 0, 1, 1};
     edited.update({temp.path(), &model, 1, &shown}, kMap, trails.lookup());
-    REQUIRE(edited.live().markers.size() == 1);
-    CHECK(edited.live().markers[0].marker.pathable == 0);
+    REQUIRE(edited.live.markers.size() == 1);
+    CHECK(edited.live.markers[0].marker.pathable == 0);
 
     // A view state: it moves no revision, and still shows at once.
     shown[1] = 1;
     edited.update({temp.path(), &model, 1, &shown}, kMap, trails.lookup());
-    CHECK(edited.live().markers.size() == 2);
+    CHECK(edited.live.markers.size() == 2);
 }
 
 TEST_CASE("an edit keeps when the edited pack's markers came into view; what is new fades in", "[edited]") {
@@ -151,25 +151,25 @@ TEST_CASE("an edit keeps when the edited pack's markers came into view; what is 
     viewer::edited::EditedLive edited;
     std::vector<char> shown{1, 0, 1, 1};
     edited.update({temp.path(), &model, 1, &shown}, kMap, trails.lookup());
-    viewer::runtime::startFadeIns(&edited.live(), no_nodes, 10.0);
-    REQUIRE(edited.live().markers.size() == 1);
-    CHECK(edited.live().markers[0].in_view_since == 10.0);
+    viewer::runtime::startFadeIns(&edited.live, no_nodes, 10.0);
+    REQUIRE(edited.live.markers.size() == 1);
+    CHECK(edited.live.markers[0].in_view_since == 10.0);
 
     // An edit rebuilds the map: the marker that was there keeps its time, and one shown again
     // in the tree comes into view now.
     model.pathables[0].attributes.set("zpos", "9");
     shown[1] = 1;
     REQUIRE(edited.update({temp.path(), &model, 2, &shown}, kMap, trails.lookup()));
-    viewer::runtime::startFadeIns(&edited.live(), no_nodes, 20.0);
-    REQUIRE(edited.live().markers.size() == 2);
-    CHECK(edited.live().markers[0].in_view_since == 10.0);
-    CHECK(edited.live().markers[1].in_view_since == 20.0);
+    viewer::runtime::startFadeIns(&edited.live, no_nodes, 20.0);
+    REQUIRE(edited.live.markers.size() == 2);
+    CHECK(edited.live.markers[0].in_view_since == 10.0);
+    CHECK(edited.live.markers[1].in_view_since == 20.0);
 
     // Another map is all new.
     edited.update({temp.path(), &model, 2, &shown}, 16, trails.lookup());
-    viewer::runtime::startFadeIns(&edited.live(), no_nodes, 30.0);
-    REQUIRE(edited.live().markers.size() == 1);
-    CHECK(edited.live().markers[0].in_view_since == 30.0);
+    viewer::runtime::startFadeIns(&edited.live, no_nodes, 30.0);
+    REQUIRE(edited.live.markers.size() == 1);
+    CHECK(edited.live.markers[0].in_view_since == 30.0);
 }
 
 TEST_CASE("a trail whose read was put off arrives on a later frame", "[edited]") {
@@ -181,11 +181,11 @@ TEST_CASE("a trail whose read was put off arrives on a later frame", "[edited]")
     viewer::edited::EditedLive edited;
     const viewer::edited::Report report{temp.path(), &model, 1, nullptr};
     edited.update(report, kTrailMap, trails.lookup());
-    CHECK(edited.live().trails.empty());
+    CHECK(edited.live.trails.empty());
     edited.update(report, kTrailMap, trails.lookup());
-    CHECK(edited.live().trails.empty());
+    CHECK(edited.live.trails.empty());
     edited.update(report, kTrailMap, trails.lookup());
-    CHECK(edited.live().trails.size() == 1);
+    CHECK(edited.live.trails.size() == 1);
 
     // Once it is in, a frame with nothing new reads nothing.
     edited.update(report, kTrailMap, trails.lookup());
@@ -199,9 +199,9 @@ TEST_CASE("no pack open leaves the edited live map empty", "[edited]") {
 
     viewer::edited::EditedLive edited;
     edited.update({temp.path(), &model, 1, nullptr}, kMap, trails.lookup());
-    REQUIRE_FALSE(edited.live().markers.empty());
+    REQUIRE_FALSE(edited.live.markers.empty());
     CHECK(edited.update({}, kMap, trails.lookup()));
-    CHECK(edited.live().markers.empty());
+    CHECK(edited.live.markers.empty());
     CHECK(edited.baked().markers.empty());
     CHECK_FALSE(edited.update({}, kMap, trails.lookup()));
 }
@@ -229,7 +229,7 @@ TEST_CASE("the edited layer names its pathables and keeps what has no image", "[
     const std::vector<char> no_nodes;
     viewer::Scene scene;
     viewer::buildScene(
-        {viewer::SceneLayer{&installed_live, &no_nodes, textures, false}, viewer::SceneLayer{&edited.live(), &no_nodes, textures, true}},
+        {viewer::SceneLayer{&installed_live, &no_nodes, textures, false}, viewer::SceneLayer{&edited.live, &no_nodes, textures, true}},
         test_camera::axisCamera(),
         0.0f,
         {},
@@ -255,14 +255,14 @@ TEST_CASE("an edited trail's quads say they are trail", "[edited][scene]") {
 
     viewer::edited::EditedLive edited;
     edited.update({temp.path(), &model, 1, nullptr}, kTrailMap, trails.lookup());
-    REQUIRE(edited.live().trails.size() == 1);
+    REQUIRE(edited.live.trails.size() == 1);
 
     viewer::Camera camera = test_camera::axisCamera();
     camera.map_id = kTrailMap;
     const std::vector<char> no_nodes;
     const viewer::TextureLookup textures = [](size_t, const std::string&) { return viewer::test::fakeTexture(); };
     viewer::Scene scene;
-    viewer::buildScene({viewer::SceneLayer{&edited.live(), &no_nodes, textures, true}}, camera, 0.0f, {}, &scene);
+    viewer::buildScene({viewer::SceneLayer{&edited.live, &no_nodes, textures, true}}, camera, 0.0f, {}, &scene);
     REQUIRE_FALSE(scene.items.empty());
     for (const viewer::SceneItem& item : scene.items) {
         CHECK(item.is_trail);
@@ -286,11 +286,11 @@ TEST_CASE("an edited trail without a tint takes its texture's colour once the re
     viewer::edited::EditedLive edited;
     const viewer::edited::Report report{temp.path(), &model, 1, nullptr};
     edited.update(report, kTrailMap, trails.lookup(), colour);
-    REQUIRE(edited.live().trails.size() == 1);
-    CHECK(edited.live().trails[0].trail.sample_colour == IM_COL32_WHITE);
+    REQUIRE(edited.live.trails.size() == 1);
+    CHECK(edited.live.trails[0].trail.sample_colour == IM_COL32_WHITE);
 
     // The next frame reads it, and builds the live map again for it.
     CHECK(edited.update(report, kTrailMap, trails.lookup(), colour));
     CHECK(asked == "t.png");
-    CHECK(edited.live().trails[0].trail.sample_colour == IM_COL32(1, 2, 3, 255));
+    CHECK(edited.live.trails[0].trail.sample_colour == IM_COL32(1, 2, 3, 255));
 }

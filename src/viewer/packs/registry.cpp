@@ -200,25 +200,25 @@ size_t Loader::workerCount() {
 
 void Loader::add(std::vector<std::filesystem::path> paths) {
     {
-        const std::lock_guard<std::mutex> lock(mutex_);
-        for (std::filesystem::path& path : paths) queued_.emplace_back(next_added_++, std::move(path));
-        stopping_ = false;
+        const std::lock_guard<std::mutex> lock(mutex);
+        for (std::filesystem::path& path : paths) queued.emplace_back(next_added++, std::move(path));
+        stopping = false;
     }
-    wake_.notify_all();
+    wake.notify_all();
 
-    if (!workers_.empty()) return;
-    for (size_t i = 0; i < workerCount(); ++i) workers_.emplace_back([this] { work(); });
+    if (!workers.empty()) return;
+    for (size_t i = 0; i < workerCount(); ++i) workers.emplace_back([this] { work(); });
 }
 
 void Loader::work() {
-    std::unique_lock<std::mutex> lock(mutex_);
+    std::unique_lock<std::mutex> lock(mutex);
     while (true) {
-        wake_.wait(lock, [this] { return stopping_ || !queued_.empty(); });
-        if (stopping_) return;
+        wake.wait(lock, [this] { return stopping || !queued.empty(); });
+        if (stopping) return;
 
-        const auto [order, path] = std::move(queued_.front());
-        queued_.pop_front();
-        ++loading_;
+        const auto [order, path] = std::move(queued.front());
+        queued.pop_front();
+        ++loading;
 
         // Unlocked while it reads, which is seconds for a large pack: take() and add() are
         // called every frame and must not wait for it.
@@ -237,37 +237,37 @@ void Loader::work() {
         }
         lock.lock();
 
-        --loading_;
-        if (!stopping_) done_.emplace(order, std::move(loaded));
+        --loading;
+        if (!stopping) done.emplace(order, std::move(loaded));
     }
 }
 
 void Loader::stop() {
     {
-        const std::lock_guard<std::mutex> lock(mutex_);
-        stopping_ = true;
-        queued_.clear();
-        done_.clear();
-        next_taken_ = next_added_;
+        const std::lock_guard<std::mutex> lock(mutex);
+        stopping = true;
+        queued.clear();
+        done.clear();
+        next_taken = next_added;
     }
-    wake_.notify_all();
-    for (std::thread& worker : workers_) worker.join();
-    workers_.clear();
+    wake.notify_all();
+    for (std::thread& worker : workers) worker.join();
+    workers.clear();
 }
 
 std::unique_ptr<LoadedPack> Loader::take() {
-    const std::lock_guard<std::mutex> lock(mutex_);
-    const auto next = done_.find(next_taken_);
-    if (next == done_.end()) return nullptr;
+    const std::lock_guard<std::mutex> lock(mutex);
+    const auto next = done.find(next_taken);
+    if (next == done.end()) return nullptr;
     std::unique_ptr<LoadedPack> taken = std::move(next->second);
-    done_.erase(next);
-    ++next_taken_;
+    done.erase(next);
+    ++next_taken;
     return taken;
 }
 
 bool Loader::busy() const {
-    const std::lock_guard<std::mutex> lock(mutex_);
-    return !queued_.empty() || loading_ > 0 || !done_.empty();
+    const std::lock_guard<std::mutex> lock(mutex);
+    return !queued.empty() || loading > 0 || !done.empty();
 }
 
 } // namespace viewer::registry

@@ -78,14 +78,14 @@ State state(const Package& package, const LocalPack* local);
 class AutoUpdate
 {
 public:
-    bool enabled(const std::string& package) const { return !off_.count(package); }
+    bool enabled(const std::string& package) const { return !off.count(package); }
     void set(const std::string& package, bool on);
 
     void load(const std::filesystem::path& file);
     [[nodiscard]] bool save(const std::filesystem::path& file) const;
 
 private:
-    std::set<std::string> off_;
+    std::set<std::string> off;
 };
 
 } // namespace viewer::catalog

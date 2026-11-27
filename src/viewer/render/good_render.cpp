@@ -55,10 +55,7 @@ void onMoment(const good_render::Moment* moment) {
         const std::lock_guard lock(frame_map_mutex);
         frame_map.moment = true;
         if (moment->map) {
-            frame_map.map = map_scene::GameMap{
-                moment->map->transition == good_render::MAP_CLOSING,
-                moment->map->zoom,
-                moment->map->fade};
+            frame_map.map = map_scene::GameMap{moment->map->transition == good_render::MAP_CLOSING, moment->map->zoom, moment->map->fade};
         }
     }
 
@@ -94,21 +91,21 @@ void onMoment(const good_render::Moment* moment) {
 }
 
 Subscription::Subscription(const Mumble::Data* mumble)
-    : link_(good_render::open()) {
+    : link(good_render::open()) {
     mumble_link = mumble;
     // Order 0, as GoodRender's README asks of anyone without a reason to draw over others.
-    if (link_.block) slot_ = good_render::subscribe(*link_.block, onMoment, 0);
+    if (link.block) slot = good_render::subscribe(*link.block, onMoment, 0);
 }
 
 Subscription::~Subscription() {
-    if (slot_) good_render::unsubscribe(*slot_);
-    good_render::close(link_);
+    if (slot) good_render::unsubscribe(*slot);
+    good_render::close(link);
     mumble_link = nullptr;
 }
 
 Service Subscription::service() const {
-    if (!link_.block || link_.block->newest_served.load() == 0) return Service::None;
-    return good_render::served(*link_.block) ? Service::Serving : Service::OtherVersion;
+    if (!link.block || link.block->newest_served.load() == 0) return Service::None;
+    return good_render::served(*link.block) ? Service::Serving : Service::OtherVersion;
 }
 
 double takeMomentMilliseconds() {

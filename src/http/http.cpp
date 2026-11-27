@@ -161,23 +161,23 @@ bool readBody(const Response& response, Sink&& sink) {
 } // namespace
 
 void Cancel::cancel() {
-    const std::lock_guard<std::mutex> lock(mutex_);
-    cancelled_.store(true, std::memory_order_release);
-    if (request_) WinHttpCloseHandle(request_);
-    request_ = nullptr;
+    const std::lock_guard<std::mutex> lock(mutex);
+    is_cancelled.store(true, std::memory_order_release);
+    if (request) WinHttpCloseHandle(request);
+    request = nullptr;
 }
 
-bool Cancel::attach(void* request) const {
-    const std::lock_guard<std::mutex> lock(mutex_);
+bool Cancel::attach(void* handle) const {
+    const std::lock_guard<std::mutex> lock(mutex);
     if (cancelled()) return false;
-    request_ = request;
+    request = handle;
     return true;
 }
 
 bool Cancel::release() const {
-    const std::lock_guard<std::mutex> lock(mutex_);
-    const bool ours = request_ != nullptr;
-    request_ = nullptr;
+    const std::lock_guard<std::mutex> lock(mutex);
+    const bool ours = request != nullptr;
+    request = nullptr;
     return ours;
 }
 

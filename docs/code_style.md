@@ -12,7 +12,7 @@ is not on PATH; it ships with Visual Studio at `<VS install>\VC\Tools\Llvm\x64\b
 | Files, folders, namespaces | `snake_case` | `trail_edit.cpp`, `src/pack/`, `namespace marker_editor` |
 | Functions | `camelCase` | `loadPack()`, `drawOptions()` |
 | Types / structs / enums | `PascalCase` | `struct MarkerCategory` |
-| Variables / members | `snake_case` | `icon_size` |
+| Variables / members | `snake_case`, members with no trailing `_` | `icon_size` |
 | Constants | `SCREAMING_SNAKE` | `SETTINGS_FILE` |
 
 **`""` for this repo's headers, `<>` for everything else**, dependencies included. Ours are written from
@@ -66,6 +66,11 @@ Each step is a short block under a comment saying what it does.
 - **A COM object is held in `Microsoft::WRL::ComPtr`**, never released by hand.
 - **Members are torn down in reverse declaration order**, so what other members' destructors still use is
   declared first.
+- **No getter that only hands a member back** (Core Guidelines C.131): such a member is public. A getter
+  that guards something — a revision only the class moves, a status only it writes — keeps its name, and
+  the member it reads gets a more specific one: `revision()` reads `current_revision`. A parameter that
+  would share a member's name takes another; MSVC's C4458 catches that in member functions but not in a
+  constructor, whose body then reads the parameter.
 
 ## UI
 

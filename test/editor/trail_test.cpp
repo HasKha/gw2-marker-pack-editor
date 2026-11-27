@@ -351,30 +351,30 @@ class HeldSource : public pack::DataSource
 {
 public:
     HeldSource(std::shared_future<void> answered, Reads* reads)
-        : answered_(std::move(answered))
-        , reads_(reads) {}
+        : answered(std::move(answered))
+        , reads(reads) {}
 
-    const std::vector<std::string>& entries() const override { return entries_; }
+    const std::vector<std::string>& entries() const override { return entry_names; }
     std::string originalName(std::string_view path) const override { return std::string(path); }
     bool contains(std::string_view) const override { return true; }
     bool read(std::string_view path, std::vector<uint8_t>* out, std::string*) const override {
         {
-            std::lock_guard<std::mutex> lock(reads_->mutex);
-            reads_->paths.emplace_back(path);
-            if (reads_->paths.size() == 1) reads_->first.set_value();
+            std::lock_guard<std::mutex> lock(reads->mutex);
+            reads->paths.emplace_back(path);
+            if (reads->paths.size() == 1) reads->first.set_value();
         }
-        answered_.wait();
+        answered.wait();
         out->clear();
         return true;
     }
-    const std::filesystem::path& root() const override { return root_; }
+    const std::filesystem::path& root() const override { return root_folder; }
     bool isDirectory() const override { return false; }
 
 private:
-    std::shared_future<void> answered_;
-    Reads* reads_;
-    std::vector<std::string> entries_;
-    std::filesystem::path root_;
+    std::shared_future<void> answered;
+    Reads* reads;
+    std::vector<std::string> entry_names;
+    std::filesystem::path root_folder;
 };
 
 } // namespace

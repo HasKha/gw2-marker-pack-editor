@@ -25,31 +25,31 @@ public:
     // default-constructed NodeRef names nothing.
     static T none();
 
-    const std::vector<T>& items() const { return items_; }
-    bool empty() const { return items_.empty(); }
-    size_t size() const { return items_.size(); }
-    bool contains(const T& item) const { return std::find(items_.begin(), items_.end(), item) != items_.end(); }
+    const std::vector<T>& items() const { return selected; }
+    bool empty() const { return selected.empty(); }
+    size_t size() const { return selected.size(); }
+    bool contains(const T& item) const { return std::find(selected.begin(), selected.end(), item) != selected.end(); }
 
     // Last item clicked. Drives the property panel when several things are selected.
-    T primary() const { return items_.empty() ? none() : items_.back(); }
+    T primary() const { return selected.empty() ? none() : selected.back(); }
 
     // First item selected. The gizmo sits here and a group rotation orbits about it, so it
     // has to stay put as the selection grows — which is why every add appends.
-    T anchor() const { return items_.empty() ? none() : items_.front(); }
+    T anchor() const { return selected.empty() ? none() : selected.front(); }
 
-    void clear() { items_.clear(); }
+    void clear() { selected.clear(); }
 
     void set(const T& item) {
-        items_.clear();
-        items_.push_back(item);
+        selected.clear();
+        selected.push_back(item);
     }
 
     void toggle(const T& item) {
-        auto it = std::find(items_.begin(), items_.end(), item);
-        if (it != items_.end()) {
-            items_.erase(it);
+        auto it = std::find(selected.begin(), selected.end(), item);
+        if (it != selected.end()) {
+            selected.erase(it);
         } else {
-            items_.push_back(item);
+            selected.push_back(item);
         }
     }
 
@@ -57,15 +57,15 @@ public:
     // un-created is not something the user can still have selected.
     template <typename Predicate>
     void retainIf(Predicate keep) {
-        items_.erase(std::remove_if(items_.begin(), items_.end(), [&](const T& item) { return !keep(item); }), items_.end());
+        selected.erase(std::remove_if(selected.begin(), selected.end(), [&](const T& item) { return !keep(item); }), selected.end());
     }
 
     // Replaces the selection wholesale. The caller's order is kept, so whatever it puts
     // first becomes the anchor.
-    void setAll(std::vector<T> items) { items_ = std::move(items); }
+    void setAll(std::vector<T> items) { selected = std::move(items); }
 
 private:
-    std::vector<T> items_;
+    std::vector<T> selected;
 };
 
 template <>

@@ -91,10 +91,10 @@ class Reader
 {
 public:
     Reader(const pack::Pack& pack, const pack::Pathable& pathable)
-        : pack_(pack)
-        , pathable_(pathable) {}
+        : pack(pack)
+        , pathable(pathable) {}
 
-    const std::string* value(std::string_view key) const { return pack_.effectiveValue(pathable_, key); }
+    const std::string* value(std::string_view key) const { return pack.effectiveValue(pathable, key); }
 
     bool any(std::initializer_list<std::string_view> keys) const {
         return std::any_of(keys.begin(), keys.end(), [&](std::string_view key) { return value(key) != nullptr; });
@@ -134,8 +134,8 @@ public:
     }
 
 private:
-    const pack::Pack& pack_;
-    const pack::Pathable& pathable_;
+    const pack::Pack& pack;
+    const pack::Pathable& pathable;
 };
 
 void readFilters(const Reader& read, Behaviors* out) {

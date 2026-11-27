@@ -55,10 +55,12 @@ Check ask(std::string_view key, const http::Cancel& cancel);
 class Registration
 {
 public:
-    std::string* field() { return &field_; }
-    bool checking() const { return check_ != nullptr; }
-    const std::string& status() const { return status_; }
-    void setStatus(std::string status) { status_ = std::move(status); }
+    // What the options page's field holds.
+    std::string field;
+    // What the last check said, or what the options page puts in its place.
+    std::string status;
+
+    bool checking() const { return check != nullptr; }
 
     // Checks what the field holds on a thread of its own, or says to paste a key first.
     void submit();
@@ -69,7 +71,7 @@ public:
     // closed while the check ran; a save that failed is reported then too.
     std::optional<std::string> takeAccepted();
     // The accepted key being written, which the status waits for.
-    void saving(std::future<bool> saved) { saved_ = std::move(saved); }
+    void saving(std::future<bool> save) { saved = std::move(save); }
 
     // Waits for the check, and forgets the save.
     void stop();
@@ -80,10 +82,8 @@ private:
         Check check;
     };
 
-    std::string field_;
-    std::unique_ptr<http::Background<Checked>> check_;
-    std::string status_;
-    std::future<bool> saved_;
+    std::unique_ptr<http::Background<Checked>> check;
+    std::future<bool> saved;
 };
 
 } // namespace viewer::api_key

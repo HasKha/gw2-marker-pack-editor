@@ -102,9 +102,9 @@ public:
     // reported like any other script error.
     bool run(size_t pack, std::string_view file, std::string_view source);
 
-    const Console& console() const { return console_; }
-    Console& console() { return console_; }
-    const Census& census() const { return census_; }
+    // Before the state, whose scripts write to it.
+    Console console;
+    const Census& census() const { return script_census; }
 
     // Menu entries scripts made; [0] is the "Scripts" root, which is never shown alone.
     const std::vector<MenuNode>& menus() const;
@@ -132,11 +132,10 @@ public:
 private:
     struct State;
 
-    Host host_;
-    Console console_;
-    Census census_;
-    std::unique_ptr<State> state_;
-    std::vector<std::vector<double>> frame_history_; // per pack, the last ten frames
+    Host host;
+    Census script_census;
+    std::unique_ptr<State> state;
+    std::vector<std::vector<double>> frame_history; // per pack, the last ten frames
 };
 
 } // namespace viewer::script

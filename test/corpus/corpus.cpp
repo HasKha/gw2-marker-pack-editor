@@ -103,16 +103,16 @@ std::string missingMessage() {
 
 TempDir::TempDir(const std::string& name) {
     std::error_code ec;
-    path_ = std::filesystem::temp_directory_path(ec) / ("markus_test_" + name);
+    folder = std::filesystem::temp_directory_path(ec) / ("markus_test_" + name);
     // Removed first: a previous run that was killed mid-test leaves its directory behind,
     // and starting from whatever it managed to write is not a test of anything.
-    std::filesystem::remove_all(path_, ec);
-    std::filesystem::create_directories(path_, ec);
+    std::filesystem::remove_all(folder, ec);
+    std::filesystem::create_directories(folder, ec);
 }
 
 TempDir::~TempDir() {
     std::error_code ec;
-    std::filesystem::remove_all(path_, ec);
+    std::filesystem::remove_all(folder, ec);
 }
 
 void writeFile(const std::filesystem::path& path, std::string_view text) {

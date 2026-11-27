@@ -59,10 +59,10 @@ size_t Window::folderIndex(std::unordered_map<std::string, size_t>& by_path, con
     if (it != by_path.end()) return it->second;
 
     const size_t parent = folderIndex(by_path, folderOf(path));
-    index_.folders.push_back(Folder{nameOf(path), path, {}, {}});
+    index.folders.push_back(Folder{nameOf(path), path, {}, {}});
 
-    const size_t self = index_.folders.size() - 1;
-    index_.folders[parent].folders.push_back(self);
+    const size_t self = index.folders.size() - 1;
+    index.folders[parent].folders.push_back(self);
     by_path.emplace(path, self);
     return self;
 }
@@ -74,7 +74,7 @@ void Window::collectReferences(const pack::AttributeCollection& attributes, edit
     for (const pack::Attribute& attribute : attributes.all()) {
         const pack::AttributeDef* def = pack::findAttribute(attribute.key);
         if (!def || def->kind != pack::ValueKind::Path || attribute.value.empty()) continue;
-        index_.references[pack::normalizePath(attribute.value)].push_back(node);
+        index.references[pack::normalizePath(attribute.value)].push_back(node);
     }
 }
 
@@ -83,12 +83,12 @@ void Window::buildIndex(const editor::State& state) {
 
     // A different pack entirely: whatever folder the user picked in the last one means
     // nothing here.
-    if (index_.source != source) target_chosen_ = false;
+    if (index.source != source) target_chosen = false;
 
-    index_ = Index{};
-    index_.revision = state.revision;
-    index_.source = source;
-    index_.folders.push_back(Folder{});
+    index = Index{};
+    index.revision = state.revision;
+    index.source = source;
+    index.folders.push_back(Folder{});
 
     // Deleted nodes reference nothing: an image only used by a marker that has been removed
     // should read as unused, or it could never be cleaned up.
@@ -116,43 +116,43 @@ void Window::buildIndex(const editor::State& state) {
     paths.erase(std::unique(paths.begin(), paths.end()), paths.end());
 
     std::unordered_map<std::string, size_t> folders_by_path;
-    index_.assets.reserve(paths.size());
+    index.assets.reserve(paths.size());
     for (const std::string& path : paths) {
-        index_.assets.push_back(Asset{path, nameOf(path), state.pack.findAddedAsset(path) != nullptr});
-        index_.folders[folderIndex(folders_by_path, folderOf(path))].assets.push_back(index_.assets.size() - 1);
-        if (index_.references.find(path) == index_.references.end()) ++index_.unreferenced;
+        index.assets.push_back(Asset{path, nameOf(path), state.pack.findAddedAsset(path) != nullptr});
+        index.folders[folderIndex(folders_by_path, folderOf(path))].assets.push_back(index.assets.size() - 1);
+        if (index.references.find(path) == index.references.end()) ++index.unreferenced;
     }
 
     // A different pack, or the selected file was just removed: do not keep pointing at
     // something that is no longer listed.
     const bool still_there =
-        std::any_of(index_.assets.begin(), index_.assets.end(), [this](const Asset& asset) { return asset.path == selected_; });
-    if (!still_there) selected_.clear();
+        std::any_of(index.assets.begin(), index.assets.end(), [this](const Asset& asset) { return asset.path == selected; });
+    if (!still_there) selected.clear();
 
     // Default the add target to wherever the pack already keeps most of its images, so the
     // first added file does not land in the pack root by accident. Once the user has picked
     // a folder, that stands — including the root.
     const bool folder_known =
-        std::any_of(index_.folders.begin(), index_.folders.end(), [this](const Folder& folder) { return folder.path == target_folder_; });
-    if (!target_chosen_ || !folder_known) {
-        target_folder_.clear();
+        std::any_of(index.folders.begin(), index.folders.end(), [this](const Folder& folder) { return folder.path == target_folder; });
+    if (!target_chosen || !folder_known) {
+        target_folder.clear();
         size_t most = 0;
-        for (const Folder& folder : index_.folders) {
+        for (const Folder& folder : index.folders) {
             if (folder.assets.size() <= most) continue;
             most = folder.assets.size();
-            target_folder_ = folder.path;
+            target_folder = folder.path;
         }
     }
 }
 
 void Window::ensureIndex(const editor::State& state) {
-    if (index_.revision == state.revision && index_.source == state.resources.source()) return;
+    if (index.revision == state.revision && index.source == state.resources.source()) return;
     Window::buildIndex(state);
 }
 
 const std::vector<editor::NodeRef>* Window::referencesTo(const std::string& path) const {
-    auto it = index_.references.find(path);
-    return it == index_.references.end() ? nullptr : &it->second;
+    auto it = index.references.find(path);
+    return it == index.references.end() ? nullptr : &it->second;
 }
 
 size_t Window::referenceCount(const std::string& path) const {
@@ -161,13 +161,13 @@ size_t Window::referenceCount(const std::string& path) const {
 }
 
 void Window::select(const Asset& asset) {
-    selected_ = asset.path;
-    target_folder_ = folderOf(asset.path);
-    target_chosen_ = true;
+    selected = asset.path;
+    target_folder = folderOf(asset.path);
+    target_chosen = true;
 }
 
 void Window::drawAssetRow(editor::State& state, size_t asset_index) {
-    const Asset& asset = index_.assets[asset_index];
+    const Asset& asset = index.assets[asset_index];
     const bool removed = state.pack.isAssetRemoved(asset.path);
     const size_t references = referenceCount(asset.path);
 
@@ -185,29 +185,29 @@ void Window::drawAssetRow(editor::State& state, size_t asset_index) {
         ImGui::PushStyleColor(ImGuiCol_Text, kAddedColour);
     }
 
-    if (ImGui::Selectable(label.c_str(), selected_ == asset.path)) select(asset);
+    if (ImGui::Selectable(label.c_str(), selected == asset.path)) select(asset);
 
     if (removed || asset.pending_add) ImGui::PopStyleColor();
     ImGui::PopID();
 }
 
 void Window::drawFolderContents(editor::State& state, size_t folder_index) {
-    for (size_t child : index_.folders[folder_index].folders) drawFolder(state, child);
-    for (size_t asset : index_.folders[folder_index].assets) drawAssetRow(state, asset);
+    for (size_t child : index.folders[folder_index].folders) drawFolder(state, child);
+    for (size_t asset : index.folders[folder_index].assets) drawAssetRow(state, asset);
 }
 
 void Window::drawFolder(editor::State& state, size_t folder_index) {
-    const Folder& folder = index_.folders[folder_index];
+    const Folder& folder = index.folders[folder_index];
 
     ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_SpanFullWidth | ImGuiTreeNodeFlags_OpenOnArrow;
-    if (target_folder_ == folder.path) flags |= ImGuiTreeNodeFlags_Selected;
+    if (target_folder == folder.path) flags |= ImGuiTreeNodeFlags_Selected;
 
     ImGui::PushID(static_cast<int>(folder_index));
     const bool open = ImGui::TreeNodeEx("##folder", flags, "%s", folder.name.c_str());
     // Clicking a folder is how the user says where an added file should go.
     if (ImGui::IsItemClicked() && !ImGui::IsItemToggledOpen()) {
-        target_folder_ = folder.path;
-        target_chosen_ = true;
+        target_folder = folder.path;
+        target_chosen = true;
     }
     if (open) {
         Window::drawFolderContents(state, folder_index);
@@ -217,12 +217,12 @@ void Window::drawFolder(editor::State& state, size_t folder_index) {
 }
 
 void Window::drawFiltered(editor::State& state) {
-    std::string needle = filter_;
+    std::string needle = filter;
     std::transform(needle.begin(), needle.end(), needle.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
 
     size_t matches = 0;
-    for (size_t i = 0; i < index_.assets.size(); ++i) {
-        if (index_.assets[i].path.find(needle) == std::string::npos) continue;
+    for (size_t i = 0; i < index.assets.size(); ++i) {
+        if (index.assets[i].path.find(needle) == std::string::npos) continue;
         Window::drawAssetRow(state, i);
         ++matches;
     }
@@ -236,7 +236,7 @@ std::string Window::originalFolder(const editor::State& state, const std::string
     const pack::DataSource* source = state.resources.source();
     if (!source || normalized.empty()) return normalized;
 
-    for (const Asset& asset : index_.assets) {
+    for (const Asset& asset : index.assets) {
         if (folderOf(asset.path) != normalized) continue;
 
         std::string original = source->originalName(asset.path);
@@ -249,26 +249,26 @@ std::string Window::originalFolder(const editor::State& state, const std::string
 
 void Window::removeSelected(editor::State& state) {
     undo::Step step(state, "Remove image");
-    undo::asset(state, selected_);
+    undo::asset(state, selected);
 
-    state.pack.removeAsset(selected_);
+    state.pack.removeAsset(selected);
     // The bytes behind the path just changed — a pending add withdrawn, or a file that will
     // not be in the next save. Drop the cached texture so the preview follows.
-    state.resources.forget(selected_);
+    state.resources.forget(selected);
     state.touch();
 }
 
 void Window::drawRemovePopup(editor::State& state) {
     constexpr const char* kTitle = "Remove Image?";
 
-    if (open_remove_popup_) {
+    if (open_remove_popup) {
         ImGui::OpenPopup(kTitle);
-        open_remove_popup_ = false;
+        open_remove_popup = false;
     }
 
     if (!ImGui::BeginPopupModal(kTitle, nullptr, ImGuiWindowFlags_AlwaysAutoResize)) return;
 
-    const size_t references = referenceCount(selected_);
+    const size_t references = referenceCount(selected);
     ImGui::Text(references == 1 ? "%zu marker still points at this image." : "%zu markers still point at this image.", references);
     ImGui::TextDisabled("They will fall back to a plain dot until they point somewhere else.");
     ImGui::Separator();
@@ -286,7 +286,7 @@ void Window::drawRemovePopup(editor::State& state) {
 }
 
 void Window::drawPreview(editor::State& state) {
-    const viewer::Image preview = state.resources.image(selected_);
+    const viewer::Image preview = state.resources.image(selected);
     if (!preview.texture) {
         ImGui::TextDisabled("(no preview)");
         return;
@@ -303,7 +303,7 @@ void Window::drawPreview(editor::State& state) {
 }
 
 void Window::drawReferences(editor::State& state) {
-    const std::vector<editor::NodeRef>* nodes = referencesTo(selected_);
+    const std::vector<editor::NodeRef>* nodes = referencesTo(selected);
     if (!nodes) {
         ImGui::TextDisabled("Nothing references this.");
         return;
@@ -334,15 +334,15 @@ void Window::drawReferences(editor::State& state) {
 
 // Everything about the selected file: what it is, what uses it, and what can be done to it.
 void Window::drawSelected(editor::State& state) {
-    if (selected_.empty()) {
+    if (selected.empty()) {
         ImGui::TextDisabled("Select an image to preview it.");
         return;
     }
 
-    ImGui::TextWrapped("%s", selected_.c_str());
+    ImGui::TextWrapped("%s", selected.c_str());
 
-    const bool pending_add = state.pack.findAddedAsset(selected_) != nullptr;
-    const bool removed = state.pack.isAssetRemoved(selected_);
+    const bool pending_add = state.pack.findAddedAsset(selected) != nullptr;
+    const bool removed = state.pack.isAssetRemoved(selected);
 
     Window::drawPreview(state);
 
@@ -352,17 +352,17 @@ void Window::drawSelected(editor::State& state) {
     } else if (removed) {
         if (ImGui::Button(viewer::ui::fonts::label(ICON_FA_ROTATE_LEFT, "Restore").c_str())) {
             undo::Step step(state, "Restore image");
-            undo::asset(state, selected_);
-            state.pack.restoreAsset(selected_);
-            state.resources.forget(selected_);
+            undo::asset(state, selected);
+            state.pack.restoreAsset(selected);
+            state.resources.forget(selected);
             state.touch();
         }
     } else if (ImGui::Button(viewer::ui::fonts::label(ICON_FA_TRASH, "Remove").c_str())) {
         // Removing something nothing points at needs no ceremony.
-        if (referenceCount(selected_) == 0) {
+        if (referenceCount(selected) == 0) {
             Window::removeSelected(state);
         } else {
-            open_remove_popup_ = true;
+            open_remove_popup = true;
         }
     }
 
@@ -382,15 +382,15 @@ bool Window::draw(editor::State& state) {
 
     bool wants_add = ImGui::Button(viewer::ui::fonts::label(ICON_FA_IMAGE, "Add Image...").c_str());
     ImGui::SameLine();
-    ImGui::TextDisabled("%zu images, %zu unused", index_.assets.size(), index_.unreferenced);
+    ImGui::TextDisabled("%zu images, %zu unused", index.assets.size(), index.unreferenced);
 
     ImGui::TextDisabled("Add to:");
     ImGui::SameLine();
-    ImGui::TextUnformatted(target_folder_.empty() ? "(pack root)" : target_folder_.c_str());
+    ImGui::TextUnformatted(target_folder.empty() ? "(pack root)" : target_folder.c_str());
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("Click a folder to change this.");
 
     ImGui::SetNextItemWidth(-1.0f);
-    ImGui::InputTextWithHint("##filter", "Filter by file name", &filter_);
+    ImGui::InputTextWithHint("##filter", "Filter by file name", &filter);
 
     ImGui::Separator();
 
@@ -401,9 +401,9 @@ bool Window::draw(editor::State& state) {
     const float list_height = std::max(80.0f, available - kSelectedHeight);
 
     ImGui::BeginChild("##assets", ImVec2(0, list_height), true);
-    if (index_.assets.empty()) {
+    if (index.assets.empty()) {
         ImGui::TextDisabled("This pack ships no images.");
-    } else if (!filter_.empty()) {
+    } else if (!filter.empty()) {
         Window::drawFiltered(state);
     } else {
         Window::drawFolderContents(state, 0);
@@ -431,7 +431,7 @@ void Window::addFile(editor::State& state, const std::filesystem::path& file, st
         return;
     }
 
-    const std::string folder = originalFolder(state, target_folder_);
+    const std::string folder = originalFolder(state, target_folder);
     const std::string destination = folder.empty() ? util::pathText(file.filename()) : folder + "/" + util::pathText(file.filename());
     const std::string key = pack::normalizePath(destination);
 
@@ -445,7 +445,7 @@ void Window::addFile(editor::State& state, const std::filesystem::path& file, st
     state.resources.forget(key);
     state.touch();
 
-    selected_ = key;
+    selected = key;
     if (status) *status = (replacing ? "Replaced " : "Added ") + destination + " - pending save";
 }
 

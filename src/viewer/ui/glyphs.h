@@ -40,8 +40,8 @@ public:
     bool add(const Set& other);
 
     bool contains(char32_t c) const;
-    size_t size() const { return size_; }
-    bool empty() const { return size_ == 0; }
+    size_t size() const { return count; }
+    bool empty() const { return count == 0; }
 
     // As ImGui's GlyphRanges: first and last of each run, ended by a 0. Only what lies inside
     // `within`, every block of it when empty. Just the 0 when nothing does.
@@ -50,8 +50,8 @@ public:
 private:
     bool insert(char32_t c);
 
-    std::vector<uint64_t> words_; // one bit a codepoint; sized at the first insert
-    size_t size_ = 0;
+    std::vector<uint64_t> words; // one bit a codepoint; sized at the first insert
+    size_t count = 0;
 };
 
 // Every character a pack's text holds beyond kBase: its categories' names and every attribute

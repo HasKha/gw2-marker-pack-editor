@@ -62,7 +62,7 @@ std::optional<std::vector<std::string>> festivalsFromList(std::string_view json)
 }
 
 void FestivalFetcher::start() {
-    request_.start([](const http::Cancel& cancel) -> std::optional<std::vector<std::string>> {
+    request.start([](const http::Cancel& cancel) -> std::optional<std::vector<std::string>> {
         std::optional<std::vector<std::string>> active;
         if (const std::optional<std::string> body = http::get(kDailyGroupUrl, cancel)) active = festivalsFromDailyGroup(*body);
         // Since early 2022 the API has at times listed every festival at once; Blish HUD
@@ -76,7 +76,7 @@ void FestivalFetcher::start() {
 
 const std::vector<std::string>& FestivalFetcher::active() const {
     static const std::vector<std::string> kNone;
-    const std::vector<std::string>* active = request_.get();
+    const std::vector<std::string>* active = request.get();
     return active ? *active : kNone;
 }
 

@@ -151,16 +151,16 @@ public:
 private:
     void work();
 
-    std::vector<std::thread> workers_;
+    std::vector<std::thread> workers;
 
-    mutable std::mutex mutex_;
-    std::condition_variable wake_;
-    bool stopping_ = false;
-    std::deque<std::pair<uint64_t, std::filesystem::path>> queued_; // by when it was added
-    size_t loading_ = 0;
-    std::map<uint64_t, std::unique_ptr<LoadedPack>> done_;
-    uint64_t next_added_ = 0;
-    uint64_t next_taken_ = 0;
+    mutable std::mutex mutex;
+    std::condition_variable wake;
+    bool stopping = false;
+    std::deque<std::pair<uint64_t, std::filesystem::path>> queued; // by when it was added
+    size_t loading = 0;
+    std::map<uint64_t, std::unique_ptr<LoadedPack>> done;
+    uint64_t next_added = 0;
+    uint64_t next_taken = 0;
 };
 
 } // namespace viewer::registry

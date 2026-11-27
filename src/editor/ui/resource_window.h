@@ -74,14 +74,14 @@ private:
     void drawReferences(editor::State& state);
     void drawSelected(editor::State& state);
 
-    Index index_;
+    Index index;
 
     // The asset the preview and the buttons act on, and the folder an added file lands in.
-    std::string selected_;
-    std::string target_folder_;
-    bool target_chosen_ = false; // the user picked the folder; stop defaulting it
-    std::string filter_;
-    bool open_remove_popup_ = false;
+    std::string selected;
+    std::string target_folder;
+    bool target_chosen = false; // the user picked the folder; stop defaulting it
+    std::string filter;
+    bool open_remove_popup = false;
 };
 
 } // namespace ui::resource_window

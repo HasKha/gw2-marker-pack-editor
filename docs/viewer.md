@@ -259,7 +259,7 @@ on the current map (`runtime::nodesOnMap`) behind an "N Categories Are Hidden" r
 
 It is shown in Nexus's right-click menu, the menu of our icon in Nexus's bar (the default), or both. Nexus opens an icon's context
 menu on right click and presses its keybind ("Open Markus Menu") on left click, so the left click opens a
-popup of ours under the icon (`placeMenu`). Both are added and removed from the options page, which is safe
+popup of ours under the icon (`showInNexusMenu`, `showIcon`). Both are added and removed from the options page, which is safe
 since Nexus locks its quick access only while drawing the bar.
 
 ## The editor inside

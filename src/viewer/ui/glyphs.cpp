@@ -89,31 +89,31 @@ bool Set::add(char32_t c) {
 }
 
 bool Set::add(const Set& other) {
-    if (other.words_.empty()) return false;
-    if (words_.empty()) words_.resize(other.words_.size());
+    if (other.words.empty()) return false;
+    if (words.empty()) words.resize(other.words.size());
     bool added = false;
-    for (size_t i = 0; i < words_.size(); ++i) {
-        const uint64_t fresh = other.words_[i] & ~words_[i];
+    for (size_t i = 0; i < words.size(); ++i) {
+        const uint64_t fresh = other.words[i] & ~words[i];
         if (!fresh) continue;
-        words_[i] |= fresh;
-        size_ += static_cast<size_t>(std::popcount(fresh));
+        words[i] |= fresh;
+        count += static_cast<size_t>(std::popcount(fresh));
         added = true;
     }
     return added;
 }
 
 bool Set::contains(char32_t c) const {
-    if (c >= kPlaneEnd || words_.empty()) return false;
-    return (words_[c / 64] >> (c % 64)) & 1u;
+    if (c >= kPlaneEnd || words.empty()) return false;
+    return (words[c / 64] >> (c % 64)) & 1u;
 }
 
 bool Set::insert(char32_t c) {
-    if (words_.empty()) words_.resize(kPlaneEnd / 64);
-    uint64_t& word = words_[c / 64];
+    if (words.empty()) words.resize(kPlaneEnd / 64);
+    uint64_t& word = words[c / 64];
     const uint64_t bit = uint64_t{1} << (c % 64);
     if (word & bit) return false;
     word |= bit;
-    ++size_;
+    ++count;
     return true;
 }
 
@@ -126,7 +126,7 @@ std::vector<uint16_t> Set::ranges(std::span<const Block> within) const {
         }
         return false;
     };
-    if (!words_.empty()) {
+    if (!words.empty()) {
         char32_t run = 0; // the first of the run being walked; 0 for none, which is never in the set
         for (char32_t c = 1; c <= kPlaneEnd; ++c) {
             const bool in = c < kPlaneEnd && contains(c) && inside(c);

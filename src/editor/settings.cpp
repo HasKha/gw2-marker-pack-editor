@@ -21,7 +21,7 @@ File::File(AddonAPI* api) {
 
     // Nexus makes the directory; the file is ours.
     const char* directory = api->Paths.GetAddonDirectory(viewer::ADDON_FOLDER);
-    if (directory) path_ = std::filesystem::path(directory) / FILE_NAME;
+    if (directory) path = std::filesystem::path(directory) / FILE_NAME;
 }
 
 void File::load(
@@ -29,7 +29,7 @@ void File::load(
     ui::windows::Shown* windows,
     std::filesystem::path* last_folder,
     std::filesystem::path* last_image_folder) {
-    const std::optional<nlohmann::json> read = util::json_file::readObject(path_);
+    const std::optional<nlohmann::json> read = util::json_file::readObject(path);
     if (!read) return;
     const nlohmann::json& parsed = *read;
 
@@ -52,7 +52,7 @@ void File::load(
     *last_folder = util::pathFromText(util::json_file::readString(parsed, "last_folder"));
     *last_image_folder = util::pathFromText(util::json_file::readString(parsed, "last_image_folder"));
 
-    written_ = Snapshot{*editor, *windows, *last_folder, *last_image_folder};
+    written = Snapshot{*editor, *windows, *last_folder, *last_image_folder};
 }
 
 void File::update(
@@ -60,11 +60,11 @@ void File::update(
     const ui::windows::Shown& windows,
     const std::filesystem::path& last_folder,
     const std::filesystem::path& last_image_folder) {
-    if (path_.empty()) return;
+    if (path.empty()) return;
     // Part by part rather than against a Snapshot built to compare: this runs every frame, and
     // building one would copy two paths each time to almost always conclude nothing happened.
-    if (written_ && written_->editor == editor && written_->windows == windows && written_->last_folder == last_folder &&
-        written_->last_image_folder == last_image_folder) {
+    if (written && written->editor == editor && written->windows == windows && written->last_folder == last_folder &&
+        written->last_image_folder == last_image_folder) {
         return;
     }
 
@@ -76,7 +76,7 @@ void File::update(
     out["last_folder"] = util::pathText(last_folder);
     out["last_image_folder"] = util::pathText(last_image_folder);
 
-    if (util::json_file::write(path_, out)) written_ = Snapshot{editor, windows, last_folder, last_image_folder};
+    if (util::json_file::write(path, out)) written = Snapshot{editor, windows, last_folder, last_image_folder};
 }
 
 } // namespace settings

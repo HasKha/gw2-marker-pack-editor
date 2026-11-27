@@ -32,7 +32,7 @@ public:
     Step& operator=(const Step&) = delete;
 
 private:
-    editor::State& state_;
+    editor::State& state;
 };
 
 // All of these take the before-image now; the after-image is read when the step closes.

@@ -49,9 +49,9 @@ private:
         std::filesystem::path last_image_folder;
     };
 
-    std::filesystem::path path_;
+    std::filesystem::path path;
     // What was last written or read, for update to compare against.
-    std::optional<Snapshot> written_;
+    std::optional<Snapshot> written;
 };
 
 } // namespace settings

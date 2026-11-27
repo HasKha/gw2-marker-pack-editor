@@ -25,35 +25,35 @@ class SilentServer
 public:
     SilentServer() {
         WSADATA data{};
-        started_ = WSAStartup(MAKEWORD(2, 2), &data) == 0;
-        socket_ = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+        started = WSAStartup(MAKEWORD(2, 2), &data) == 0;
+        listen_socket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
         sockaddr_in address{};
         address.sin_family = AF_INET;
         address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
         address.sin_port = 0; // any free port
-        bind(socket_, reinterpret_cast<const sockaddr*>(&address), sizeof(address));
-        listen(socket_, 4);
+        bind(listen_socket, reinterpret_cast<const sockaddr*>(&address), sizeof(address));
+        listen(listen_socket, 4);
         int length = sizeof(address);
-        getsockname(socket_, reinterpret_cast<sockaddr*>(&address), &length);
-        port_ = ntohs(address.sin_port);
+        getsockname(listen_socket, reinterpret_cast<sockaddr*>(&address), &length);
+        port = ntohs(address.sin_port);
     }
     ~SilentServer() {
         close();
-        if (started_) WSACleanup();
+        if (started) WSACleanup();
     }
 
-    std::string url() const { return "http://127.0.0.1:" + std::to_string(port_) + "/"; }
-    SOCKET listener() const { return socket_; }
+    std::string url() const { return "http://127.0.0.1:" + std::to_string(port) + "/"; }
+    SOCKET listener() const { return listen_socket; }
     // Stops listening, which ends an accept() waiting on it.
     void close() {
-        if (socket_ != INVALID_SOCKET) closesocket(socket_);
-        socket_ = INVALID_SOCKET;
+        if (listen_socket != INVALID_SOCKET) closesocket(listen_socket);
+        listen_socket = INVALID_SOCKET;
     }
 
 private:
-    bool started_ = false;
-    SOCKET socket_ = INVALID_SOCKET;
-    unsigned short port_ = 0;
+    bool started = false;
+    SOCKET listen_socket = INVALID_SOCKET;
+    unsigned short port = 0;
 };
 
 // A server on localhost that answers its first request with `status`, a line such as
@@ -62,35 +62,35 @@ class OneReplyServer
 {
 public:
     OneReplyServer(const std::string& status, const std::string& body)
-        : reply_("HTTP/1.1 " + status + "\r\nContent-Length: " + std::to_string(body.size()) + "\r\nConnection: close\r\n\r\n" + body) {
-        thread_ = std::thread([this] {
-            const SOCKET client = accept(silent_.listener(), nullptr, nullptr);
+        : reply("HTTP/1.1 " + status + "\r\nContent-Length: " + std::to_string(body.size()) + "\r\nConnection: close\r\n\r\n" + body) {
+        thread = std::thread([this] {
+            const SOCKET client = accept(silent.listener(), nullptr, nullptr);
             if (client == INVALID_SOCKET) return;
             char buffer[4096];
-            while (request_.find("\r\n\r\n") == std::string::npos) {
+            while (received.find("\r\n\r\n") == std::string::npos) {
                 const int read = recv(client, buffer, sizeof(buffer), 0);
                 if (read <= 0) break;
-                request_.append(buffer, static_cast<size_t>(read));
+                received.append(buffer, static_cast<size_t>(read));
             }
-            send(client, reply_.data(), static_cast<int>(reply_.size()), 0);
+            send(client, reply.data(), static_cast<int>(reply.size()), 0);
             shutdown(client, SD_SEND);
             closesocket(client);
         });
     }
     ~OneReplyServer() {
-        silent_.close();
-        thread_.join();
+        silent.close();
+        thread.join();
     }
 
-    std::string url() const { return silent_.url(); }
+    std::string url() const { return silent.url(); }
     // What the request sent, once it has its answer.
-    const std::string& request() const { return request_; }
+    const std::string& request() const { return received; }
 
 private:
-    SilentServer silent_;
-    std::string reply_;
-    std::string request_;
-    std::thread thread_;
+    SilentServer silent;
+    std::string reply;
+    std::string received;
+    std::thread thread;
 };
 
 } // namespace

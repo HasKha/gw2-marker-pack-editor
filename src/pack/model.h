@@ -36,12 +36,12 @@ public:
     void set(std::string_view name, std::string value);
     bool erase(std::string_view key);
 
-    const std::vector<Attribute>& all() const { return attributes_; }
-    bool empty() const { return attributes_.empty(); }
-    size_t size() const { return attributes_.size(); }
+    const std::vector<Attribute>& all() const { return attributes; }
+    bool empty() const { return attributes.empty(); }
+    size_t size() const { return attributes.size(); }
 
 private:
-    std::vector<Attribute> attributes_;
+    std::vector<Attribute> attributes;
 };
 
 // Where a model node lives in the parsed document, which lives as long as the pack.

@@ -25,7 +25,7 @@ public:
         std::string(const std::string& url, const std::filesystem::path& file, const http::Progress& progress, const http::Cancel& cancel)>;
 
     explicit Downloads(Fetch fetch = defaultFetch())
-        : fetch_(std::move(fetch)) {}
+        : fetch(std::move(fetch)) {}
     ~Downloads() { stop(); }
     Downloads(const Downloads&) = delete;
     Downloads& operator=(const Downloads&) = delete;
@@ -75,8 +75,8 @@ private:
 
     Job* find(const std::string& file_name) const;
 
-    Fetch fetch_;
-    std::vector<std::unique_ptr<Job>> jobs_;
+    Fetch fetch;
+    std::vector<std::unique_ptr<Job>> jobs;
 };
 
 } // namespace viewer::catalog

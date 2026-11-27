@@ -56,8 +56,8 @@ public:
     using Clock = std::chrono::steady_clock;
 
     // Where the cache is, empty for none: it is read now, at load, before there is a frame to
-    // stall. `jobs` removes it, and outlives the catalog.
-    void open(const std::filesystem::path& cache_file, util::JobQueue* jobs);
+    // stall. `queue` removes it, and outlives the catalog.
+    void open(const std::filesystem::path& cache_file, util::JobQueue* queue);
 
     // The details of `id`, or null while they are not known: asked for on the next update.
     // Null for good for an id the API does not know.
@@ -73,14 +73,14 @@ public:
     void stop();
 
 private:
-    std::filesystem::path file_;
-    util::JobQueue* jobs_ = nullptr;
-    Known known_;
-    std::set<int> wanted_; // looked up, not known, not yet asked for
-    // The ask in flight, which works on a copy of known_ and hands the whole of it back.
-    std::unique_ptr<http::Background<Known>> request_;
-    std::set<int> asking_; // what it asks for, wanted again if it fails
-    std::optional<Clock::time_point> failed_at_; // the last ask the API did not answer
+    std::filesystem::path file;
+    util::JobQueue* jobs = nullptr;
+    Known known;
+    std::set<int> wanted; // looked up, not known, not yet asked for
+    // The ask in flight, which works on a copy of known and hands the whole of it back.
+    std::unique_ptr<http::Background<Known>> request;
+    std::set<int> asking; // what it asks for, wanted again if it fails
+    std::optional<Clock::time_point> failed_at; // the last ask the API did not answer
 };
 
 } // namespace viewer::achievements

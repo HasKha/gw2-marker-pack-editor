@@ -45,18 +45,18 @@ UtcMillis nextWeeklyReset(UtcMillis now) {
 
 bool BehaviorStates::hidden(Mode mode, const Guid& guid, uint64_t instance, UtcMillis now) const {
     switch (mode) {
-    case Mode::ReappearOnMapChange: return until_map_change_.contains(guid);
+    case Mode::ReappearOnMapChange: return until_map_change.contains(guid);
     case Mode::ReappearOnDailyReset:
     case Mode::OnlyVisibleBeforeActivation:
     case Mode::ReappearAfterTimer:
     case Mode::OnceDailyPerCharacter:
     case Mode::ReappearOnWeeklyReset: {
-        const auto timer = until_time_.find(guid);
-        return timer != until_time_.end() && timer->second > now;
+        const auto timer = until_time.find(guid);
+        return timer != until_time.end() && timer->second > now;
     }
     case Mode::OncePerInstance: {
-        const auto shard = in_instance_.find(instance);
-        return shard != in_instance_.end() && shard->second.contains(guid);
+        const auto shard = in_instance.find(instance);
+        return shard != in_instance.end() && shard->second.contains(guid);
     }
     default: return false;
     }
@@ -64,46 +64,46 @@ bool BehaviorStates::hidden(Mode mode, const Guid& guid, uint64_t instance, UtcM
 
 void BehaviorStates::hide(Mode mode, const Guid& guid, uint64_t instance) {
     switch (mode) {
-    case Mode::ReappearOnMapChange: until_map_change_.insert(guid); break;
+    case Mode::ReappearOnMapChange: until_map_change.insert(guid); break;
     case Mode::OnlyVisibleBeforeActivation: hideUntil(guid, kForever); break;
-    case Mode::OncePerInstance: in_instance_[instance].insert(guid); break;
+    case Mode::OncePerInstance: in_instance[instance].insert(guid); break;
     default: break; // a timed mode hides through hideUntil
     }
 }
 
 void BehaviorStates::hideUntil(const Guid& guid, UtcMillis expiry) {
-    UtcMillis& stored = until_time_[guid];
+    UtcMillis& stored = until_time[guid];
     stored = std::max(stored, expiry);
-    ++revision_;
+    ++current_revision;
 }
 
 void BehaviorStates::clear(const Guid& guid) {
     // As ClearHiddenBehavior: the first place that held it.
-    if (until_map_change_.erase(guid)) return;
-    if (until_time_.erase(guid)) {
-        ++revision_;
+    if (until_map_change.erase(guid)) return;
+    if (until_time.erase(guid)) {
+        ++current_revision;
         return;
     }
-    for (auto& [instance, guids] : in_instance_) {
+    for (auto& [instance, guids] : in_instance) {
         if (guids.erase(guid)) return;
     }
 }
 
 void BehaviorStates::expire(UtcMillis now) {
-    std::erase_if(until_time_, [&](const auto& timer) {
+    std::erase_if(until_time, [&](const auto& timer) {
         const bool expired = timer.second <= now;
-        if (expired) ++revision_;
+        if (expired) ++current_revision;
         return expired;
     });
 }
 
 void BehaviorStates::mapChanged() {
-    until_map_change_.clear();
+    until_map_change.clear();
 }
 
 void BehaviorStates::load(const std::filesystem::path& file) {
-    until_time_.clear();
-    ++revision_;
+    until_time.clear();
+    ++current_revision;
     std::ifstream in(file);
     std::string line;
     while (std::getline(in, line)) {
@@ -115,23 +115,23 @@ void BehaviorStates::load(const std::filesystem::path& file) {
         std::string when = line.substr(comma + 1);
         if (!when.empty() && when.front() == 't') when.erase(0, 1);
         const std::optional<UtcMillis> expiry = parseUtc(when);
-        if (guid && expiry) until_time_[*guid] = std::max(until_time_[*guid], *expiry);
+        if (guid && expiry) until_time[*guid] = std::max(until_time[*guid], *expiry);
     }
 }
 
 void BehaviorStates::merge(const BehaviorStates& other) {
-    for (const auto& [guid, expiry] : other.until_time_) {
-        UtcMillis& mine = until_time_[guid];
+    for (const auto& [guid, expiry] : other.until_time) {
+        UtcMillis& mine = until_time[guid];
         if (expiry > mine) {
             mine = expiry;
-            ++revision_;
+            ++current_revision;
         }
     }
 }
 
 std::string BehaviorStates::text() const {
     std::string text;
-    for (const auto& [guid, expiry] : until_time_) text += toString(guid) + ",t" + formatUtc(expiry) + "\n";
+    for (const auto& [guid, expiry] : until_time) text += toString(guid) + ",t" + formatUtc(expiry) + "\n";
     return text;
 }
 

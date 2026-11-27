@@ -79,92 +79,92 @@ bool Archive::open(const std::filesystem::path& file, std::string* error) {
         return false;
     }
 
-    impl_ = std::make_unique<Impl>();
-    impl_->file = openShared(file);
-    if (!impl_->file) {
+    impl = std::make_unique<Impl>();
+    impl->file = openShared(file);
+    if (!impl->file) {
         if (error) *error = "Could not open " + util::pathText(file);
-        impl_.reset();
+        impl.reset();
         return false;
     }
     const uintmax_t size = std::filesystem::file_size(file, ec);
-    if (ec || !mz_zip_reader_init_cfile(&impl_->zip, impl_->file, static_cast<mz_uint64>(size), 0)) {
-        if (error) *error = "Could not open archive: " + std::string(mz_zip_get_error_string(mz_zip_get_last_error(&impl_->zip)));
-        std::fclose(impl_->file);
-        impl_.reset();
+    if (ec || !mz_zip_reader_init_cfile(&impl->zip, impl->file, static_cast<mz_uint64>(size), 0)) {
+        if (error) *error = "Could not open archive: " + std::string(mz_zip_get_error_string(mz_zip_get_last_error(&impl->zip)));
+        std::fclose(impl->file);
+        impl.reset();
         return false;
     }
 
-    open_ = true;
-    source_ = file;
+    opened = true;
+    source = file;
 
-    const mz_uint count = mz_zip_reader_get_num_files(&impl_->zip);
-    entries_.reserve(count);
+    const mz_uint count = mz_zip_reader_get_num_files(&impl->zip);
+    entry_names.reserve(count);
 
     for (mz_uint i = 0; i < count; ++i) {
-        if (mz_zip_reader_is_file_a_directory(&impl_->zip, i)) continue;
+        if (mz_zip_reader_is_file_a_directory(&impl->zip, i)) continue;
 
         // Length first, then the copy. miniz truncates into whatever buffer it is given and
         // reports the truncated length, so a fixed buffer would turn an over-long path into
         // a different entry — one a save would then write back under the wrong name. With a
         // zero size it copies nothing and returns the real length (plus the terminator).
-        const mz_uint length = mz_zip_reader_get_filename(&impl_->zip, i, nullptr, 0);
+        const mz_uint length = mz_zip_reader_get_filename(&impl->zip, i, nullptr, 0);
         if (length <= 1) continue; // 0 is an error, 1 is an empty name
 
         std::string name(length, '\0');
-        const mz_uint written = mz_zip_reader_get_filename(&impl_->zip, i, name.data(), length);
+        const mz_uint written = mz_zip_reader_get_filename(&impl->zip, i, name.data(), length);
         if (written == 0) continue;
         name.resize(written - 1);
 
         std::string normalized = normalizePath(name);
         if (normalized.empty()) continue;
 
-        original_names_.emplace(normalized, name);
-        entries_.push_back(normalized);
+        original_names.emplace(normalized, name);
+        entry_names.push_back(normalized);
         // First entry wins on a duplicate name, matching how a reader scanning forward
         // would resolve it.
-        index_.emplace(std::move(normalized), static_cast<uint32_t>(i));
+        index.emplace(std::move(normalized), static_cast<uint32_t>(i));
     }
 
     return true;
 }
 
 std::string Archive::originalName(std::string_view path) const {
-    auto it = original_names_.find(normalizePath(path));
-    return it == original_names_.end() ? std::string() : it->second;
+    auto it = original_names.find(normalizePath(path));
+    return it == original_names.end() ? std::string() : it->second;
 }
 
 void Archive::close() {
-    if (impl_) {
-        if (open_) mz_zip_reader_end(&impl_->zip);
-        if (impl_->file) std::fclose(impl_->file);
-        impl_.reset();
+    if (impl) {
+        if (opened) mz_zip_reader_end(&impl->zip);
+        if (impl->file) std::fclose(impl->file);
+        impl.reset();
     }
-    open_ = false;
-    source_.clear();
-    entries_.clear();
-    index_.clear();
-    original_names_.clear();
+    opened = false;
+    source.clear();
+    entry_names.clear();
+    index.clear();
+    original_names.clear();
 }
 
 bool Archive::contains(std::string_view path) const {
-    return index_.find(normalizePath(path)) != index_.end();
+    return index.find(normalizePath(path)) != index.end();
 }
 
 bool Archive::read(std::string_view path, std::vector<uint8_t>* out, std::string* error) const {
-    if (!open_) {
+    if (!opened) {
         if (error) *error = "Archive is not open";
         return false;
     }
 
-    auto it = index_.find(normalizePath(path));
-    if (it == index_.end()) {
+    auto it = index.find(normalizePath(path));
+    if (it == index.end()) {
         if (error) *error = "No such entry: " + std::string(path);
         return false;
     }
 
-    const std::lock_guard<std::mutex> lock(impl_->reading);
+    const std::lock_guard<std::mutex> lock(impl->reading);
     mz_zip_archive_file_stat stat{};
-    if (!mz_zip_reader_file_stat(&impl_->zip, it->second, &stat)) {
+    if (!mz_zip_reader_file_stat(&impl->zip, it->second, &stat)) {
         if (error) *error = "Could not stat entry: " + std::string(path);
         return false;
     }
@@ -172,9 +172,9 @@ bool Archive::read(std::string_view path, std::vector<uint8_t>* out, std::string
     out->resize(static_cast<size_t>(stat.m_uncomp_size));
     if (stat.m_uncomp_size == 0) return true;
 
-    if (!mz_zip_reader_extract_to_mem(&impl_->zip, it->second, out->data(), out->size(), 0)) {
+    if (!mz_zip_reader_extract_to_mem(&impl->zip, it->second, out->data(), out->size(), 0)) {
         if (error) {
-            *error = "Could not extract " + std::string(path) + ": " + mz_zip_get_error_string(mz_zip_get_last_error(&impl_->zip));
+            *error = "Could not extract " + std::string(path) + ": " + mz_zip_get_error_string(mz_zip_get_last_error(&impl->zip));
         }
         out->clear();
         return false;

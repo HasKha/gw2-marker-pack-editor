@@ -172,16 +172,16 @@ std::string groupedInteger(double value) {
 std::shared_ptr<const TrailLines> TrailCache::get(const runtime::LiveMap& live, const map::MapDetails& details) {
     // Trails come from the packs alone, so the map and the packs it was built from say
     // whether they are the same ones; a script can remove one, which a frame skips.
-    if (lines_ && live.map_id == map_id_ && live.revision == revision_ && live.trails.size() == trail_count_ && &details == details_) {
-        return lines_;
+    if (lines && live.map_id == map_id && live.revision == revision && live.trails.size() == trail_count && &details == built_details) {
+        return lines;
     }
-    auto lines = std::make_shared<TrailLines>();
-    lines->paths.reserve(live.trails.size());
+    auto built = std::make_shared<TrailLines>();
+    built->paths.reserve(live.trails.size());
     for (const runtime::LiveTrail& live_trail : live.trails) {
         const BakedTrail& trail = live_trail.trail;
         Path path;
-        path.trail = lines->paths.size();
-        path.first = lines->lines.size();
+        path.trail = built->paths.size();
+        path.first = built->lines.size();
         path.min = glm::dvec2(std::numeric_limits<double>::max());
         path.max = glm::dvec2(std::numeric_limits<double>::lowest());
         if (trail.geometry) {
@@ -193,84 +193,84 @@ std::shared_ptr<const TrailLines> TrailCache::get(const runtime::LiveMap& live, 
                     const Line line{map::continentPosition(details, from), map::continentPosition(details, to), (from.y + to.y) * 0.5f};
                     path.min = glm::min(path.min, glm::min(line.from, line.to));
                     path.max = glm::max(path.max, glm::max(line.from, line.to));
-                    lines->lines.push_back(line);
+                    built->lines.push_back(line);
                 }
             }
         }
-        path.count = lines->lines.size() - path.first;
-        lines->paths.push_back(path);
+        path.count = built->lines.size() - path.first;
+        built->paths.push_back(path);
     }
-    map_id_ = live.map_id;
-    revision_ = live.revision;
-    trail_count_ = live.trails.size();
-    details_ = &details;
-    lines_ = std::move(lines);
-    return lines_;
+    map_id = live.map_id;
+    revision = live.revision;
+    trail_count = live.trails.size();
+    built_details = &details;
+    lines = std::move(built);
+    return lines;
 }
 
 float FadeIn::update(const MumbleState& mumble, double seconds) {
-    if (mumble.is_map_open != map_open_ || mumble.ui_size != ui_size_) {
-        map_open_ = mumble.is_map_open;
-        ui_size_ = mumble.ui_size;
-        since_ = seconds;
+    if (mumble.is_map_open != map_open || mumble.ui_size != ui_size) {
+        map_open = mumble.is_map_open;
+        ui_size = mumble.ui_size;
+        since = seconds;
     }
-    return static_cast<float>(std::clamp((seconds - since_) / kFadeSeconds, 0.0, 1.0));
+    return static_cast<float>(std::clamp((seconds - since) / kFadeSeconds, 0.0, 1.0));
 }
 
 FullMapZoom::Frame FullMapZoom::update(bool map_open, bool world_drawn, double seconds, const std::optional<GameFrame>& game) {
     // Kept going under the game's map too, so it carries on where GoodRender stops handing one.
     const Frame estimated = estimate(map_open, world_drawn, seconds);
     if (!map_open) {
-        game_map_.reset();
+        game_map.reset();
         return estimated;
     }
     if (game && game->map) {
-        game_map_ = game->map;
-        return Frame{game_map_->zoom, game_map_->fade, true};
+        game_map = game->map;
+        return Frame{game_map->zoom, game_map->fade, true};
     }
-    if (game && game_map_) {
+    if (game && game_map) {
         // No world is the map fully open over it. A moment with no map after the closing is the
         // closing played out; before, a frame GoodRender could not read the map in, which keeps the last.
         if (!game->moment) return Frame{1.0f, 1.0f, true};
-        return Frame{game_map_->zoom, game_map_->closing ? 0.0f : game_map_->fade, true};
+        return Frame{game_map->zoom, game_map->closing ? 0.0f : game_map->fade, true};
     }
     return estimated;
 }
 
 FullMapZoom::Frame FullMapZoom::estimate(bool map_open, bool world_drawn, double seconds) {
     if (!map_open) {
-        map_open_ = false;
-        frames_without_world_ = 0;
-        closing_at_.reset();
+        was_open = false;
+        frames_without_world = 0;
+        closing_at.reset();
         return Frame{};
     }
-    if (!map_open_) {
-        frames_without_world_ = 0;
-        closing_at_.reset();
-        map_open_ = true;
-        opened_at_ = seconds;
+    if (!was_open) {
+        frames_without_world = 0;
+        closing_at.reset();
+        was_open = true;
+        opened_at = seconds;
     }
 
     // Frames in a row without the world, once the opening is done, that say the map is fully up;
     // more than one, so a frame GoodRender happened to miss is not taken for it.
     constexpr int kFramesWithoutWorld = 3;
-    if (!closing_at_ && seconds - opened_at_ >= kZoomOpenSeconds) {
+    if (!closing_at && seconds - opened_at >= kZoomOpenSeconds) {
         if (!world_drawn) {
-            ++frames_without_world_;
-        } else if (frames_without_world_ >= kFramesWithoutWorld) {
-            closing_at_ = seconds;
+            ++frames_without_world;
+        } else if (frames_without_world >= kFramesWithoutWorld) {
+            closing_at = seconds;
         } else {
-            frames_without_world_ = 0;
+            frames_without_world = 0;
         }
     }
 
     Frame frame;
-    if (closing_at_) {
-        const double closing = std::max(0.0, seconds - *closing_at_ - kZoomCloseDelay);
+    if (closing_at) {
+        const double closing = std::max(0.0, seconds - *closing_at - kZoomCloseDelay);
         frame.zoom = static_cast<float>(std::min(kZoomMost, 1.0 + kZoomPerSecond * closing));
         frame.opacity = static_cast<float>(std::clamp(1.0 - closing / kCloseFadeSeconds, 0.0, 1.0));
     } else {
-        frame.zoom = static_cast<float>(1.0 + kZoomPerSecond * std::max(0.0, kZoomOpenSeconds - (seconds - opened_at_)));
+        frame.zoom = static_cast<float>(1.0 + kZoomPerSecond * std::max(0.0, kZoomOpenSeconds - (seconds - opened_at)));
     }
     return frame;
 }
@@ -302,15 +302,15 @@ MumbleState withCompass(MumbleState mumble, const Compass& compass) {
 CompassKeeper::Kept CompassKeeper::update(const MumbleState& mumble) {
     const Compass now = compassOf(mumble);
     if (mumble.is_map_open) {
-        full_map_ = now;
-        keep_ = true;
-    } else if (!keep_ || now.scale != full_map_.scale || now.centre != full_map_.centre) {
+        full_map = now;
+        keep = true;
+    } else if (!keep || now.scale != full_map.scale || now.centre != full_map.centre) {
         // Exactly the full map's last scale and centre is its fields not yet given back; the
         // compass's own being those to the bit does not happen.
-        keep_ = false;
-        compass_ = now;
+        keep = false;
+        compass = now;
     }
-    return Kept{compass_, keep_};
+    return Kept{compass, keep};
 }
 
 void build(

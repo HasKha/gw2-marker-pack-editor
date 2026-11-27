@@ -128,29 +128,29 @@ Copied copyPacks(const std::vector<std::filesystem::path>& packs, const std::fil
 }
 
 void Importer::find(const std::filesystem::path& markers) {
-    found_ = blish_import::find(markers);
+    last_found = blish_import::find(markers);
 }
 
 void Importer::findOnWorker(const std::filesystem::path& markers, util::JobQueue* jobs) {
-    if (!search_.valid()) search_ = jobs->ask([markers] { return blish_import::find(markers); });
+    if (!search.valid()) search = jobs->ask([markers] { return blish_import::find(markers); });
 }
 
 bool Importer::takeFound() {
-    if (!util::ready(search_)) return false;
-    found_ = util::take(search_).value_or(Found{});
-    status_.clear();
+    if (!util::ready(search)) return false;
+    last_found = util::take(search).value_or(Found{});
+    status_text.clear();
     return true;
 }
 
 void Importer::start(std::vector<std::filesystem::path> packs, const std::filesystem::path& folder) {
     Done chosen;
-    chosen.states.categories = found_.categories;
-    chosen.states.storage = found_.storage;
-    chosen.states.timers = found_.timers;
+    chosen.states.categories = last_found.categories;
+    chosen.states.storage = last_found.storage;
+    chosen.states.timers = last_found.timers;
 
-    status_ = "Importing...";
-    job_ = std::make_unique<http::Background<Done>>();
-    job_->start([packs = std::move(packs), chosen = std::move(chosen), folder](const http::Cancel&) -> std::optional<Done> {
+    status_text = "Importing...";
+    job = std::make_unique<http::Background<Done>>();
+    job->start([packs = std::move(packs), chosen = std::move(chosen), folder](const http::Cancel&) -> std::optional<Done> {
         Done done = chosen;
         done.copied = copyPacks(packs, folder);
         if (!done.states.timers.empty()) done.timers.load(done.states.timers);
@@ -159,16 +159,16 @@ void Importer::start(std::vector<std::filesystem::path> packs, const std::filesy
 }
 
 std::optional<Importer::Done> Importer::finish() {
-    if (!job_ || !job_->finished()) return std::nullopt;
-    std::optional<Done> done = job_->take();
-    job_.reset();
+    if (!job || !job->finished()) return std::nullopt;
+    std::optional<Done> done = job->take();
+    job.reset();
     if (done) {
         // A pack kept because ours was as new is imported as far as the player can tell.
         const size_t imported = done->copied.copied + done->copied.kept;
-        status_ = imported == 1 ? "Imported 1 marker pack." : "Imported " + std::to_string(imported) + " marker packs.";
-        for (const std::string& error : done->copied.errors) status_ += "\nCould not import " + error;
+        status_text = imported == 1 ? "Imported 1 marker pack." : "Imported " + std::to_string(imported) + " marker packs.";
+        for (const std::string& error : done->copied.errors) status_text += "\nCould not import " + error;
     } else {
-        status_ = "The import did not finish.";
+        status_text = "The import did not finish.";
     }
     return done;
 }

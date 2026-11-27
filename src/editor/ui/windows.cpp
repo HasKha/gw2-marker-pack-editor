@@ -40,7 +40,7 @@ const char* key(Id id) {
 // Seeded from the table rather than spelled out per index: adding a window has to stay one
 // row, and a hand-written initializer would quietly leave the sixth one hidden.
 Shown::Shown() {
-    for (size_t i = 0; i < kCount; ++i) shown_[i] = kWindows[i].visible_by_default;
+    for (size_t i = 0; i < kCount; ++i) shown[i] = kWindows[i].visible_by_default;
 }
 
 void drawViewMenu(Shown& shown) {

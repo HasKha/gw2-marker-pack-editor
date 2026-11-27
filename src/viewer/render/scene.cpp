@@ -61,31 +61,31 @@ public:
         const float half_tall = std::min(camera.fov * 0.5f + kTurnRadians, kMostHalfAngle);
         const float half_wide = std::min(std::atan(std::tan(camera.fov * 0.5f) * camera.aspect) + kTurnRadians, kMostHalfAngle);
         // Each side's normal, pointing in.
-        normals_[0] = camera.front * std::sin(half_wide) - right * std::cos(half_wide);
-        normals_[1] = camera.front * std::sin(half_wide) + right * std::cos(half_wide);
-        normals_[2] = camera.front * std::sin(half_tall) - up * std::cos(half_tall);
-        normals_[3] = camera.front * std::sin(half_tall) + up * std::cos(half_tall);
-        apex_ = camera.position;
-        slack_ = kMoveMetres;
+        normals[0] = camera.front * std::sin(half_wide) - right * std::cos(half_wide);
+        normals[1] = camera.front * std::sin(half_wide) + right * std::cos(half_wide);
+        normals[2] = camera.front * std::sin(half_tall) - up * std::cos(half_tall);
+        normals[3] = camera.front * std::sin(half_tall) + up * std::cos(half_tall);
+        apex = camera.position;
+        slack = kMoveMetres;
         // The turn's room as pixels at the middle of the screen.
-        margin_pixels_ = kTurnRadians * camera.viewport.y / camera.fov;
-        enabled_ = true;
+        margin_pixels = kTurnRadians * camera.viewport.y / camera.fov;
+        enabled = true;
     }
 
     bool sphereOutside(const glm::vec3& centre, float radius) const {
-        if (!enabled_) return false;
-        for (const glm::vec3& normal : normals_) {
-            if (glm::dot(normal, centre - apex_) < -(radius + slack_)) return true;
+        if (!enabled) return false;
+        for (const glm::vec3& normal : normals) {
+            if (glm::dot(normal, centre - apex) < -(radius + slack)) return true;
         }
         return false;
     }
 
     bool boxOutside(const glm::vec3& min, const glm::vec3& max) const {
-        if (!enabled_) return false;
-        for (const glm::vec3& normal : normals_) {
+        if (!enabled) return false;
+        for (const glm::vec3& normal : normals) {
             // The box's corner farthest along the normal, which is in if any corner is.
             const glm::vec3 corner(normal.x >= 0.0f ? max.x : min.x, normal.y >= 0.0f ? max.y : min.y, normal.z >= 0.0f ? max.z : min.z);
-            if (glm::dot(normal, corner - apex_) < -slack_) return true;
+            if (glm::dot(normal, corner - apex) < -slack) return true;
         }
         return false;
     }
@@ -93,14 +93,14 @@ public:
     // How big on screen minSize may make a billboard and still leave the turn's room to the
     // test: minSize clamps a billboard's pixels whatever its size in the world, so one far away
     // can be much larger than its sphere.
-    float mostMinSize() const { return enabled_ ? margin_pixels_ * 0.5f : 0.0f; }
+    float mostMinSize() const { return enabled ? margin_pixels * 0.5f : 0.0f; }
 
 private:
-    bool enabled_ = false; // false leaves nothing out: no camera to widen
-    glm::vec3 apex_{0.0f};
-    glm::vec3 normals_[4];
-    float slack_ = 0.0f;
-    float margin_pixels_ = 0.0f;
+    bool enabled = false; // false leaves nothing out: no camera to widen
+    glm::vec3 apex{0.0f};
+    glm::vec3 normals[4];
+    float slack = 0.0f;
+    float margin_pixels = 0.0f;
 };
 
 // How far `point` is from the nearest point of the segment a→b.
@@ -315,7 +315,7 @@ void buildScene(const std::vector<SceneLayer>& layers, const Camera& camera, flo
 
     // Built with the map up too. The world stays on screen while the map opens and closes, and
     // GoodRender draws it under the game's UI, which the map is part of; the overlay, over that UI,
-    // skips it itself (drawWorld). Not on a loading screen, whatever MumbleLink still says.
+    // skips it itself (Session::render). Not on a loading screen, whatever MumbleLink still says.
     if (!camera.valid || !options.in_gameplay || !options.enabled) return;
 
     const float settings_opacity = options.max_opacity * (options.combat_fade && options.in_combat ? 0.5f : 1.0f);

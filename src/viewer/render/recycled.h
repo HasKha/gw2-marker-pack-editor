@@ -11,20 +11,20 @@ class Recycled
 {
 public:
     // A scene to build into: the spare, if nothing holds it, or a new one.
-    std::shared_ptr<T> take() { return spare_ && spare_.use_count() == 1 ? std::move(spare_) : std::make_shared<T>(); }
+    std::shared_ptr<T> take() { return spare && spare.use_count() == 1 ? std::move(spare) : std::make_shared<T>(); }
     // Keeps `built`, which is about to be published.
     void keep(const std::shared_ptr<T>& built) {
-        spare_ = std::move(current_);
-        current_ = built;
+        spare = std::move(current);
+        current = built;
     }
     void clear() {
-        current_.reset();
-        spare_.reset();
+        current.reset();
+        spare.reset();
     }
 
 private:
-    std::shared_ptr<T> current_;
-    std::shared_ptr<T> spare_;
+    std::shared_ptr<T> current;
+    std::shared_ptr<T> spare;
 };
 
 } // namespace viewer

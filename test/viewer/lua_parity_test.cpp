@@ -213,10 +213,10 @@ struct Sandbox {
 
     Outcome run(const std::string& code) {
         engine->reset();
-        engine->console().clear();
+        engine->console.clear();
         Outcome outcome;
         outcome.error = !engine->run(0, "cases.lua", code);
-        for (const viewer::script::Message& message : engine->console().messages()) {
+        for (const viewer::script::Message& message : engine->console.messages()) {
             if (message.level != Level::Info) continue;
             std::istringstream text(message.text);
             for (std::string line; std::getline(text, line);) outcome.lines.push_back(line);

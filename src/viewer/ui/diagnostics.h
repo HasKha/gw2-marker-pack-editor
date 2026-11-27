@@ -25,13 +25,13 @@ public:
     static constexpr size_t KEPT = 240;
 
     void add(double milliseconds);
-    double last() const { return last_; }
+    double last() const { return latest; }
     double peak() const; // the longest of those kept
 
 private:
-    std::array<double, KEPT> times_{};
-    size_t next_ = 0;
-    double last_ = 0.0;
+    std::array<double, KEPT> times{};
+    size_t next = 0;
+    double latest = 0.0;
 };
 
 struct PackFigures {

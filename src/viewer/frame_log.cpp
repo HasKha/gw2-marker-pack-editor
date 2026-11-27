@@ -63,14 +63,14 @@ std::string line(const Frame& frame) {
 bool Limiter::take(double ours, double threshold, std::chrono::steady_clock::time_point now, size_t* skipped) {
     if (ours <= threshold) return false;
     constexpr auto kSpacing = std::chrono::seconds(1);
-    if (logged_ && now - last_ < kSpacing) {
-        ++skipped_;
+    if (logged && now - last < kSpacing) {
+        ++passed_over;
         return false;
     }
-    *skipped = skipped_;
-    skipped_ = 0;
-    last_ = now;
-    logged_ = true;
+    *skipped = passed_over;
+    passed_over = 0;
+    last = now;
+    logged = true;
     return true;
 }
 

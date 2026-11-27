@@ -41,7 +41,7 @@ public:
     // outlive the pack because assets are read from it long after loading; a read in flight
     // keeps it open past this.
     void setSource(std::unique_ptr<pack::DataSource> source);
-    const pack::DataSource* source() const { return source_.get(); }
+    const pack::DataSource* source() const { return pack_source.get(); }
 
     // Drops one cached asset, for when the bytes behind a path change.
     void forget(const std::string& path);
@@ -74,26 +74,26 @@ private:
     void clearAll();
 
     // First, so it goes last: what it still runs holds nothing of the cache.
-    util::JobQueue jobs_;
+    util::JobQueue jobs;
 
-    std::shared_ptr<const pack::DataSource> source_;
-    const pack::Pack* pending_;
+    std::shared_ptr<const pack::DataSource> pack_source;
+    const pack::Pack* pending;
 
-    viewer::TextureCache textures_{"Markus_"};
+    viewer::TextureCache textures{"Markus_"};
 
     // Misses are cached too, so a missing trail is not read again. Each is read and parsed on
-    // the worker, and waits in `reading_trails_` until then.
-    std::unordered_map<std::string, std::shared_ptr<const pack::trl::Trail>> trails_;
-    std::unordered_map<std::string, std::future<std::shared_ptr<const pack::trl::Trail>>> reading_trails_;
+    // the worker, and waits in `reading_trails` until then.
+    std::unordered_map<std::string, std::shared_ptr<const pack::trl::Trail>> trails;
+    std::unordered_map<std::string, std::future<std::shared_ptr<const pack::trl::Trail>>> reading_trails;
 
     // What each image gives a trail on the map, missing ones included, sampled on the worker.
-    std::unordered_map<std::string, ImU32> trail_colours_;
-    std::unordered_map<std::string, std::future<ImU32>> reading_colours_;
+    std::unordered_map<std::string, ImU32> trail_colours;
+    std::unordered_map<std::string, std::future<ImU32>> reading_colours;
 
     // What the trail and colour reads still queued were asked for: one that finds it gone reads
     // nothing, so a new source or the cache going does not wait behind the old pack's reads.
     // Made again by clearAll; the TextureCache keeps its own.
-    std::shared_ptr<char> wanted_ = std::make_shared<char>();
+    std::shared_ptr<char> wanted = std::make_shared<char>();
 };
 
 } // namespace resources

@@ -223,10 +223,10 @@ class Editor
 {
 public:
     Editor(AddonAPI* api, Mumble::Data* mumble_link)
-        : api_(api)
-        , mumble_link_(mumble_link)
-        , settings_file_(api) {
-        state_.resources.setApi(api);
+        : api(api)
+        , mumble_link(mumble_link)
+        , settings_file(api) {
+        state.resources.setApi(api);
     }
 
     // Saved or not, what is open goes with the addon.
@@ -239,7 +239,7 @@ public:
     void render();
     viewer::runtime::LiveMap* editedLive(int map_id, viewer::TextureLookup* texture);
 
-    ui::windows::Shown& windows() { return windows_; }
+    ui::windows::Shown windows;
 
 private:
     void stop();
@@ -283,65 +283,64 @@ private:
     size_t categoryPopupReference() const;
     void drawAddCategory();
 
-    AddonAPI* api_;
-    Mumble::Data* mumble_link_;
+    AddonAPI* api;
+    Mumble::Data* mumble_link;
 
-    file_dialog::FileDialog dialog_;
-    DialogPurpose dialog_purpose_ = DialogPurpose::OpenFile;
+    file_dialog::FileDialog dialog;
+    DialogPurpose dialog_purpose = DialogPurpose::OpenFile;
 
-    settings::File settings_file_;
+    settings::File settings_file;
     // Read on the first start, not at load: a player who never edits never has them read.
-    bool settings_loaded_ = false;
+    bool settings_loaded = false;
 
-    editor::State state_;
+    editor::State state;
     // Absolute path of the pack currently open, empty when none is.
-    std::filesystem::path open_pack_path_;
-    std::string status_;
+    std::filesystem::path open_pack_path;
+    std::string status;
 
     // Where the folder browser starts next time, and likewise for adding images.
-    std::filesystem::path last_folder_;
-    std::filesystem::path last_image_folder_;
+    std::filesystem::path last_folder;
+    std::filesystem::path last_image_folder;
 
-    ui::windows::Shown windows_;
-    ui::property_panel::View property_view_;
-    ui::trail_editor::View trail_view_;
-    ui::resource_window::Window resource_window_;
+    ui::property_panel::View property_view;
+    ui::trail_editor::View trail_view;
+    ui::resource_window::Window resource_window;
 
     // The open pack as a live map, which the viewer draws beside whatever it draws of the same file.
-    viewer::edited::EditedLive edited_live_;
+    viewer::edited::EditedLive edited_live;
 
     // This frame's camera, kept so the menu bar can reach the player position and map id
     // without every window that draws the bar having to be handed a camera.
-    viewer::Camera frame_camera_;
+    viewer::Camera frame_camera;
 
-    PendingAction pending_action_ = PendingAction::None;
-    bool confirm_pending_ = false; // the action is waiting on the modal
-    bool open_confirm_popup_ = false; // OpenPopup on the owner's next frame
-    ui::windows::Id confirm_owner_ = ui::windows::Id::Tree;
+    PendingAction pending_action = PendingAction::None;
+    bool confirm_pending = false; // the action is waiting on the modal
+    bool open_confirm_popup = false; // OpenPopup on the owner's next frame
+    ui::windows::Id confirm_owner = ui::windows::Id::Tree;
 
     // New Pack asks for a few details first, in a popup owned the same way.
-    bool open_new_pack_popup_ = false;
-    std::string new_pack_name_ = "mypack";
-    std::string new_pack_display_ = "My Pack";
-    std::string new_pack_file_ = "markers.xml";
+    bool open_new_pack_popup = false;
+    std::string new_pack_name = "mypack";
+    std::string new_pack_display = "My Pack";
+    std::string new_pack_file = "markers.xml";
 
     // A category needs a name, so the button opens a prompt rather than acting on the spot.
-    bool open_category_popup_ = false;
-    std::string new_category_name_;
-    std::string new_category_display_name_;
-    std::string new_category_description_;
-    bool new_category_copy_attributes_ = true;
+    bool open_category_popup = false;
+    std::string new_category_name;
+    std::string new_category_display_name;
+    std::string new_category_description;
+    bool new_category_copy_attributes = true;
 };
 
 void Editor::log(ELogLevel level, const std::string& message) {
-    api_->Log(level, viewer::ADDON_NAME, message.c_str());
+    api->Log(level, viewer::ADDON_NAME, message.c_str());
 }
 
 // Where a pack browser starts: wherever packs were last opened or saved, else the Blish
 // HUD markers folder.
 std::filesystem::path Editor::packFolder() const {
     std::error_code ec;
-    if (!last_folder_.empty() && std::filesystem::is_directory(last_folder_, ec)) return last_folder_;
+    if (!last_folder.empty() && std::filesystem::is_directory(last_folder, ec)) return last_folder;
     return blishhudMarkersFolder();
 }
 
@@ -349,53 +348,53 @@ std::filesystem::path Editor::packFolder() const {
 void Editor::rememberPackFolder(const std::filesystem::path& path) {
     if (path.empty()) return;
     std::error_code ec;
-    last_folder_ = std::filesystem::is_directory(path, ec) ? path : path.parent_path();
+    last_folder = std::filesystem::is_directory(path, ec) ? path : path.parent_path();
 }
 
 std::filesystem::path Editor::imageFolder() const {
     std::error_code ec;
-    if (!last_image_folder_.empty() && std::filesystem::is_directory(last_image_folder_, ec)) return last_image_folder_;
+    if (!last_image_folder.empty() && std::filesystem::is_directory(last_image_folder, ec)) return last_image_folder;
     return packFolder();
 }
 
-// By value on purpose: Reload passes open_pack_path_, which this function reassigns
+// By value on purpose: Reload passes open_pack_path, which this function reassigns
 // partway through. A reference would alias it and change under us.
 void Editor::openPack(std::filesystem::path path) {
     // On the render thread: 56k markers has not stuttered (docs/editor_plan.md). The undo
     // records and the open trail belong to the pack going away, and go with it.
-    state_.reset();
+    state.reset();
 
     // Zip or folder — pack::open picks by what the path actually is.
     std::string error;
     std::unique_ptr<pack::DataSource> source = pack::open(path, &error);
     if (!source) {
-        status_ = "Could not open " + util::pathText(path.filename()) + ": " + error;
-        log(ELogLevel_WARNING, status_);
+        status = "Could not open " + util::pathText(path.filename()) + ": " + error;
+        log(ELogLevel_WARNING, status);
         return;
     }
 
-    state_.pack = pack::loadPack(*source);
-    viewer::ui::fonts::require(viewer::ui::glyphs::of(state_.pack));
+    state.pack = pack::loadPack(*source);
+    viewer::ui::fonts::require(viewer::ui::glyphs::of(state.pack));
 
     // Icons and .trl data are read straight out of the source as markers become visible, so
     // it has to outlive the load.
-    state_.resources.setSource(std::move(source));
+    state.resources.setSource(std::move(source));
 
-    state_.rebuildIndex();
-    state_.loaded = true;
-    open_pack_path_ = state_.pack.source_path;
-    rememberPackFolder(state_.pack.source_path);
+    state.rebuildIndex();
+    state.loaded = true;
+    open_pack_path = state.pack.source_path;
+    rememberPackFolder(state.pack.source_path);
 
-    status_ = std::to_string(state_.pack.categories.size()) + " categories, " +
-              std::to_string(state_.pack.countByType(pack::PathableType::Poi)) + " POIs, " +
-              std::to_string(state_.pack.countByType(pack::PathableType::Trail)) + " trails";
-    if (!state_.pack.warnings.empty()) {
-        status_ += ", " + std::to_string(state_.pack.warnings.size()) + " warnings";
-        for (const pack::Warning& warning : state_.pack.warnings) {
+    status = std::to_string(state.pack.categories.size()) + " categories, " +
+             std::to_string(state.pack.countByType(pack::PathableType::Poi)) + " POIs, " +
+             std::to_string(state.pack.countByType(pack::PathableType::Trail)) + " trails";
+    if (!state.pack.warnings.empty()) {
+        status += ", " + std::to_string(state.pack.warnings.size()) + " warnings";
+        for (const pack::Warning& warning : state.pack.warnings) {
             log(ELogLevel_WARNING, warning.file + ": " + warning.message);
         }
     }
-    log(ELogLevel_INFO, "Opened " + util::pathText(path.filename()) + " — " + status_);
+    log(ELogLevel_INFO, "Opened " + util::pathText(path.filename()) + " — " + status);
 }
 
 // EditorHooks::edited_live: the open pack as a live map on `map_id`, with the tree's eye
@@ -403,59 +402,59 @@ void Editor::openPack(std::filesystem::path path) {
 // draws it with the installed packs, so it looks as it will once installed.
 viewer::runtime::LiveMap* Editor::editedLive(int map_id, viewer::TextureLookup* texture) {
     viewer::edited::Report report;
-    if (active.load() && state_.loaded) {
-        report.path = open_pack_path_;
-        report.pack = &state_.pack;
-        report.revision = state_.revision;
-        report.shown = &state_.pathable_visible;
+    if (active.load() && state.loaded) {
+        report.path = open_pack_path;
+        report.pack = &state.pack;
+        report.revision = state.revision;
+        report.shown = &state.pathable_visible;
     }
-    resources::Cache& cache = state_.resources;
-    edited_live_.update(
+    resources::Cache& cache = state.resources;
+    edited_live.update(
         report,
         map_id,
         [&cache](const std::string& path, bool* deferred) { return cache.trail(path, deferred); },
         [&cache](const std::string& path, bool* deferred) { return cache.trailColour(path, deferred); });
     if (!report.pack) return nullptr;
     *texture = [&cache](size_t, const std::string& path) { return cache.texture(path); };
-    return &edited_live_.live();
+    return &edited_live.live;
 }
 
 // What only an editor draws over its pack, which the viewer drew: outlines, handles, picking,
 // placed by the items of the viewer's scene that carry a pathable — the open pack's.
 void Editor::drawPack(const viewer::Camera& camera) {
-    if (!state_.loaded || !camera.valid || camera.map_open) return;
-    if (const std::shared_ptr<const viewer::Scene> scene = viewer::published()) world::overlay::draw(state_, camera, *scene);
+    if (!state.loaded || !camera.valid || camera.map_open) return;
+    if (const std::shared_ptr<const viewer::Scene> scene = viewer::published()) world::overlay::draw(state, camera, *scene);
 }
 
 // Writes the pack back to `target`. A folder pack updates its changed .xml files in place;
 // a zip is rebuilt whole, since every other entry has to come along with it.
 void Editor::savePackTo(const std::filesystem::path& target, bool as_directory) {
-    if (!state_.loaded) return;
+    if (!state.loaded) return;
 
     if (as_directory) {
-        const pack::SaveResult result = pack::saveToDirectory(state_.pack, target);
+        const pack::SaveResult result = pack::saveToDirectory(state.pack, target);
         if (!result.ok) {
-            status_ = "Save failed: " + result.error;
-            log(ELogLevel_WARNING, status_);
+            status = "Save failed: " + result.error;
+            log(ELogLevel_WARNING, status);
             return;
         }
         for (const std::string& warning : result.warnings) log(ELogLevel_WARNING, warning);
 
         // They are on disk now, so they are no longer pending.
-        state_.pack.clearAssetChanges();
-        state_.dirty = false;
-        status_ =
+        state.pack.clearAssetChanges();
+        state.dirty = false;
+        status =
             "Saved " + std::to_string(result.entries_written) + " changed file(s)" + assetSummary(result) + " to " + util::pathText(target);
-        log(ELogLevel_INFO, status_);
+        log(ELogLevel_INFO, status);
         return;
     }
 
     // Null for a pack made in the editor: there is nothing to carry forward, so the archive
     // is built from the pack's own files alone.
-    const pack::SaveResult result = pack::buildZip(state_.pack, state_.resources.source(), target);
+    const pack::SaveResult result = pack::buildZip(state.pack, state.resources.source(), target);
     if (!result.ok) {
-        status_ = "Save failed: " + result.error;
-        log(ELogLevel_WARNING, status_);
+        status = "Save failed: " + result.error;
+        log(ELogLevel_WARNING, status);
         pack::abortZip(target);
         return;
     }
@@ -463,89 +462,89 @@ void Editor::savePackTo(const std::filesystem::path& target, bool as_directory) 
 
     // The archive we are about to replace is the one we still have open for reading, and
     // Windows will not rename over a live handle. Drop it, swap, then reopen.
-    state_.resources.setSource(nullptr);
+    state.resources.setSource(nullptr);
 
     std::string error;
     if (!pack::commitZip(target, &error)) {
-        status_ = "Save failed: " + error;
-        log(ELogLevel_WARNING, status_);
+        status = "Save failed: " + error;
+        log(ELogLevel_WARNING, status);
         pack::abortZip(target);
     } else {
         // The new archive holds them now; keeping them pending would write them again.
-        state_.pack.clearAssetChanges();
-        state_.dirty = false;
-        open_pack_path_ = target;
+        state.pack.clearAssetChanges();
+        state.dirty = false;
+        open_pack_path = target;
         rememberPackFolder(target);
         // The pack now lives in a zip, whatever it was read from. Without this a folder
         // pack saved with Save As keeps from_directory set, and the next plain Save tries
         // to write its .xml files *into* the archive's path as if it were a folder.
-        state_.pack.from_directory = false;
-        state_.pack.source_path = target;
-        status_ = "Saved " + std::to_string(result.entries_written) + " entries (" + std::to_string(result.files_rewritten) +
-                  " xml rewritten)" + assetSummary(result) + " to " + util::pathText(target.filename());
-        log(ELogLevel_INFO, status_);
+        state.pack.from_directory = false;
+        state.pack.source_path = target;
+        status = "Saved " + std::to_string(result.entries_written) + " entries (" + std::to_string(result.files_rewritten) +
+                 " xml rewritten)" + assetSummary(result) + " to " + util::pathText(target.filename());
+        log(ELogLevel_INFO, status);
     }
 
     // Reopen either way: without a source the icons and trails stop resolving.
-    std::unique_ptr<pack::DataSource> reopened = pack::open(open_pack_path_, &error);
+    std::unique_ptr<pack::DataSource> reopened = pack::open(open_pack_path, &error);
     if (reopened) {
-        state_.resources.setSource(std::move(reopened));
+        state.resources.setSource(std::move(reopened));
     } else {
         log(ELogLevel_WARNING, "Could not reopen the pack after saving: " + error);
     }
 }
 
 void Editor::savePack() {
-    if (!state_.loaded) return;
-    savePackTo(open_pack_path_, state_.pack.from_directory);
+    if (!state.loaded) return;
+    savePackTo(open_pack_path, state.pack.from_directory);
 }
 
 // A pack that exists only in memory: no source, no path, and dirty from the start, so
 // closing it warns and saving it has to go through Save As.
 void Editor::newPack(const std::string& file_name, const std::string& category_name, const std::string& display_name) {
-    state_.reset();
-    state_.resources.setSource(nullptr);
-    open_pack_path_.clear();
+    state.reset();
+    state.resources.setSource(nullptr);
+    open_pack_path.clear();
 
-    state_.pack = pack::createPack(file_name, category_name, display_name);
-    if (state_.pack.categories.empty()) {
+    state.pack = pack::createPack(file_name, category_name, display_name);
+    if (state.pack.categories.empty()) {
         // The only way this fails is a name that cannot be an id segment.
-        state_.reset();
-        status_ = "That name will not work: it is empty or has a dot in it.";
+        state.reset();
+        status = "That name will not work: it is empty or has a dot in it.";
         return;
     }
 
-    state_.rebuildIndex();
-    state_.loaded = true;
+    state.rebuildIndex();
+    state.loaded = true;
     // Building it is not an edit anyone should be able to undo their way out of.
-    undo::clear(state_);
-    state_.dirty = true;
+    undo::clear(state);
+    state.dirty = true;
 
     const editor::NodeRef root{editor::NodeKind::Category, 0};
-    state_.selection.set(root);
-    state_.requestReveal(root);
+    state.selection.set(root);
+    state.requestReveal(root);
 
-    status_ = "New pack. Save As writes it to a zip.";
-    log(ELogLevel_INFO, status_);
+    status = "New pack. Save As writes it to a zip.";
+    log(ELogLevel_INFO, status);
 }
 
 void Editor::closePack() {
-    state_.reset();
-    state_.resources.setSource(nullptr);
-    open_pack_path_.clear();
-    status_.clear();
+    state.reset();
+    state.resources.setSource(nullptr);
+    open_pack_path.clear();
+    status.clear();
 }
 
 // Undo can change the bytes behind the open trail without going through the trail editor,
 // so the working copy has to be told to reread.
 void Editor::applyUndo() {
-    undo::undo(state_);
-    trail_edit::refresh(state_);
+    undo::undo(state);
+    trail_edit::refresh(state);
 }
 
 void Editor::applyRedo() {
-    undo::redo(state_);
-    trail_edit::refresh(state_);
+    undo::redo(state);
+    trail_edit::refresh(state);
 }
 
 // Nexus binds are global, so they fire while a text field has the caret too — where Ctrl+Z
@@ -553,17 +552,17 @@ void Editor::applyRedo() {
 void Editor::applyRequestedHistory() {
     const bool undo = undo_requested.exchange(false);
     const bool redo = redo_requested.exchange(false);
-    if (!state_.loaded || ImGui::GetIO().WantTextInput) return;
+    if (!state.loaded || ImGui::GetIO().WantTextInput) return;
     if (undo) applyUndo();
     if (redo) applyRedo();
 }
 
 void Editor::requestAction(PendingAction action, ui::windows::Id owner) {
-    pending_action_ = action;
-    confirm_owner_ = owner;
+    pending_action = action;
+    confirm_owner = owner;
     // Nothing to lose with a clean pack: it goes ahead at the end of the frame.
-    confirm_pending_ = state_.dirty;
-    open_confirm_popup_ = state_.dirty;
+    confirm_pending = state.dirty;
+    open_confirm_popup = state.dirty;
 }
 
 // The same bar in every large window, so File and View are reachable from whichever one
@@ -575,45 +574,44 @@ void Editor::drawMenuBar(ui::windows::Id owner) {
         if (ImGui::MenuItem(icon(ICON_FA_FILE, "New Pack...").c_str())) requestAction(PendingAction::NewPack, owner);
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("Starts an empty pack. It lives in memory until you Save As.");
 
-        if (ImGui::MenuItem(icon(ICON_FA_FOLDER_OPEN, "Open Pack...").c_str(), nullptr, false, !dialog_.isPending())) {
-            dialog_purpose_ = DialogPurpose::OpenFile;
-            dialog_.requestOpenFile(packFolder(), {{"Marker pack", "zip,taco"}});
+        if (ImGui::MenuItem(icon(ICON_FA_FOLDER_OPEN, "Open Pack...").c_str(), nullptr, false, !dialog.isPending())) {
+            dialog_purpose = DialogPurpose::OpenFile;
+            dialog.requestOpenFile(packFolder(), {{"Marker pack", "zip,taco"}});
         }
-        if (ImGui::MenuItem(icon(ICON_FA_FOLDER, "Open Folder...").c_str(), nullptr, false, !dialog_.isPending())) {
-            dialog_purpose_ = DialogPurpose::OpenFolder;
-            dialog_.requestOpenFolder(packFolder());
+        if (ImGui::MenuItem(icon(ICON_FA_FOLDER, "Open Folder...").c_str(), nullptr, false, !dialog.isPending())) {
+            dialog_purpose = DialogPurpose::OpenFolder;
+            dialog.requestOpenFolder(packFolder());
         }
 
         ImGui::Separator();
 
         // A pack that has never been saved has nothing to reload from.
-        if (ImGui::MenuItem(icon(ICON_FA_ROTATE_RIGHT, "Reload").c_str(), nullptr, false, state_.loaded && !open_pack_path_.empty())) {
+        if (ImGui::MenuItem(icon(ICON_FA_ROTATE_RIGHT, "Reload").c_str(), nullptr, false, state.loaded && !open_pack_path.empty())) {
             requestAction(PendingAction::Reload, owner);
         }
-        if (ImGui::MenuItem(icon(ICON_FA_XMARK, "Close").c_str(), nullptr, false, state_.loaded))
-            requestAction(PendingAction::Close, owner);
+        if (ImGui::MenuItem(icon(ICON_FA_XMARK, "Close").c_str(), nullptr, false, state.loaded)) requestAction(PendingAction::Close, owner);
 
-        if (ImGui::MenuItem(icon(ICON_FA_FLOPPY_DISK, "Save").c_str(), nullptr, false, state_.loaded && state_.dirty)) {
-            if (open_pack_path_.empty()) {
+        if (ImGui::MenuItem(icon(ICON_FA_FLOPPY_DISK, "Save").c_str(), nullptr, false, state.loaded && state.dirty)) {
+            if (open_pack_path.empty()) {
                 // Never saved: Save is Save As, or it would have nowhere to write.
-                dialog_purpose_ = DialogPurpose::SaveAs;
-                dialog_.requestSaveFile(packFolder(), "markers.zip", {{"Marker pack", "zip,taco"}});
+                dialog_purpose = DialogPurpose::SaveAs;
+                dialog.requestSaveFile(packFolder(), "markers.zip", {{"Marker pack", "zip,taco"}});
             } else {
                 savePack();
             }
         }
-        if (ImGui::IsItemHovered() && state_.loaded) {
+        if (ImGui::IsItemHovered() && state.loaded) {
             ImGui::SetTooltip(
-                open_pack_path_.empty()      ? "Asks where to put it: this pack has never been saved."
-                : state_.pack.from_directory ? "Rewrites the changed .xml files in place."
-                                             : "Rebuilds the archive. The previous one is kept as .bak.");
+                open_pack_path.empty()      ? "Asks where to put it: this pack has never been saved."
+                : state.pack.from_directory ? "Rewrites the changed .xml files in place."
+                                            : "Rebuilds the archive. The previous one is kept as .bak.");
         }
 
-        if (ImGui::MenuItem(icon(ICON_FA_FLOPPY_DISK, "Save As...").c_str(), nullptr, false, state_.loaded && !dialog_.isPending())) {
-            dialog_purpose_ = DialogPurpose::SaveAs;
+        if (ImGui::MenuItem(icon(ICON_FA_FLOPPY_DISK, "Save As...").c_str(), nullptr, false, state.loaded && !dialog.isPending())) {
+            dialog_purpose = DialogPurpose::SaveAs;
             const std::string suggested =
-                open_pack_path_.empty() ? std::string("markers.zip") : util::pathText(open_pack_path_.filename().replace_extension(".zip"));
-            dialog_.requestSaveFile(packFolder(), suggested, {{"Marker pack", "zip,taco"}});
+                open_pack_path.empty() ? std::string("markers.zip") : util::pathText(open_pack_path.filename().replace_extension(".zip"));
+            dialog.requestSaveFile(packFolder(), suggested, {{"Marker pack", "zip,taco"}});
         }
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("Always saves as a .zip.");
 
@@ -621,25 +619,25 @@ void Editor::drawMenuBar(ui::windows::Id owner) {
     }
 
     if (ImGui::BeginMenu("Edit")) {
-        const std::string undo_label = undo::canUndo(state_) ? "Undo " + undo::undoLabel(state_) : std::string("Undo");
-        const std::string redo_label = undo::canRedo(state_) ? "Redo " + undo::redoLabel(state_) : std::string("Redo");
+        const std::string undo_label = undo::canUndo(state) ? "Undo " + undo::undoLabel(state) : std::string("Undo");
+        const std::string redo_label = undo::canRedo(state) ? "Redo " + undo::redoLabel(state) : std::string("Redo");
 
-        if (ImGui::MenuItem(icon(ICON_FA_ROTATE_LEFT, undo_label.c_str()).c_str(), "Ctrl+Z", false, undo::canUndo(state_))) applyUndo();
-        if (ImGui::MenuItem(icon(ICON_FA_ROTATE_RIGHT, redo_label.c_str()).c_str(), "Ctrl+Y", false, undo::canRedo(state_))) applyRedo();
+        if (ImGui::MenuItem(icon(ICON_FA_ROTATE_LEFT, undo_label.c_str()).c_str(), "Ctrl+Z", false, undo::canUndo(state))) applyUndo();
+        if (ImGui::MenuItem(icon(ICON_FA_ROTATE_RIGHT, redo_label.c_str()).c_str(), "Ctrl+Y", false, undo::canRedo(state))) applyRedo();
 
         ImGui::EndMenu();
     }
 
     if (ImGui::BeginMenu("View")) {
-        ui::windows::drawViewMenu(windows_);
+        ui::windows::drawViewMenu(windows);
         ImGui::EndMenu();
     }
 
     if (ImGui::BeginMenu("Options")) {
-        ImGui::MenuItem("3D Highlight", nullptr, &state_.settings.highlight_3d);
+        ImGui::MenuItem("3D Highlight", nullptr, &state.settings.highlight_3d);
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("Outline the selection in the world.");
 
-        ImGui::MenuItem("Select in Viewport", nullptr, &state_.settings.select_in_viewport);
+        ImGui::MenuItem("Select in Viewport", nullptr, &state.settings.select_in_viewport);
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("Click a marker in the world to select it.");
 
         ImGui::EndMenu();
@@ -648,9 +646,9 @@ void Editor::drawMenuBar(ui::windows::Id owner) {
     // Last, and only where it belongs: the Trail menu acts on the trail editor's own
     // state, so it has no business hanging off the tree or the details window.
     if (owner == ui::windows::Id::TrailEditor) {
-        if (ui::trail_editor::drawMenu(state_, trail_view_, frame_camera_) == ui::trail_editor::Request::Export && !dialog_.isPending()) {
-            dialog_purpose_ = DialogPurpose::ExportTrail;
-            dialog_.requestSaveFile(packFolder(), "trail.trl", {{"Trail data", "trl"}});
+        if (ui::trail_editor::drawMenu(state, trail_view, frame_camera) == ui::trail_editor::Request::Export && !dialog.isPending()) {
+            dialog_purpose = DialogPurpose::ExportTrail;
+            dialog.requestSaveFile(packFolder(), "trail.trl", {{"Trail data", "trl"}});
         }
     }
 
@@ -660,67 +658,67 @@ void Editor::drawMenuBar(ui::windows::Id owner) {
 // Deferred to the end of the frame: closing or reloading frees the vectors every window
 // has just drawn from, and a menu click happens partway through that.
 void Editor::applyPendingAction() {
-    if (confirm_pending_) {
+    if (confirm_pending) {
         // The window carrying the modal was closed out from under it, taking the popup
         // with it. Drop the action rather than leaving it armed for the next frame.
-        if (!windows_[confirm_owner_]) {
-            confirm_pending_ = false;
-            pending_action_ = PendingAction::None;
+        if (!windows[confirm_owner]) {
+            confirm_pending = false;
+            pending_action = PendingAction::None;
         }
         return;
     }
 
-    switch (pending_action_) {
+    switch (pending_action) {
     case PendingAction::Close: closePack(); break;
-    case PendingAction::Reload: openPack(open_pack_path_); break;
+    case PendingAction::Reload: openPack(open_pack_path); break;
     // Needs answers before it can do anything, and a popup belongs to the window whose
     // menu asked — the same one the discard prompt would have used.
-    case PendingAction::NewPack: open_new_pack_popup_ = true; break;
+    case PendingAction::NewPack: open_new_pack_popup = true; break;
     // The session ends with its main window: the pack goes, and every window with it.
     case PendingAction::CloseEditor:
         closePack();
-        windows_[ui::windows::Id::Tree] = false;
+        windows[ui::windows::Id::Tree] = false;
         break;
     case PendingAction::None: break;
     }
-    pending_action_ = PendingAction::None;
+    pending_action = PendingAction::None;
 }
 
 // Runs after the menu bar, in the window that owns the request: a popup cannot be opened
 // from inside a menu, and it has to be begun from the same window every frame.
 void Editor::drawConfirmPopup(ui::windows::Id owner) {
-    if (!confirm_pending_ || owner != confirm_owner_) return;
+    if (!confirm_pending || owner != confirm_owner) return;
 
     constexpr const char* kTitle = "Discard Changes?";
 
-    if (open_confirm_popup_) {
+    if (open_confirm_popup) {
         ImGui::OpenPopup(kTitle);
-        open_confirm_popup_ = false;
+        open_confirm_popup = false;
     }
 
     if (ImGui::BeginPopupModal(kTitle, nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
         ImGui::TextUnformatted("This pack has unsaved changes.");
-        ImGui::TextDisabled("%s", pending_action_ == PendingAction::Reload ? "Reloading will discard them." : "Closing will discard them.");
+        ImGui::TextDisabled("%s", pending_action == PendingAction::Reload ? "Reloading will discard them." : "Closing will discard them.");
         ImGui::Separator();
 
         const std::string discard = icon(ICON_FA_TRASH, "Discard");
         const std::string save_first = icon(ICON_FA_FLOPPY_DISK, "Save First");
         const float width = viewer::ui::style::buttonWidth({discard.c_str(), save_first.c_str(), "Cancel"});
         if (ImGui::Button(discard.c_str(), ImVec2(width, 0))) {
-            confirm_pending_ = false; // applied at the end of the frame
+            confirm_pending = false; // applied at the end of the frame
             ImGui::CloseCurrentPopup();
         }
         ImGui::SameLine();
         if (ImGui::Button(save_first.c_str(), ImVec2(width, 0))) {
             savePack();
-            if (state_.dirty) pending_action_ = PendingAction::None; // the save failed, so keep the pack
-            confirm_pending_ = false;
+            if (state.dirty) pending_action = PendingAction::None; // the save failed, so keep the pack
+            confirm_pending = false;
             ImGui::CloseCurrentPopup();
         }
         ImGui::SameLine();
         if (ImGui::Button("Cancel", ImVec2(width, 0))) {
-            pending_action_ = PendingAction::None;
-            confirm_pending_ = false;
+            pending_action = PendingAction::None;
+            confirm_pending = false;
             ImGui::CloseCurrentPopup();
         }
 
@@ -730,25 +728,25 @@ void Editor::drawConfirmPopup(ui::windows::Id owner) {
 
 // What a new pack needs: its one category's name and the file to put it in.
 void Editor::drawNewPackPopup(ui::windows::Id owner) {
-    if (owner != confirm_owner_) return;
+    if (owner != confirm_owner) return;
 
     constexpr const char* kTitle = "New Pack";
 
-    if (open_new_pack_popup_) {
+    if (open_new_pack_popup) {
         ImGui::OpenPopup(kTitle);
-        open_new_pack_popup_ = false;
+        open_new_pack_popup = false;
     }
 
     if (!ImGui::BeginPopupModal(kTitle, nullptr, ImGuiWindowFlags_AlwaysAutoResize)) return;
 
     ImGui::PushItemWidth(260.0f);
-    ImGui::InputText("Name", &new_pack_name_);
+    ImGui::InputText("Name", &new_pack_name);
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("The root category's id. Everything in the pack sits under it. No dots.");
 
-    ImGui::InputText("Display name", &new_pack_display_);
+    ImGui::InputText("Display name", &new_pack_display);
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("The name shown in the markers menu.");
 
-    ImGui::InputText("File", &new_pack_file_);
+    ImGui::InputText("File", &new_pack_file);
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("The .xml inside the zip. More files can be added later by hand.");
     ImGui::PopItemWidth();
 
@@ -758,8 +756,8 @@ void Editor::drawNewPackPopup(ui::windows::Id owner) {
     const std::string create = icon(ICON_FA_CHECK, "Create");
     const float width = viewer::ui::style::buttonWidth({create.c_str(), "Cancel"});
     if (ImGui::Button(create.c_str(), ImVec2(width, 0))) {
-        newPack(new_pack_file_, new_pack_name_, new_pack_display_);
-        if (state_.loaded) ImGui::CloseCurrentPopup();
+        newPack(new_pack_file, new_pack_name, new_pack_display);
+        if (state.loaded) ImGui::CloseCurrentPopup();
     }
     ImGui::SameLine();
     if (ImGui::Button("Cancel", ImVec2(width, 0))) ImGui::CloseCurrentPopup();
@@ -771,14 +769,14 @@ void Editor::drawNewPackPopup(ui::windows::Id owner) {
 // collapsed, in which case it has already been ended and the caller draws nothing;
 // otherwise the caller draws its contents and calls ImGui::End itself.
 bool Editor::beginWindow(ui::windows::Id id, const ImVec2& first_size, bool with_menus) {
-    if (!windows_[id]) return false;
+    if (!windows[id]) return false;
 
     // The main window's close button ends the session, asking first when there is unsaved work,
     // so it stays open until that is answered. The others only hide.
     const bool main = id == ui::windows::Id::Tree;
     bool open = true;
     ImGui::SetNextWindowSize(first_size, ImGuiCond_FirstUseEver);
-    const bool shown = ImGui::Begin(ui::windows::title(id), main ? &open : &windows_[id], with_menus ? ImGuiWindowFlags_MenuBar : 0);
+    const bool shown = ImGui::Begin(ui::windows::title(id), main ? &open : &windows[id], with_menus ? ImGuiWindowFlags_MenuBar : 0);
     if (!open) requestAction(PendingAction::CloseEditor, id);
     if (!shown) {
         ImGui::End();
@@ -794,42 +792,42 @@ bool Editor::beginWindow(ui::windows::Id id, const ImVec2& first_size, bool with
 }
 
 void Editor::drawPackHeader() {
-    if (dialog_.isPending()) {
+    if (dialog.isPending()) {
         ImGui::TextDisabled("(file dialog open)");
-    } else if (state_.loaded) {
+    } else if (state.loaded) {
         const std::string name =
-            state_.pack.from_directory ? util::pathText(open_pack_path_.filename()) + "/" : util::pathText(open_pack_path_.filename());
-        ImGui::TextDisabled("%s%s", name.c_str(), state_.dirty ? " *" : "");
-        if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", util::pathText(open_pack_path_).c_str());
+            state.pack.from_directory ? util::pathText(open_pack_path.filename()) + "/" : util::pathText(open_pack_path.filename());
+        ImGui::TextDisabled("%s%s", name.c_str(), state.dirty ? " *" : "");
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", util::pathText(open_pack_path).c_str());
     } else {
         ImGui::TextDisabled("No pack open. Use File > Open Pack.");
     }
 
-    if (!status_.empty()) ImGui::TextWrapped("%s", status_.c_str());
+    if (!status.empty()) ImGui::TextWrapped("%s", status.c_str());
     ImGui::Separator();
 }
 
 void Editor::drawTreeWindow(const ui::tree_window::Reveal& reveal) {
     if (!beginWindow(ui::windows::Id::Tree, ImVec2(360, 560), true)) return;
     drawPackHeader();
-    ui::tree_window::draw(state_, reveal);
+    ui::tree_window::draw(state, reveal);
     ImGui::End();
 }
 
 void Editor::drawDetailsWindow() {
     if (!beginWindow(ui::windows::Id::Details, ImVec2(420, 560), true)) return;
-    ui::property_panel::draw(state_, property_view_);
+    ui::property_panel::draw(state, property_view);
     ImGui::End();
 }
 
 // Everything the create buttons need to agree on before they do anything.
 bool Editor::canCreate(bool needs_character) {
-    if (!state_.loaded) {
-        status_ = "Open a pack first.";
+    if (!state.loaded) {
+        status = "Open a pack first.";
         return false;
     }
-    if (needs_character && !frame_camera_.valid) {
-        status_ = "The game has not reported your character's position yet.";
+    if (needs_character && !frame_camera.valid) {
+        status = "The game has not reported your character's position yet.";
         return false;
     }
     return true;
@@ -838,46 +836,46 @@ bool Editor::canCreate(bool needs_character) {
 // Adds a marker where the character is standing. Placement follows the selection, so the
 // button needs no target of its own — see pathable_edit::addPoi.
 void Editor::drawAddPoi() {
-    if (!viewer::ui::style::button(icon(ICON_FA_LOCATION_DOT, "Add POI").c_str(), state_.loaded)) {
+    if (!viewer::ui::style::button(icon(ICON_FA_LOCATION_DOT, "Add POI").c_str(), state.loaded)) {
         if (ImGui::IsItemHovered()) {
             ImGui::SetTooltip(
-                state_.loaded ? "Adds a marker at the character's position.\n"
-                                "With a category selected it goes in at the end;\n"
-                                "with a marker selected it follows it and copies its attributes."
-                              : "Open or create a pack first.");
+                state.loaded ? "Adds a marker at the character's position.\n"
+                               "With a category selected it goes in at the end;\n"
+                               "with a marker selected it follows it and copies its attributes."
+                             : "Open or create a pack first.");
         }
         return;
     }
 
     if (!canCreate(true)) return;
 
-    const size_t added = pathable_edit::addPoi(state_, frame_camera_.player, static_cast<int32_t>(frame_camera_.map_id));
-    status_ =
+    const size_t added = pathable_edit::addPoi(state, frame_camera.player, static_cast<int32_t>(frame_camera.map_id));
+    status =
         added == pack::kNoIndex ? "Select a category or a marker to say where the POI goes." : "Added a POI at the character's position.";
 }
 
 void Editor::drawAddTrail() {
-    if (!viewer::ui::style::button(icon(ICON_FA_ROUTE, "Add Trail").c_str(), state_.loaded)) {
+    if (!viewer::ui::style::button(icon(ICON_FA_ROUTE, "Add Trail").c_str(), state.loaded)) {
         if (ImGui::IsItemHovered()) {
             ImGui::SetTooltip(
-                state_.loaded ? "Adds an empty trail and a .trl for it to point at.\n"
-                                "Add its points in the Trail Editor."
-                              : "Open or create a pack first.");
+                state.loaded ? "Adds an empty trail and a .trl for it to point at.\n"
+                               "Add its points in the Trail Editor."
+                             : "Open or create a pack first.");
         }
         return;
     }
 
     if (!canCreate(true)) return;
 
-    const size_t added = pathable_edit::addTrail(state_, static_cast<int32_t>(frame_camera_.map_id));
+    const size_t added = pathable_edit::addTrail(state, static_cast<int32_t>(frame_camera.map_id));
     if (added == pack::kNoIndex) {
-        status_ = "Select a category or a marker to say where the trail goes.";
+        status = "Select a category or a marker to say where the trail goes.";
         return;
     }
 
     // Nothing to look at until it has points, so send the user where they are added.
-    windows_[ui::windows::Id::TrailEditor] = true;
-    status_ = "Added an empty trail. Add points in the Trail Editor.";
+    windows[ui::windows::Id::TrailEditor] = true;
+    status = "Added an empty trail. Add points in the Trail Editor.";
 }
 
 // The category the popup's default name and attribute copy are relative to: the selected
@@ -885,65 +883,65 @@ void Editor::drawAddTrail() {
 // pathable_edit::addCategory's own resolution, so what the popup shows is what pressing
 // Create will actually do.
 size_t Editor::categoryPopupReference() const {
-    const editor::NodeRef selected = state_.selection.primary();
-    if (selected.kind == editor::NodeKind::Category && selected.index < state_.pack.categories.size()) return selected.index;
-    if (selected.kind == editor::NodeKind::Pathable && selected.index < state_.pack.pathables.size()) {
-        const size_t category = state_.pack.pathables[selected.index].category;
-        if (category < state_.pack.categories.size()) return category;
+    const editor::NodeRef selected = state.selection.primary();
+    if (selected.kind == editor::NodeKind::Category && selected.index < state.pack.categories.size()) return selected.index;
+    if (selected.kind == editor::NodeKind::Pathable && selected.index < state.pack.pathables.size()) {
+        const size_t category = state.pack.pathables[selected.index].category;
+        if (category < state.pack.categories.size()) return category;
     }
     return pack::kNoIndex;
 }
 
 void Editor::drawAddCategory() {
-    if (viewer::ui::style::button(icon(ICON_FA_FOLDER_PLUS, "Add Category...").c_str(), state_.loaded)) {
+    if (viewer::ui::style::button(icon(ICON_FA_FOLDER_PLUS, "Add Category...").c_str(), state.loaded)) {
         if (canCreate(false)) {
             const size_t reference = categoryPopupReference();
-            new_category_name_ = reference < state_.pack.categories.size() ? state_.pack.categories[reference].id : "";
-            new_category_display_name_.clear();
-            new_category_description_.clear();
-            new_category_copy_attributes_ = true;
-            open_category_popup_ = true;
+            new_category_name = reference < state.pack.categories.size() ? state.pack.categories[reference].id : "";
+            new_category_display_name.clear();
+            new_category_description.clear();
+            new_category_copy_attributes = true;
+            open_category_popup = true;
         }
     } else if (ImGui::IsItemHovered()) {
         ImGui::SetTooltip(
-            state_.loaded ? "Adds a category at the id you give it —\n"
-                            "editing the last segment of the selected one\n"
-                            "makes a sibling, appending one makes a child."
-                          : "Open or create a pack first.");
+            state.loaded ? "Adds a category at the id you give it —\n"
+                           "editing the last segment of the selected one\n"
+                           "makes a sibling, appending one makes a child."
+                         : "Open or create a pack first.");
     }
 
     constexpr const char* kTitle = "New Category";
-    if (open_category_popup_) {
+    if (open_category_popup) {
         ImGui::OpenPopup(kTitle);
-        open_category_popup_ = false;
+        open_category_popup = false;
     }
 
     if (!ImGui::BeginPopupModal(kTitle, nullptr, ImGuiWindowFlags_AlwaysAutoResize)) return;
 
     const size_t reference = categoryPopupReference();
-    if (reference < state_.pack.categories.size()) {
-        ImGui::TextDisabled("Selected: %s", state_.pack.categories[reference].id.c_str());
+    if (reference < state.pack.categories.size()) {
+        ImGui::TextDisabled("Selected: %s", state.pack.categories[reference].id.c_str());
     } else {
         ImGui::TextDisabled("Nothing selected");
     }
 
     ImGui::SetNextItemWidth(260.0f);
-    const bool name_submitted = ImGui::InputText("Name", &new_category_name_, ImGuiInputTextFlags_EnterReturnsTrue);
+    const bool name_submitted = ImGui::InputText("Name", &new_category_name, ImGuiInputTextFlags_EnterReturnsTrue);
     ImGui::TextDisabled(
         "The category's full id. The last segment is edited for a sibling,\nadded to for a child, trimmed to go further up.");
 
     ImGui::SetNextItemWidth(260.0f);
-    const bool display_submitted = ImGui::InputText("Display name", &new_category_display_name_, ImGuiInputTextFlags_EnterReturnsTrue);
+    const bool display_submitted = ImGui::InputText("Display name", &new_category_display_name, ImGuiInputTextFlags_EnterReturnsTrue);
     ImGui::TextDisabled("Shown in the in-game menu.");
 
     ImGui::SetNextItemWidth(260.0f);
-    ImGui::InputText("Description (optional)", &new_category_description_, ImGuiInputTextFlags_EnterReturnsTrue);
+    ImGui::InputText("Description (optional)", &new_category_description, ImGuiInputTextFlags_EnterReturnsTrue);
 
     ImGui::Separator();
-    ImGui::Checkbox("Copy attributes of selected", &new_category_copy_attributes_);
+    ImGui::Checkbox("Copy attributes of selected", &new_category_copy_attributes);
     ImGui::Separator();
 
-    const bool enabled = !new_category_name_.empty() && !new_category_display_name_.empty();
+    const bool enabled = !new_category_name.empty() && !new_category_display_name.empty();
     const std::string create_label = icon(ICON_FA_CHECK, "Create");
     const float width = viewer::ui::style::buttonWidth({create_label.c_str(), "Cancel"});
     const bool create_pressed = viewer::ui::style::button(create_label.c_str(), enabled, width);
@@ -954,16 +952,16 @@ void Editor::drawAddCategory() {
 
     if (create) {
         const size_t added = pathable_edit::addCategory(
-            state_,
-            new_category_name_,
-            new_category_display_name_,
-            new_category_description_,
-            new_category_copy_attributes_);
+            state,
+            new_category_name,
+            new_category_display_name,
+            new_category_description,
+            new_category_copy_attributes);
         if (added == pack::kNoIndex) {
-            status_ = "Could not add that category: check the name and display name aren't empty, that everything before "
-                      "the name's last segment names an existing category, and that the id isn't already taken.";
+            status = "Could not add that category: check the name and display name aren't empty, that everything before "
+                     "the name's last segment names an existing category, and that the id isn't already taken.";
         } else {
-            status_ = "Added category " + state_.pack.categories[added].id;
+            status = "Added category " + state.pack.categories[added].id;
             ImGui::CloseCurrentPopup();
         }
     }
@@ -979,7 +977,7 @@ void Editor::drawToolbarWindow() {
     ImGui::TextUnformatted("Gizmo");
     ImGui::SameLine();
 
-    int mode = static_cast<int>(state_.settings.gizmo);
+    int mode = static_cast<int>(state.settings.gizmo);
     ImGui::RadioButton("Off", &mode, static_cast<int>(editor::GizmoMode::Disabled));
     ImGui::SameLine();
     ImGui::RadioButton("Translate", &mode, static_cast<int>(editor::GizmoMode::Translate));
@@ -987,7 +985,7 @@ void Editor::drawToolbarWindow() {
     ImGui::RadioButton("Rotate", &mode, static_cast<int>(editor::GizmoMode::Rotate));
     ImGui::SameLine();
     ImGui::RadioButton("Both", &mode, static_cast<int>(editor::GizmoMode::TranslateRotate));
-    state_.settings.gizmo = static_cast<editor::GizmoMode>(mode);
+    state.settings.gizmo = static_cast<editor::GizmoMode>(mode);
 
     ImGui::Separator();
     drawAddPoi();
@@ -1001,7 +999,7 @@ void Editor::drawToolbarWindow() {
 
 void Editor::drawTrailEditorWindow() {
     if (!beginWindow(ui::windows::Id::TrailEditor, ImVec2(420, 560), true)) return;
-    ui::trail_editor::draw(state_, trail_view_, frame_camera_);
+    ui::trail_editor::draw(state, trail_view, frame_camera);
     ImGui::End();
 }
 
@@ -1011,9 +1009,9 @@ void Editor::drawResourcesWindow() {
     // The window cannot open the dialog itself: one dialog runs at a time and its result is
     // polled here, so the request comes back out and is issued from the one place that
     // knows what the in-flight dialog is for.
-    if (resource_window_.draw(state_) && !dialog_.isPending()) {
-        dialog_purpose_ = DialogPurpose::AddResource;
-        dialog_.requestOpenFile(imageFolder(), {{"Image", "png,jpg,jpeg,bmp"}});
+    if (resource_window.draw(state) && !dialog.isPending()) {
+        dialog_purpose = DialogPurpose::AddResource;
+        dialog.requestOpenFile(imageFolder(), {{"Image", "png,jpg,jpeg,bmp"}});
     }
 
     ImGui::End();
@@ -1025,27 +1023,27 @@ void Editor::drawResourcesWindow() {
 void Editor::bindHistory(bool bound) {
     if (bound) {
         // The bindings everyone already has in their fingers, as the defaults.
-        api_->InputBinds.RegisterWithString(KEYBIND_UNDO_ID, onEditKeybind, "CTRL+Z");
-        api_->InputBinds.RegisterWithString(KEYBIND_REDO_ID, onEditKeybind, "CTRL+Y");
-        api_->Localization.Set(KEYBIND_UNDO_ID, "en", "Undo (Markus Editor)");
-        api_->Localization.Set(KEYBIND_REDO_ID, "en", "Redo (Markus Editor)");
+        api->InputBinds.RegisterWithString(KEYBIND_UNDO_ID, onEditKeybind, "CTRL+Z");
+        api->InputBinds.RegisterWithString(KEYBIND_REDO_ID, onEditKeybind, "CTRL+Y");
+        api->Localization.Set(KEYBIND_UNDO_ID, "en", "Undo (Markus Editor)");
+        api->Localization.Set(KEYBIND_REDO_ID, "en", "Redo (Markus Editor)");
     } else {
-        api_->InputBinds.Deregister(KEYBIND_UNDO_ID);
-        api_->InputBinds.Deregister(KEYBIND_REDO_ID);
+        api->InputBinds.Deregister(KEYBIND_UNDO_ID);
+        api->InputBinds.Deregister(KEYBIND_REDO_ID);
     }
 }
 
 // Open Editor. Registers no render callback, so it is safe from inside one.
 void Editor::start() {
     if (!active) {
-        if (!settings_loaded_) {
-            settings_file_.load(&state_.settings, &windows_, &last_folder_, &last_image_folder_);
-            settings_loaded_ = true;
+        if (!settings_loaded) {
+            settings_file.load(&state.settings, &windows, &last_folder, &last_image_folder);
+            settings_loaded = true;
         }
         bindHistory(true);
         active = true;
     }
-    windows_[ui::windows::Id::Tree] = true;
+    windows[ui::windows::Id::Tree] = true;
 }
 
 // With nothing open and nothing on screen, nothing is left to edit: the editor lets go of its
@@ -1063,30 +1061,30 @@ void Editor::stop() {
     pending_deselect = false;
     world::overlay::clearHovered();
     closePack();
-    edited_live_.clear();
+    edited_live.clear();
 }
 
 // What onWndProc reads of this frame on the message thread.
 void Editor::publish() {
-    picking = state_.loaded && state_.settings.select_in_viewport;
+    picking = state.loaded && state.settings.select_in_viewport;
     mouse_over_ui = ImGui::GetIO().WantCaptureMouse;
 }
 
 void Editor::takeDialogResult() {
-    const std::optional<std::filesystem::path> picked = dialog_.takeResult();
+    const std::optional<std::filesystem::path> picked = dialog.takeResult();
     if (!picked) return;
 
-    switch (dialog_purpose_) {
+    switch (dialog_purpose) {
     case DialogPurpose::SaveAs:
         // Save As always produces a zip, even from a folder pack: that is the only
         // form Blish HUD loads reliably.
         savePackTo(*picked, false);
         break;
     case DialogPurpose::AddResource:
-        last_image_folder_ = picked->parent_path();
-        resource_window_.addFile(state_, *picked, &status_);
+        last_image_folder = picked->parent_path();
+        resource_window.addFile(state, *picked, &status);
         break;
-    case DialogPurpose::ExportTrail: ui::trail_editor::exportTo(state_, *picked, &status_); break;
+    case DialogPurpose::ExportTrail: ui::trail_editor::exportTo(state, *picked, &status); break;
     case DialogPurpose::OpenFile:
     case DialogPurpose::OpenFolder: openPack(*picked); break;
     }
@@ -1102,18 +1100,18 @@ void Editor::applyPicks(bool gizmo_active) {
     // what is already selected, not at the empty world or the marker behind it.
     if (gizmo_active) return;
 
-    if (deselect) deselectInViewport(state_);
+    if (deselect) deselectInViewport(state);
 
-    if (picked_point != pack::kNoIndex && picked_point < trail_edit::pointCount(state_)) {
+    if (picked_point != pack::kNoIndex && picked_point < trail_edit::pointCount(state)) {
         // Straight into the point selection: the trail it belongs to keeps whatever standing
         // it had in the tree, and in the details window.
-        editor::applyClick(state_.points.indices, picked_point, viewportMods());
-    } else if (picked != pack::kNoIndex && picked < state_.pack.pathables.size()) {
+        editor::applyClick(state.points.indices, picked_point, viewportMods());
+    } else if (picked != pack::kNoIndex && picked < state.pack.pathables.size()) {
         const editor::NodeRef node{editor::NodeKind::Pathable, picked};
-        editor::applyClick(state_.selection, node, viewportMods());
+        editor::applyClick(state.selection, node, viewportMods());
         // Picking in the world is only half the job: the marker has to be findable in the
         // tree afterwards, which for a deep category means opening the way down to it.
-        if (state_.selection.contains(node)) state_.requestReveal(node);
+        if (state.selection.contains(node)) state.requestReveal(node);
     }
 }
 
@@ -1121,41 +1119,41 @@ void Editor::render() {
     if (!active) return;
     takeDialogResult();
 
-    undo::beginFrame(state_);
+    undo::beginFrame(state);
     applyRequestedHistory();
     // Compares and writes only when something moved, so this is free on almost every frame.
-    settings_file_.update(state_.settings, windows_, last_folder_, last_image_folder_);
+    settings_file.update(state.settings, windows, last_folder, last_image_folder);
 
     // Outside the window body, which does not run while hidden or collapsed.
-    if (windows_[ui::windows::Id::TrailEditor]) {
-        trail_edit::followSelection(state_);
+    if (windows[ui::windows::Id::TrailEditor]) {
+        trail_edit::followSelection(state);
     } else {
-        trail_edit::close(state_);
+        trail_edit::close(state);
     }
 
     // ImGui's display size, not NexusLinkData's — see gameCamera. The gizmo draws into an ImGui
     // draw list, so that is the space the projection has to land in.
     const ImVec2 display = ImGui::GetIO().DisplaySize;
-    const viewer::Camera camera = viewer::gameCamera(mumble_link_, viewer::rtapi::data(), glm::vec2(display.x, display.y));
-    frame_camera_ = camera;
+    const viewer::Camera camera = viewer::gameCamera(mumble_link, viewer::rtapi::data(), glm::vec2(display.x, display.y));
+    frame_camera = camera;
     // The pack, and the overlay over it, only while the world is on screen; otherwise nothing
     // may stay hovered for a click to pick.
-    if (!state_.loaded || !camera.valid || camera.map_open) world::overlay::clearHovered();
+    if (!state.loaded || !camera.valid || camera.map_open) world::overlay::clearHovered();
     drawPack(camera);
 
     // After the markers so it draws over them, and so it can claim the click first.
-    applyPicks(world::gizmo::draw(state_, camera));
+    applyPicks(world::gizmo::draw(state, camera));
 
     // After the picks above, so a world pick reveals its marker in the same frame, and
     // outside drawTreeWindow, so a hidden or collapsed tree still consumes the request.
-    const ui::tree_window::Reveal reveal = ui::tree_window::update(state_);
+    const ui::tree_window::Reveal reveal = ui::tree_window::update(state);
 
     // Around the windows alone: the overlay and the gizmo above draw into the background list,
     // which a pushed font breaks (viewer::ui::fonts::push).
     viewer::ui::fonts::push();
     drawTreeWindow(reveal);
     // The others belong to the main window, and are drawn only with it.
-    if (windows_[ui::windows::Id::Tree]) {
+    if (windows[ui::windows::Id::Tree]) {
         drawDetailsWindow();
         drawToolbarWindow();
         drawTrailEditorWindow();
@@ -1167,7 +1165,7 @@ void Editor::render() {
     publish();
 
     // A dialog's answer still has somewhere to go, so it keeps the editor running.
-    if (!windows_[ui::windows::Id::Tree] && !dialog_.isPending()) stop();
+    if (!windows[ui::windows::Id::Tree] && !dialog.isPending()) stop();
 }
 
 // Between load and unload. The hooks are plain function pointers, so they reach it through here.
@@ -1192,7 +1190,7 @@ bool running() {
 }
 
 ui::windows::Shown& windows() {
-    return editor->windows();
+    return editor->windows;
 }
 
 viewer::EditorHooks hooks() {

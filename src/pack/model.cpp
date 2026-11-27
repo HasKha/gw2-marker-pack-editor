@@ -28,8 +28,8 @@ size_t indexOfName(const std::vector<Attribute>& attributes, std::string_view na
 } // namespace
 
 const Attribute* AttributeCollection::find(std::string_view key) const {
-    const size_t at = indexOfName(attributes_, key);
-    return at == kNoIndex ? nullptr : &attributes_[at];
+    const size_t at = indexOfName(attributes, key);
+    return at == kNoIndex ? nullptr : &attributes[at];
 }
 
 const std::string* AttributeCollection::value(std::string_view key) const {
@@ -38,19 +38,19 @@ const std::string* AttributeCollection::value(std::string_view key) const {
 }
 
 void AttributeCollection::set(std::string_view name, std::string value) {
-    const size_t at = indexOfName(attributes_, name);
+    const size_t at = indexOfName(attributes, name);
     if (at != kNoIndex) {
         // Keep the spelling already in the file; the author chose it.
-        attributes_[at].value = std::move(value);
+        attributes[at].value = std::move(value);
         return;
     }
-    attributes_.push_back(Attribute{std::string(name), attributeKey(name), std::move(value)});
+    attributes.push_back(Attribute{std::string(name), attributeKey(name), std::move(value)});
 }
 
 bool AttributeCollection::erase(std::string_view key) {
-    const size_t at = indexOfName(attributes_, key);
+    const size_t at = indexOfName(attributes, key);
     if (at == kNoIndex) return false;
-    attributes_.erase(attributes_.begin() + static_cast<ptrdiff_t>(at));
+    attributes.erase(attributes.begin() + static_cast<ptrdiff_t>(at));
     return true;
 }
 

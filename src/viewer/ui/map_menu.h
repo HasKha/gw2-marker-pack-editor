@@ -34,8 +34,8 @@ public:
 private:
     static constexpr int kDragSlack = 4; // px
 
-    bool armed_ = false;
-    glm::ivec2 origin_{0};
+    bool armed = false;
+    glm::ivec2 origin{0};
 };
 
 struct Context {

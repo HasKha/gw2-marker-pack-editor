@@ -63,17 +63,17 @@ bool drawCategories(const Context& context, size_t node) {
 } // namespace
 
 void ClickTracker::down(glm::ivec2 at) {
-    armed_ = true;
-    origin_ = at;
+    armed = true;
+    origin = at;
 }
 
 void ClickTracker::moved(glm::ivec2 at, bool cursor_visible) {
-    if (!cursor_visible || std::abs(at.x - origin_.x) > kDragSlack || std::abs(at.y - origin_.y) > kDragSlack) armed_ = false;
+    if (!cursor_visible || std::abs(at.x - origin.x) > kDragSlack || std::abs(at.y - origin.y) > kDragSlack) armed = false;
 }
 
 bool ClickTracker::up(bool cursor_visible) {
-    const bool click = armed_ && cursor_visible;
-    armed_ = false;
+    const bool click = armed && cursor_visible;
+    armed = false;
     return click;
 }
 

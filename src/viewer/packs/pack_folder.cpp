@@ -24,21 +24,21 @@ PackFolder::Listing PackFolder::list(const std::filesystem::path& folder) {
     return found;
 }
 
-void PackFolder::open(std::filesystem::path folder, util::JobQueue* jobs, AddonAPI* api) {
-    folder_ = std::move(folder);
-    jobs_ = jobs;
-    api_ = api;
-    Listing found = list(folder_);
-    discovered_ = std::move(found.packs);
-    local_ = std::move(found.local);
-    loader_.add(discovered_);
+void PackFolder::open(std::filesystem::path folder, util::JobQueue* queue, AddonAPI* nexus) {
+    packs_folder = std::move(folder);
+    jobs = queue;
+    api = nexus;
+    Listing found = list(packs_folder);
+    discovered = std::move(found.packs);
+    local_packs = std::move(found.local);
+    loader.add(discovered);
 }
 
 void PackFolder::stop() {
-    loader_.stop();
-    listing_ = {};
-    change_check_ = {};
-    placing_ = {};
+    loader.stop();
+    listing = {};
+    change_check = {};
+    placing = {};
 }
 
 void PackFolder::update(runtime::Installed* installed, catalog::Downloads* downloads) {
@@ -49,18 +49,18 @@ void PackFolder::update(runtime::Installed* installed, catalog::Downloads* downl
 }
 
 void PackFolder::rescan() {
-    rescan_pending_ = true;
+    rescan_pending = true;
 }
 
 void PackFolder::reload(runtime::Installed* installed) {
-    loader_.stop();
+    loader.stop();
     runtime::clear(installed);
     rescan();
 }
 
 void PackFolder::remove(runtime::Installed* installed, const std::filesystem::path& path) {
     runtime::uninstall(installed, path);
-    jobs_->post([path, nexus = api_] {
+    jobs->post([path, nexus = api] {
         std::error_code ec;
         std::filesystem::remove(path, ec);
         if (ec) nexus->Log(ELogLevel_WARNING, ADDON_NAME, ("could not delete " + util::pathText(path) + ": " + ec.message()).c_str());
@@ -69,15 +69,15 @@ void PackFolder::remove(runtime::Installed* installed, const std::filesystem::pa
 }
 
 std::string PackFolder::status(const runtime::Installed& installed) const {
-    if (!loader_.busy()) return std::to_string(installed.packs.size()) + " packs";
-    return "Loading packs: " + std::to_string(installed.packs.size()) + " of " + std::to_string(discovered_.size());
+    if (!loader.busy()) return std::to_string(installed.packs.size()) + " packs";
+    return "Loading packs: " + std::to_string(installed.packs.size()) + " of " + std::to_string(discovered.size());
 }
 
 // Takes what the loader has finished. A pack read again replaces its copy only now, so it is
 // drawn all the while.
 void PackFolder::installLoaded(runtime::Installed* installed) {
-    while (std::unique_ptr<registry::LoadedPack> loaded = loader_.take()) {
-        if (!loaded->error.empty()) api_->Log(ELogLevel_WARNING, ADDON_NAME, (util::pathText(loaded->path) + ": " + loaded->error).c_str());
+    while (std::unique_ptr<registry::LoadedPack> loaded = loader.take()) {
+        if (!loaded->error.empty()) api->Log(ELogLevel_WARNING, ADDON_NAME, (util::pathText(loaded->path) + ": " + loaded->error).c_str());
         ui::fonts::require(loaded->glyphs);
         runtime::uninstall(installed, loaded->path);
         runtime::install(installed, std::move(loaded));
@@ -87,28 +87,28 @@ void PackFolder::installLoaded(runtime::Installed* installed) {
 // Reads again every pack written since it was read: saved by the editor, or by anything else.
 // Looked at on the worker every few seconds, and not while the loader is reading.
 void PackFolder::reloadWritten(runtime::Installed* installed) {
-    if (util::ready(change_check_)) {
+    if (util::ready(change_check)) {
         // Only a pack still installed as the check found it: one removed or read again while
         // it ran is not the pack it looked at.
         std::vector<std::filesystem::path> changed;
-        for (const ReadAt& pack : util::take(change_check_).value_or(std::vector<ReadAt>{})) {
+        for (const ReadAt& pack : util::take(change_check).value_or(std::vector<ReadAt>{})) {
             const bool same =
                 std::any_of(installed->packs.begin(), installed->packs.end(), [&](const std::unique_ptr<runtime::InstalledPack>& now) {
                     return now->loaded->path == pack.path && now->loaded->written == pack.written;
                 });
             if (same) changed.push_back(pack.path);
         }
-        if (!changed.empty() && !loader_.busy()) loader_.add(std::move(changed));
+        if (!changed.empty() && !loader.busy()) loader.add(std::move(changed));
     }
 
     constexpr auto kInterval = std::chrono::seconds(2);
     const auto now = std::chrono::steady_clock::now();
-    if (change_check_.valid() || now - last_change_check_ < kInterval || loader_.busy()) return;
-    last_change_check_ = now;
+    if (change_check.valid() || now - last_change_check < kInterval || loader.busy()) return;
+    last_change_check = now;
     std::vector<ReadAt> read;
     for (const std::unique_ptr<runtime::InstalledPack>& pack : installed->packs)
         read.push_back(ReadAt{pack->loaded->path, pack->loaded->written});
-    change_check_ = jobs_->ask([read = std::move(read)] {
+    change_check = jobs->ask([read = std::move(read)] {
         std::vector<ReadAt> changed;
         for (const ReadAt& pack : read) {
             if (registry::writtenAt(pack.path) != pack.written) changed.push_back(pack);
@@ -121,17 +121,17 @@ void PackFolder::reloadWritten(runtime::Installed* installed) {
 // again: the list is made after the moves, the worker running both in order. Not while the
 // loader is busy: the pack it is reading may be the one being replaced.
 void PackFolder::placeDownloads(runtime::Installed* installed, catalog::Downloads* downloads) {
-    if (util::ready(placing_)) {
-        for (const auto& [finished, error] : util::take(placing_).value_or(Failed{})) downloads->fail(finished, error);
+    if (util::ready(placing)) {
+        for (const auto& [finished, error] : util::take(placing).value_or(Failed{})) downloads->fail(finished, error);
     }
-    if (placing_.valid() || loader_.busy()) return;
+    if (placing.valid() || loader.busy()) return;
     std::vector<catalog::Downloads::Finished> finished = downloads->take();
     if (finished.empty()) return;
 
     // An installed pack keeps its archive open. Its reads queued on the worker go before the
     // move, and each lets go of the archive as it is done, so it is closed by then.
     for (const catalog::Downloads::Finished& download : finished) runtime::uninstall(installed, download.target);
-    placing_ = jobs_->ask([finished = std::move(finished)] {
+    placing = jobs->ask([finished = std::move(finished)] {
         Failed failed;
         for (const catalog::Downloads::Finished& download : finished) {
             if (!MoveFileExW(download.part.c_str(), download.target.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_COPY_ALLOWED)) {
@@ -151,13 +151,13 @@ void PackFolder::placeDownloads(runtime::Installed* installed, catalog::Download
 // started, or while the packs changed again, is made again: one from before a delete or a
 // download put in place would load the very pack being deleted or replaced.
 void PackFolder::applyListing(runtime::Installed* installed) {
-    if (util::ready(listing_)) {
-        std::optional<Listing> found = util::take(listing_);
-        if (rescan_pending_ || loader_.busy()) {
-            rescan_pending_ = true;
+    if (util::ready(listing)) {
+        std::optional<Listing> found = util::take(listing);
+        if (rescan_pending || loader.busy()) {
+            rescan_pending = true;
         } else if (found) {
-            discovered_ = std::move(found->packs);
-            local_ = std::move(found->local);
+            discovered = std::move(found->packs);
+            local_packs = std::move(found->local);
 
             std::vector<std::filesystem::path> gone;
             for (const std::unique_ptr<runtime::InstalledPack>& pack : installed->packs) {
@@ -166,20 +166,20 @@ void PackFolder::applyListing(runtime::Installed* installed) {
             for (const std::filesystem::path& path : gone) runtime::uninstall(installed, path);
 
             std::vector<std::filesystem::path> added;
-            for (const std::filesystem::path& path : discovered_) {
+            for (const std::filesystem::path& path : discovered) {
                 if (!runtime::isInstalled(*installed, path)) added.push_back(path);
             }
-            loader_.add(std::move(added));
+            loader.add(std::move(added));
         }
     }
-    if (rescan_pending_ && !listing_.valid() && !loader_.busy()) {
-        rescan_pending_ = false;
-        listing_ = jobs_->ask([folder = folder_] { return list(folder); });
+    if (rescan_pending && !listing.valid() && !loader.busy()) {
+        rescan_pending = false;
+        listing = jobs->ask([folder = packs_folder] { return list(folder); });
     }
 }
 
 bool PackFolder::isDiscovered(const std::filesystem::path& path) const {
-    return std::any_of(discovered_.begin(), discovered_.end(), [&](const std::filesystem::path& known) {
+    return std::any_of(discovered.begin(), discovered.end(), [&](const std::filesystem::path& known) {
         return registry::samePack(known, path);
     });
 }

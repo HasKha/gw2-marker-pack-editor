@@ -37,12 +37,12 @@ class Laps
 public:
     void lap(double* step) {
         const auto now = std::chrono::steady_clock::now();
-        *step += std::chrono::duration<double, std::milli>(now - last_).count();
-        last_ = now;
+        *step += std::chrono::duration<double, std::milli>(now - last).count();
+        last = now;
     }
 
 private:
-    std::chrono::steady_clock::time_point last_ = std::chrono::steady_clock::now();
+    std::chrono::steady_clock::time_point last = std::chrono::steady_clock::now();
 };
 
 struct Frame {
@@ -78,9 +78,9 @@ public:
     bool take(double ours, double threshold, std::chrono::steady_clock::time_point now, size_t* skipped);
 
 private:
-    std::chrono::steady_clock::time_point last_{};
-    bool logged_ = false;
-    size_t skipped_ = 0;
+    std::chrono::steady_clock::time_point last{};
+    bool logged = false;
+    size_t passed_over = 0;
 };
 
 } // namespace viewer::frame_log

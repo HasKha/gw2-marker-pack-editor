@@ -67,7 +67,7 @@ public:
 
     // Moves whenever the timers change; only they are written, so a hide that waits for an
     // event leaves it.
-    uint64_t revision() const { return revision_; }
+    uint64_t revision() const { return current_revision; }
 
     // A missing file leaves nothing hidden; a line that does not parse is skipped.
     void load(const std::filesystem::path& file);
@@ -80,10 +80,10 @@ public:
     [[nodiscard]] bool save(const std::filesystem::path& file) const;
 
 private:
-    std::unordered_set<Guid, GuidHash> until_map_change_;
-    std::unordered_map<Guid, UtcMillis, GuidHash> until_time_;
-    std::unordered_map<uint64_t, std::unordered_set<Guid, GuidHash>> in_instance_;
-    uint64_t revision_ = 0;
+    std::unordered_set<Guid, GuidHash> until_map_change;
+    std::unordered_map<Guid, UtcMillis, GuidHash> until_time;
+    std::unordered_map<uint64_t, std::unordered_set<Guid, GuidHash>> in_instance;
+    uint64_t current_revision = 0;
 };
 
 } // namespace viewer::behaviors

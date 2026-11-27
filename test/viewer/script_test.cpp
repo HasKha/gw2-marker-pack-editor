@@ -66,12 +66,12 @@ struct Scripted {
 
     // Runs `expression` and returns what it printed: the shortest way to read a value out.
     std::string eval(const std::string& expression) {
-        engine->console().clear();
+        engine->console.clear();
         REQUIRE(run("print(" + expression + ")"));
-        return engine->console().messages().back().text;
+        return engine->console.messages().back().text;
     }
 
-    size_t errors() const { return engine->console().errors(); }
+    size_t errors() const { return engine->console.errors(); }
 
     corpus::TempDir temp;
     viewer::runtime::Installed installed;
@@ -117,13 +117,13 @@ TEST_CASE("a script error is reported with its file and line, and nothing else s
     CHECK_FALSE(s.run("local a = 1\nlocal b = a + nil"));
     REQUIRE(s.errors() == 2);
     CHECK_THAT(
-        s.engine->console().messages()[s.engine->console().messages().size() - 2].text,
+        s.engine->console.messages()[s.engine->console.messages().size() - 2].text,
         Catch::Matchers::ContainsSubstring("test.lua:2:"));
 
     // An error a binding raises is located at the script's call too.
     CHECK_FALSE(s.run("\n\nI:Vector3('x', 0, 0)"));
     CHECK_THAT(
-        s.engine->console().messages()[s.engine->console().messages().size() - 2].text,
+        s.engine->console.messages()[s.engine->console.messages().size() - 2].text,
         Catch::Matchers::ContainsSubstring("test.lua:3:") && Catch::Matchers::ContainsSubstring("bad argument"));
 
     CHECK(s.run("ok = true"));
@@ -134,7 +134,7 @@ TEST_CASE("a script stuck in a loop is stopped", "[viewer][script]") {
     Scripted s("script_budget");
     CHECK_FALSE(s.run("while true do end"));
     CHECK_THAT(
-        s.engine->console().messages()[s.engine->console().messages().size() - 2].text,
+        s.engine->console.messages()[s.engine->console.messages().size() - 2].text,
         Catch::Matchers::ContainsSubstring("script stopped"));
     CHECK(s.run("after = 1"));
 }
@@ -183,7 +183,7 @@ TEST_CASE("the deprecated Packs is World, with one warning", "[viewer][script]")
     CHECK(s.eval("Packs == World") == "True");
     CHECK(s.eval("Packs == World") == "True");
     size_t warnings = 0;
-    for (const auto& message : s.engine->console().messages()) warnings += message.text.find("`Packs` is deprecated") != std::string::npos;
+    for (const auto& message : s.engine->console.messages()) warnings += message.text.find("`Packs` is deprecated") != std::string::npos;
     CHECK(warnings <= 1);
 }
 
@@ -394,7 +394,7 @@ same = rawequal(Menu:Add("TOGGLE ME", nil), entry)
 TEST_CASE("Debug, print and User reach the console and the host", "[viewer][script]") {
     Scripted s("script_debug");
     CHECK(s.run(R"(print("a", 1, nil, true) Debug:Warn("careful") Debug:Watch("w", 42) copied = User.SetClipboard("text"))"));
-    const auto& messages = s.engine->console().messages();
+    const auto& messages = s.engine->console.messages();
     CHECK(messages[messages.size() - 2].text == "a 1  True");
     CHECK(messages[messages.size() - 1].level == Level::Warn);
     CHECK(s.engine->watches().at("w") == "42");

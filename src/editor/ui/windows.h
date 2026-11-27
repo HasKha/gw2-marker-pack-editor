@@ -25,13 +25,13 @@ class Shown
 public:
     Shown();
 
-    bool& operator[](Id id) { return shown_[static_cast<size_t>(id)]; }
-    bool operator[](Id id) const { return shown_[static_cast<size_t>(id)]; }
+    bool& operator[](Id id) { return shown[static_cast<size_t>(id)]; }
+    bool operator[](Id id) const { return shown[static_cast<size_t>(id)]; }
 
     bool operator==(const Shown& other) const = default;
 
 private:
-    std::array<bool, kCount> shown_{};
+    std::array<bool, kCount> shown{};
 };
 
 // The contents of the View menu: every window but the main one. Call between BeginMenu and

@@ -181,9 +181,9 @@ std::optional<std::string> Catalog::askApi(const http::Cancel& cancel) {
 
 void Catalog::start(const std::filesystem::path& cache_file, Request request) {
     if (!cache_file.empty()) {
-        if (std::optional<MapTable> cached = mapsFromCache(readFile(cache_file))) cached_ = std::move(*cached);
+        if (std::optional<MapTable> from_disk = mapsFromCache(readFile(cache_file))) cached = std::move(*from_disk);
     }
-    fresh_.start([cache_file, request = std::move(request)](const http::Cancel& cancel) -> std::optional<MapTable> {
+    fresh.start([cache_file, request = std::move(request)](const http::Cancel& cancel) -> std::optional<MapTable> {
         const std::optional<std::string> body = request(cancel);
         if (!body) return std::nullopt;
         std::optional<MapTable> maps = mapsFromApi(*body);
@@ -194,8 +194,8 @@ void Catalog::start(const std::filesystem::path& cache_file, Request request) {
 }
 
 const MapDetails* Catalog::find(int map_id) const {
-    const MapTable* fresh = fresh_.get();
-    const MapTable& maps = fresh ? *fresh : cached_;
+    const MapTable* answered = fresh.get();
+    const MapTable& maps = answered ? *answered : cached;
     const auto it = maps.find(map_id);
     return it == maps.end() ? nullptr : &it->second;
 }

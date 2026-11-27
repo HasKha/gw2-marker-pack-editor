@@ -97,11 +97,11 @@ public:
     std::shared_ptr<const TrailLines> get(const runtime::LiveMap& live, const map::MapDetails& details);
 
 private:
-    int map_id_ = 0;
-    uint64_t revision_ = 0;
-    size_t trail_count_ = 0;
-    const map::MapDetails* details_ = nullptr;
-    std::shared_ptr<const TrailLines> lines_;
+    int map_id = 0;
+    uint64_t revision = 0;
+    size_t trail_count = 0;
+    const map::MapDetails* built_details = nullptr;
+    std::shared_ptr<const TrailLines> lines;
 };
 
 // What MumbleLink says of the compass. While the full map is up the same fields describe the full
@@ -134,9 +134,9 @@ public:
     Kept update(const MumbleState& mumble);
 
 private:
-    Compass compass_;
-    Compass full_map_;
-    bool keep_ = false;
+    Compass compass;
+    Compass full_map;
+    bool keep = false;
 };
 
 struct MapScene {
@@ -178,9 +178,9 @@ public:
     float update(const MumbleState& mumble, double seconds);
 
 private:
-    bool map_open_ = false;
-    int ui_size_ = -1;
-    double since_ = 0.0;
+    bool map_open = false;
+    int ui_size = -1;
+    double since = 0.0;
 };
 
 // The full map as the game draws it in a frame, which GoodRender reads from the client and hands
@@ -231,11 +231,11 @@ private:
     // The figures' zoom and fade, as without GoodRender's map.
     Frame estimate(bool map_open, bool world_drawn, double seconds);
 
-    std::optional<GameMap> game_map_; // the last GoodRender handed since IsMapOpen came on
-    bool map_open_ = false;
-    double opened_at_ = 0.0;
-    int frames_without_world_ = 0;
-    std::optional<double> closing_at_;
+    std::optional<GameMap> game_map; // the last GoodRender handed since IsMapOpen came on
+    bool was_open = false;
+    double opened_at = 0.0;
+    int frames_without_world = 0;
+    std::optional<double> closing_at;
 };
 
 // One live map going onto the map.

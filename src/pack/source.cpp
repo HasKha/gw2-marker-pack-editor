@@ -28,10 +28,10 @@ public:
             return false;
         }
 
-        root_ = std::filesystem::canonical(folder, ec);
-        if (ec) root_ = folder;
+        root_folder = std::filesystem::canonical(folder, ec);
+        if (ec) root_folder = folder;
 
-        std::filesystem::recursive_directory_iterator it(root_, std::filesystem::directory_options::skip_permission_denied, ec);
+        std::filesystem::recursive_directory_iterator it(root_folder, std::filesystem::directory_options::skip_permission_denied, ec);
         if (ec) {
             if (error) *error = "Could not read folder: " + ec.message();
             return false;
@@ -46,32 +46,32 @@ public:
             }
             if (!it->is_regular_file(ec)) continue;
 
-            const std::filesystem::path relative = std::filesystem::relative(it->path(), root_, ec);
+            const std::filesystem::path relative = std::filesystem::relative(it->path(), root_folder, ec);
             if (ec) continue;
 
             std::string normalized = normalizePath(relative.generic_string());
             if (normalized.empty()) continue;
 
-            original_names_.emplace(normalized, relative.generic_string());
-            entries_.push_back(normalized);
-            index_.emplace(std::move(normalized), it->path());
+            original_names.emplace(normalized, relative.generic_string());
+            entry_names.push_back(normalized);
+            index.emplace(std::move(normalized), it->path());
         }
 
         return true;
     }
 
-    const std::vector<std::string>& entries() const override { return entries_; }
+    const std::vector<std::string>& entries() const override { return entry_names; }
 
     std::string originalName(std::string_view path) const override {
-        auto it = original_names_.find(normalizePath(path));
-        return it == original_names_.end() ? std::string() : it->second;
+        auto it = original_names.find(normalizePath(path));
+        return it == original_names.end() ? std::string() : it->second;
     }
 
-    bool contains(std::string_view path) const override { return index_.find(normalizePath(path)) != index_.end(); }
+    bool contains(std::string_view path) const override { return index.find(normalizePath(path)) != index.end(); }
 
     bool read(std::string_view path, std::vector<uint8_t>* out, std::string* error) const override {
-        auto it = index_.find(normalizePath(path));
-        if (it == index_.end()) {
+        auto it = index.find(normalizePath(path));
+        if (it == index.end()) {
             if (error) *error = "No such file: " + std::string(path);
             return false;
         }
@@ -95,14 +95,14 @@ public:
         return true;
     }
 
-    const std::filesystem::path& root() const override { return root_; }
+    const std::filesystem::path& root() const override { return root_folder; }
     bool isDirectory() const override { return true; }
 
 private:
-    std::filesystem::path root_;
-    std::vector<std::string> entries_;
-    std::unordered_map<std::string, std::filesystem::path> index_;
-    std::unordered_map<std::string, std::string> original_names_;
+    std::filesystem::path root_folder;
+    std::vector<std::string> entry_names;
+    std::unordered_map<std::string, std::filesystem::path> index;
+    std::unordered_map<std::string, std::string> original_names;
 };
 
 } // namespace

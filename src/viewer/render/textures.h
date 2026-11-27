@@ -40,7 +40,7 @@ public:
 
     // Whether an image of `pixels` may be handed now. Always when nothing is out, so an image
     // larger than the cap goes alone rather than never.
-    bool allows(int64_t pixels) const { return out_.empty() || pixels_ + pixels <= MAX_PIXELS; }
+    bool allows(int64_t pixels) const { return out.empty() || out_pixels + pixels <= MAX_PIXELS; }
 
     // The image Nexus will know as `identifier`, of `pixels`, was handed to `api`'s Nexus.
     void handed(AddonAPI* api, std::string identifier, int64_t pixels);
@@ -50,11 +50,11 @@ public:
     void nextFrame();
 
     // What is out now: images, and their pixels.
-    size_t images() const { return out_.size(); }
-    int64_t pixels() const { return pixels_; }
+    size_t images() const { return out.size(); }
+    int64_t pixels() const { return out_pixels; }
 
     // How many frames nextFrame has begun.
-    uint64_t frame() const { return frame_; }
+    uint64_t frame() const { return frames_begun; }
 
 private:
     struct Out {
@@ -63,9 +63,9 @@ private:
         int64_t pixels;
         int frames; // frames since it was handed
     };
-    std::vector<Out> out_;
-    int64_t pixels_ = 0;
-    uint64_t frame_ = 0;
+    std::vector<Out> out;
+    int64_t out_pixels = 0;
+    uint64_t frames_begun = 0;
 };
 
 class TextureCache
@@ -79,15 +79,15 @@ public:
     // `prefix` starts every identifier handed to Nexus, which shares one texture namespace
     // between every addon loaded.
     explicit TextureCache(std::string prefix)
-        : prefix_(std::move(prefix)) {}
+        : prefix(std::move(prefix)) {}
 
     // Where images come from, where they are read, and what bounds how much is handed to Nexus at
     // once, which outlive the cache. Any null leaves every lookup empty, which is what a test
     // that draws nothing and a pack made in the editor before Nexus is up both rely on.
-    void setApi(AddonAPI* api, util::JobQueue* jobs, TextureUploads* uploads) {
-        api_ = api;
-        jobs_ = jobs;
-        uploads_ = uploads;
+    void setApi(AddonAPI* nexus, util::JobQueue* worker, TextureUploads* limit) {
+        api = nexus;
+        jobs = worker;
+        uploads = limit;
     }
 
     // The image at `key`, a normalized path: empty until the worker has read it through the
@@ -112,19 +112,19 @@ public:
     Counts counts() const;
 
 private:
-    std::string prefix_;
-    AddonAPI* api_ = nullptr;
-    util::JobQueue* jobs_ = nullptr;
-    TextureUploads* uploads_ = nullptr;
+    std::string prefix;
+    AddonAPI* api = nullptr;
+    util::JobQueue* jobs = nullptr;
+    TextureUploads* uploads = nullptr;
 
     // Nexus never releases a texture and returns the existing one for an identifier it has seen,
     // so a generation bumped whenever bytes may have changed keeps new loads under new names.
     // Superseded textures stay resident.
-    uint32_t generation_ = 0;
+    uint32_t generation = 0;
 
     // What the reads still queued were asked for: one that finds it gone reads nothing. Made
     // again by clear(), and dropped with the cache.
-    std::shared_ptr<char> wanted_ = std::make_shared<char>();
+    std::shared_ptr<char> wanted = std::make_shared<char>();
 
     // A file read on the worker, with the pixels it decodes to.
     struct Read {
@@ -145,7 +145,7 @@ private:
         Image image;
         bool done = false; // `image` is final, a miss included
     };
-    std::unordered_map<std::string, Entry> images_;
+    std::unordered_map<std::string, Entry> images;
 };
 
 } // namespace viewer

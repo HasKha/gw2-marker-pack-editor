@@ -192,18 +192,18 @@ struct Engine::State {
 };
 
 Engine::Engine(Host host)
-    : host_(std::move(host)) {
+    : host(std::move(host)) {
     reset();
 }
 
 Engine::~Engine() = default;
 
 void Engine::reset() {
-    state_.reset();
-    state_ = std::make_unique<State>(host_, console_, census_);
+    state.reset();
+    state = std::make_unique<State>(host, console, script_census);
 
-    sol::state& lua = state_->lua;
-    Context& ctx = state_->context;
+    sol::state& lua = state->lua;
+    Context& ctx = state->context;
     // What the sandbox copies from; no io, os, debug, package or utf8 is opened at all.
     lua.open_libraries(sol::lib::base, sol::lib::coroutine, sol::lib::math, sol::lib::string, sol::lib::table);
     setContext(lua.lua_state(), &ctx);
@@ -221,32 +221,32 @@ void Engine::reset() {
     lua_gc(lua.lua_state(), LUA_GCINC, kGcPause, kGcStepMultiplier, 0);
 
     ctx.env = sol::environment(lua, sol::create);
-    ctx.frame_seconds.assign(host_.installed ? host_.installed->packs.size() : 0, 0.0);
+    ctx.frame_seconds.assign(host.installed ? host.installed->packs.size() : 0, 0.0);
     bindValues(lua);
     bindWorld(lua);
     bindGlobals(lua, ctx.env);
 
-    frame_history_.assign(ctx.frame_seconds.size(), {});
-    console_.push(Level::System, "system", "Loaded new environment.");
+    frame_history.assign(ctx.frame_seconds.size(), {});
+    console.push(Level::System, "system", "Loaded new environment.");
 }
 
 void Engine::loadPacks() {
-    for (size_t pack = 0; pack < host_.installed->packs.size(); ++pack) {
+    for (size_t pack = 0; pack < host.installed->packs.size(); ++pack) {
         // pack.lua is optional, and Pathing does not warn about one that is missing.
-        loadScript(state_->lua, pack, "pack.lua", true);
+        loadScript(state->lua, pack, "pack.lua", true);
     }
 }
 
 bool Engine::run(size_t pack, std::string_view file, std::string_view source) {
-    const sol::object chunk = runChunk(state_->lua, pack, pack::normalizePath(file), source);
+    const sol::object chunk = runChunk(state->lua, pack, pack::normalizePath(file), source);
     return chunk.valid();
 }
 
 void Engine::tick(double total_seconds, double elapsed_seconds) {
-    Context& ctx = state_->context;
-    state_->last_tick = GameTime{total_seconds, elapsed_seconds};
-    state_->tick_time = sol::make_object(state_->lua, state_->last_tick);
-    const sol::object game_time = state_->tick_time;
+    Context& ctx = state->context;
+    state->last_tick = GameTime{total_seconds, elapsed_seconds};
+    state->tick_time = sol::make_object(state->lua, state->last_tick);
+    const sol::object game_time = state->tick_time;
 
     // The handlers there were when the tick began; one registered by a handler waits for the
     // next. Event.Update does the same with ToArray.
@@ -267,7 +267,7 @@ void Engine::tick(double total_seconds, double elapsed_seconds) {
     }
 
     for (size_t pack = 0; pack < ctx.frame_seconds.size(); ++pack) {
-        std::vector<double>& history = frame_history_[pack];
+        std::vector<double>& history = frame_history[pack];
         if (history.size() == kFrameHistory) history.erase(history.begin());
         history.push_back(ctx.frame_seconds[pack]);
         ctx.frame_seconds[pack] = 0.0;
@@ -275,11 +275,11 @@ void Engine::tick(double total_seconds, double elapsed_seconds) {
 }
 
 const std::vector<MenuNode>& Engine::menus() const {
-    return state_->context.menus;
+    return state->context.menus;
 }
 
 void Engine::clickMenu(size_t index) {
-    Context& ctx = state_->context;
+    Context& ctx = state->context;
     if (index >= ctx.menus.size() || ctx.menus[index].removed) return;
     if (ctx.menus[index].can_check) ctx.menus[index].checked = !ctx.menus[index].checked;
 
@@ -287,26 +287,26 @@ void Engine::clickMenu(size_t index) {
     const std::string name = ctx.menus[index].name;
     const sol::protected_function click = ctx.menu_clicks[index];
     if (!click.valid()) return;
-    const sol::protected_function_result result = timedCall(ctx, Context::kNoPack, click, pushMenu(state_->lua, index));
+    const sol::protected_function_result result = timedCall(ctx, Context::kNoPack, click, pushMenu(state->lua, index));
     if (!result.valid()) ctx.console.push(Level::Error, "system", "Menu '" + name + "': " + errorText(result));
 }
 
 const std::map<std::string, std::string>& Engine::watches() const {
-    return state_->context.watches;
+    return state->context.watches;
 }
 
 const std::vector<std::string>& Engine::info() const {
-    return state_->context.info;
+    return state->context.info;
 }
 
 std::optional<bool> Engine::callBehavior(const behaviors::ScriptCall& call, behaviors::Entity entity, behaviors::Hook hook, bool flag) {
-    State& state = *state_;
-    Context& ctx = state.context;
-    sol::state& lua = state.lua;
+    State& running = *state;
+    Context& ctx = running.context;
+    sol::state& lua = running.lua;
 
     // CallMemberDirect with ignoreCase: the exact name first, then any that matches but for case.
-    auto found = state.behavior_functions.find(call.name);
-    if (found == state.behavior_functions.end()) {
+    auto found = running.behavior_functions.find(call.name);
+    if (found == running.behavior_functions.end()) {
         sol::object function = ctx.env[call.name];
         if (function.get_type() != sol::type::function) {
             const std::string wanted = lowercase(call.name);
@@ -319,10 +319,10 @@ std::optional<bool> Engine::callBehavior(const behaviors::ScriptCall& call, beha
             }
         }
         if (function.get_type() != sol::type::function) return std::nullopt;
-        found = state.behavior_functions.emplace(call.name, sol::protected_function(function)).first;
+        found = running.behavior_functions.emplace(call.name, sol::protected_function(function)).first;
     }
 
-    const runtime::LiveMap& live = *host_.live;
+    const runtime::LiveMap& live = *host.live;
     const bool known = entity.trail ? entity.index < live.trails.size() : entity.index < live.markers.size();
     if (!known) return std::nullopt;
     const size_t pack = entity.trail ? live.trails[entity.index].pack : live.markers[entity.index].pack;
@@ -331,7 +331,7 @@ std::optional<bool> Engine::callBehavior(const behaviors::ScriptCall& call, beha
     arguments.push_back(entity.trail ? pushTrail(lua, entity.index) : pushMarker(lua, entity.index));
     if (hook == behaviors::Hook::Focus || hook == behaviors::Hook::Trigger) arguments.push_back(sol::make_object(lua, flag));
     if (hook == behaviors::Hook::Tick) {
-        arguments.push_back(state.tick_time.valid() ? state.tick_time : sol::make_object(lua, state.last_tick));
+        arguments.push_back(running.tick_time.valid() ? running.tick_time : sol::make_object(lua, running.last_tick));
     }
     for (const behaviors::ScriptArg& argument : call.args) arguments.push_back(scriptArgument(lua, argument));
 
@@ -346,13 +346,13 @@ std::optional<bool> Engine::callBehavior(const behaviors::ScriptCall& call, beha
 }
 
 double Engine::frameSeconds(size_t pack) const {
-    if (pack >= frame_history_.size() || frame_history_[pack].empty()) return 0.0;
-    const std::vector<double>& history = frame_history_[pack];
+    if (pack >= frame_history.size() || frame_history[pack].empty()) return 0.0;
+    const std::vector<double>& history = frame_history[pack];
     return std::accumulate(history.begin(), history.end(), 0.0) / static_cast<double>(history.size());
 }
 
 size_t Engine::heapBytes() const {
-    lua_State* L = state_->lua.lua_state();
+    lua_State* L = state->lua.lua_state();
     return static_cast<size_t>(lua_gc(L, LUA_GCCOUNT)) * 1024 + static_cast<size_t>(lua_gc(L, LUA_GCCOUNTB));
 }
 

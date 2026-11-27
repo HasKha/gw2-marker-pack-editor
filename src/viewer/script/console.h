@@ -30,8 +30,8 @@ public:
     void push(Level level, std::string source, std::string text);
     void clear();
 
-    const std::deque<Message>& messages() const { return messages_; }
-    size_t errors() const { return errors_; } // every error pushed, including those since dropped
+    const std::deque<Message>& messages() const { return kept_messages; }
+    size_t errors() const { return error_count; } // every error pushed, including those since dropped
 
     // Every message as plain text, a line each with its traceback below it, for the player to
     // copy or save into a report: "[source] text", with "ERROR " or "WARN " in front of those,
@@ -39,12 +39,12 @@ public:
     std::string text() const;
 
     // Moves on every push and clear, so a window knows to scroll.
-    uint64_t revision() const { return revision_; }
+    uint64_t revision() const { return current_revision; }
 
 private:
-    std::deque<Message> messages_;
-    size_t errors_ = 0;
-    uint64_t revision_ = 0;
+    std::deque<Message> kept_messages;
+    size_t error_count = 0;
+    uint64_t current_revision = 0;
 };
 
 // One member a script indexed on a Pathing object that the API has no row for.
@@ -63,11 +63,11 @@ public:
     // False when this member was already recorded at this place.
     bool record(std::string member, std::string source, int line);
 
-    const std::vector<CensusEntry>& entries() const { return entries_; }
+    const std::vector<CensusEntry>& entries() const { return missing_members; }
 
 private:
-    std::vector<CensusEntry> entries_;
-    std::unordered_set<std::string> seen_;
+    std::vector<CensusEntry> missing_members;
+    std::unordered_set<std::string> seen;
 };
 
 } // namespace viewer::script

@@ -36,14 +36,14 @@ void drawMessages(const script::Engine& engine, const std::filesystem::path& sav
 
     // The whole log, tracebacks included, for a player to send with a report.
     if (ImGui::Button(fonts::label(ICON_FA_COPY, "Copy").c_str())) {
-        ImGui::SetClipboardText(engine.console().text().c_str());
-        status = "Copied " + std::to_string(engine.console().messages().size()) + " messages to the clipboard";
+        ImGui::SetClipboardText(engine.console.text().c_str());
+        status = "Copied " + std::to_string(engine.console.messages().size()) + " messages to the clipboard";
     }
     if (!save_file.empty()) {
         ImGui::SameLine();
         if (ImGui::Button(fonts::label(ICON_FA_FLOPPY_DISK, "Save").c_str())) {
             status = "Saving...";
-            saved = jobs.ask([save_file, text = engine.console().text()] { return util::json_file::writeText(save_file, text); });
+            saved = jobs.ask([save_file, text = engine.console.text()] { return util::json_file::writeText(save_file, text); });
         }
     }
     if (!status.empty()) {
@@ -53,7 +53,7 @@ void drawMessages(const script::Engine& engine, const std::filesystem::path& sav
     }
 
     ImGui::BeginChild("##messages", ImVec2(0, 0), false, ImGuiWindowFlags_HorizontalScrollbar);
-    for (const script::Message& message : engine.console().messages()) {
+    for (const script::Message& message : engine.console.messages()) {
         ImGui::PushStyleColor(ImGuiCol_Text, colourOf(message.level));
         // A traceback follows the first line; it is there on hover rather than in the way.
         const size_t newline = message.text.find('\n');
@@ -63,8 +63,8 @@ void drawMessages(const script::Engine& engine, const std::filesystem::path& sav
         if (newline != std::string::npos && ImGui::IsItemHovered()) ImGui::SetTooltip("%s", message.text.c_str());
     }
     // Follows new messages, unless the player has scrolled up to read old ones.
-    if (seen_revision != engine.console().revision() && ImGui::GetScrollY() >= ImGui::GetScrollMaxY() - 1.0f) ImGui::SetScrollHereY(1.0f);
-    seen_revision = engine.console().revision();
+    if (seen_revision != engine.console.revision() && ImGui::GetScrollY() >= ImGui::GetScrollMaxY() - 1.0f) ImGui::SetScrollHereY(1.0f);
+    seen_revision = engine.console.revision();
     ImGui::EndChild();
 }
 

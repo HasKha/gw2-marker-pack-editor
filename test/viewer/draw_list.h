@@ -10,21 +10,22 @@ class DrawListFixture
 {
 public:
     DrawListFixture()
-        : context_(ImGui::CreateContext())
-        , list_(ImGui::GetDrawListSharedData()) {
-        list_._ResetForNewFrame();
-        list_.PushClipRectFullScreen();
+        : context(ImGui::CreateContext())
+        , draw_list(ImGui::GetDrawListSharedData()) {
+        draw_list._ResetForNewFrame();
+        draw_list.PushClipRectFullScreen();
     }
-    ~DrawListFixture() { ImGui::DestroyContext(context_); }
+    ~DrawListFixture() { ImGui::DestroyContext(context); }
 
     DrawListFixture(const DrawListFixture&) = delete;
     DrawListFixture& operator=(const DrawListFixture&) = delete;
 
-    ImDrawList& list() { return list_; }
+    ImDrawList& list() { return draw_list; }
 
 private:
-    ImGuiContext* context_;
-    ImDrawList list_;
+    ImGuiContext* context;
+    // After the context, whose shared data it draws with.
+    ImDrawList draw_list;
 };
 
 // Any non-null id will do: nothing samples it.

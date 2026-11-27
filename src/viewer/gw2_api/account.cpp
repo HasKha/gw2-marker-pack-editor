@@ -116,48 +116,48 @@ Progress fromCache(const nlohmann::json& cache, std::string_view key, UtcMillis 
     return progress;
 }
 
-void Fetcher::open(const std::filesystem::path& cache_file, const std::string& key, UtcMillis now, util::JobQueue* jobs) {
-    file_ = cache_file;
-    jobs_ = jobs;
-    key_.clear();
-    setKey(key, now);
+void Fetcher::open(const std::filesystem::path& cache_file, const std::string& first_key, UtcMillis now, util::JobQueue* queue) {
+    file = cache_file;
+    jobs = queue;
+    key.clear();
+    setKey(first_key, now);
 }
 
-void Fetcher::setKey(const std::string& key, UtcMillis now) {
+void Fetcher::setKey(const std::string& new_key, UtcMillis now) {
     stop();
-    request_.reset();
-    key_ = key;
-    progress_ = Progress{};
-    cached_ = {};
-    last_asked_.reset();
-    if (key_.empty() || file_.empty() || !jobs_) return;
-    cached_ = jobs_->ask([file = file_, key = key_, now] {
+    request.reset();
+    key = new_key;
+    current_progress = Progress{};
+    cached = {};
+    last_asked.reset();
+    if (key.empty() || file.empty() || !jobs) return;
+    cached = jobs->ask([file = file, key = key, now] {
         const std::optional<nlohmann::json> cache = util::json_file::readObject(file);
         return cache ? fromCache(*cache, key, now) : Progress{};
     });
 }
 
 bool Fetcher::takeCache() {
-    if (!cached_.valid()) return true;
-    if (!util::ready(cached_)) return false;
-    progress_ = util::take(cached_).value_or(Progress{});
+    if (!cached.valid()) return true;
+    if (!util::ready(cached)) return false;
+    current_progress = util::take(cached).value_or(Progress{});
     return true;
 }
 
 void Fetcher::update(Clock::time_point now, UtcMillis utc_now) {
     if (!takeCache()) return;
-    if (request_ && request_->finished()) {
-        if (std::optional<Progress> answer = request_->take()) progress_ = std::move(*answer);
-        request_.reset();
+    if (request && request->finished()) {
+        if (std::optional<Progress> answer = request->take()) current_progress = std::move(*answer);
+        request.reset();
     }
-    if (progress_.raids && behaviors::nextWeeklyReset(progress_.raids_at) <= utc_now) progress_.raids.reset();
+    if (current_progress.raids && behaviors::nextWeeklyReset(current_progress.raids_at) <= utc_now) current_progress.raids.reset();
 
     // INTERVAL_CHECKACHIEVEMENTS in both of Pathing's states: five minutes and 10 ms.
     constexpr auto kInterval = std::chrono::milliseconds(300010);
-    if (key_.empty() || request_ || (last_asked_ && now - *last_asked_ < kInterval)) return;
-    last_asked_ = now;
-    request_ = std::make_unique<http::Background<Progress>>();
-    request_->start([key = key_, file = file_, progress = progress_](const http::Cancel& cancel) mutable -> std::optional<Progress> {
+    if (key.empty() || request || (last_asked && now - *last_asked < kInterval)) return;
+    last_asked = now;
+    request = std::make_unique<http::Background<Progress>>();
+    request->start([key = key, file = file, progress = current_progress](const http::Cancel& cancel) mutable -> std::optional<Progress> {
         const std::string header = api_key::authorization(key);
         const auto ask = [&](const char* url) -> std::optional<std::string> {
             std::optional<http::Reply> reply = http::request(url, header, cancel, std::chrono::seconds(15));
@@ -192,12 +192,12 @@ void Fetcher::update(Clock::time_point now, UtcMillis utc_now) {
 
 void Fetcher::clearCache() {
     stop();
-    request_.reset();
-    progress_ = Progress{};
-    cached_ = {};
-    last_asked_.reset();
-    if (!file_.empty() && jobs_) {
-        jobs_->post([file = file_] {
+    request.reset();
+    current_progress = Progress{};
+    cached = {};
+    last_asked.reset();
+    if (!file.empty() && jobs) {
+        jobs->post([file = file] {
             std::error_code ignored;
             std::filesystem::remove(file, ignored);
         });
@@ -205,7 +205,7 @@ void Fetcher::clearCache() {
 }
 
 void Fetcher::stop() {
-    if (request_) request_->stop();
+    if (request) request->stop();
 }
 
 } // namespace viewer::account

@@ -316,16 +316,16 @@ void update(Fonts::State& fonts, const ImFont* host) {
 } // namespace
 
 Fonts::Fonts()
-    : state_(std::make_unique<State>()) {
-    current = state_.get();
+    : state(std::make_unique<State>()) {
+    current = state.get();
 }
 
 Fonts::~Fonts() {
-    if (current == state_.get()) current = nullptr;
+    if (current == state.get()) current = nullptr;
 }
 
 void Fonts::setDevice(ID3D11Device* device) {
-    state_->device = device;
+    state->device = device;
 }
 
 void push() {

@@ -12,7 +12,7 @@ Downloads::Fetch Downloads::defaultFetch() {
 }
 
 Downloads::Job* Downloads::find(const std::string& file_name) const {
-    for (const std::unique_ptr<Job>& job : jobs_) {
+    for (const std::unique_ptr<Job>& job : jobs) {
         if (job->file_name == file_name) return job.get();
     }
     return nullptr;
@@ -22,7 +22,7 @@ void Downloads::start(const Package& package, const std::filesystem::path& folde
     if (Job* previous = find(package.file_name)) {
         if (!previous->done) return;
         previous->thread.join();
-        std::erase_if(jobs_, [previous](const std::unique_ptr<Job>& job) { return job.get() == previous; });
+        std::erase_if(jobs, [previous](const std::unique_ptr<Job>& job) { return job.get() == previous; });
     }
 
     auto job = std::make_unique<Job>();
@@ -37,7 +37,7 @@ void Downloads::start(const Package& package, const std::filesystem::path& folde
             raw->received = received;
             raw->total = total;
         };
-        std::string error = fetch_(url, raw->part, progress, raw->cancel);
+        std::string error = fetch(url, raw->part, progress, raw->cancel);
         if (error.empty()) {
             // PackHandlingUtil's test: an archive with something in it. The source is closed
             // again at once, so the file can be moved.
@@ -49,7 +49,7 @@ void Downloads::start(const Package& package, const std::filesystem::path& folde
         raw->error = std::move(error);
         raw->done.store(true, std::memory_order_release);
     });
-    jobs_.push_back(std::move(job));
+    jobs.push_back(std::move(job));
 }
 
 std::optional<Downloads::Status> Downloads::status(const std::string& file_name) const {
@@ -69,7 +69,7 @@ std::optional<Downloads::Status> Downloads::status(const std::string& file_name)
 
 std::vector<Downloads::Finished> Downloads::take() {
     std::vector<Finished> finished;
-    for (const std::unique_ptr<Job>& job : jobs_) {
+    for (const std::unique_ptr<Job>& job : jobs) {
         if (job->taken || !job->done.load(std::memory_order_acquire)) continue;
         job->taken = true;
         if (job->error.empty()) finished.push_back(Finished{job->file_name, job->part, job->target});
@@ -82,16 +82,16 @@ void Downloads::fail(const Finished& finished, const std::string& error) {
 }
 
 void Downloads::stop() {
-    for (const std::unique_ptr<Job>& job : jobs_) job->cancel.cancel();
-    for (const std::unique_ptr<Job>& job : jobs_) {
+    for (const std::unique_ptr<Job>& job : jobs) job->cancel.cancel();
+    for (const std::unique_ptr<Job>& job : jobs) {
         if (job->thread.joinable()) job->thread.join();
     }
     // What arrived but was never put in place goes with them.
     std::error_code ec;
-    for (const std::unique_ptr<Job>& job : jobs_) {
+    for (const std::unique_ptr<Job>& job : jobs) {
         if (!job->taken) std::filesystem::remove(job->part, ec);
     }
-    jobs_.clear();
+    jobs.clear();
 }
 
 } // namespace viewer::catalog

@@ -101,14 +101,14 @@ public:
     // cache. An empty path keeps nothing.
     void start(const std::filesystem::path& cache_file, Request request = askApi);
     // Waits for the request, which its timeouts bound.
-    void stop() { fresh_.stop(); }
+    void stop() { fresh.stop(); }
 
     // The map's rectangles, or null for a map neither the API nor the cache knows.
     const MapDetails* find(int map_id) const;
 
 private:
-    MapTable cached_;
-    http::Background<MapTable> fresh_;
+    MapTable cached;
+    http::Background<MapTable> fresh;
 };
 
 } // namespace viewer::map

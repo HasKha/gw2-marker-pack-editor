@@ -72,24 +72,24 @@ public:
     // Whether the read findOnWorker asked for came in, once: found() is then its, and the status
     // is cleared.
     bool takeFound();
-    const Found& found() const { return found_; }
+    const Found& found() const { return last_found; }
 
     // Copies `packs` into `folder` and reads the states found() has.
     void start(std::vector<std::filesystem::path> packs, const std::filesystem::path& folder);
-    bool running() const { return job_ != nullptr; }
+    bool running() const { return job != nullptr; }
     // What the copy did, once it is done, for the caller to bring its states in. The status says
     // how it went, and that it did not finish when it gave no answer.
     std::optional<Done> finish();
-    const std::string& status() const { return status_; }
+    const std::string& status() const { return status_text; }
 
     // Waits for the copy.
-    void stop() { job_.reset(); }
+    void stop() { job.reset(); }
 
 private:
-    std::future<Found> search_;
-    Found found_;
-    std::unique_ptr<http::Background<Done>> job_;
-    std::string status_;
+    std::future<Found> search;
+    Found last_found;
+    std::unique_ptr<http::Background<Done>> job;
+    std::string status_text;
 };
 
 } // namespace viewer::blish_import

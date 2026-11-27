@@ -30,13 +30,13 @@ public:
 
     bool open(const std::filesystem::path& file, std::string* error);
     void close();
-    bool isOpen() const { return open_; }
+    bool isOpen() const { return opened; }
 
-    const std::vector<std::string>& entries() const override { return entries_; }
+    const std::vector<std::string>& entries() const override { return entry_names; }
     std::string originalName(std::string_view path) const override;
     bool contains(std::string_view path) const override;
     bool read(std::string_view path, std::vector<uint8_t>* out, std::string* error) const override;
-    const std::filesystem::path& root() const override { return source_; }
+    const std::filesystem::path& root() const override { return source; }
     bool isDirectory() const override { return false; }
 
 private:
@@ -45,12 +45,12 @@ private:
     // above and defined in the .cpp, which is what lets unique_ptr hold an incomplete type.
     struct Impl;
 
-    std::unique_ptr<Impl> impl_;
-    bool open_ = false;
-    std::filesystem::path source_;
-    std::vector<std::string> entries_;
-    std::unordered_map<std::string, uint32_t> index_; // normalized name -> entry index
-    std::unordered_map<std::string, std::string> original_names_;
+    std::unique_ptr<Impl> impl;
+    bool opened = false;
+    std::filesystem::path source;
+    std::vector<std::string> entry_names;
+    std::unordered_map<std::string, uint32_t> index; // normalized name -> entry index
+    std::unordered_map<std::string, std::string> original_names;
 };
 
 } // namespace pack::zip

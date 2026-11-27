@@ -38,13 +38,13 @@ public:
     void start();
     // Waits for a request still in flight, which its timeouts bound: unloading offline costs
     // at most those seconds.
-    void stop() { request_.stop(); }
+    void stop() { request.stop(); }
 
     // The festivals on, lowercase; empty until the answer is in.
     const std::vector<std::string>& active() const;
 
 private:
-    http::Background<std::vector<std::string>> request_;
+    http::Background<std::vector<std::string>> request;
 };
 
 } // namespace viewer::behaviors

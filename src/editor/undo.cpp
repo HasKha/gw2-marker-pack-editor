@@ -134,7 +134,7 @@ void clear(editor::State& state) {
 }
 
 Step::Step(editor::State& state, std::string label, std::string merge_key)
-    : state_(state) {
+    : state(state) {
     History& history = state.history;
     if (history.open_depth > 0) {
         // Nested: an operation built out of smaller ones is still one undo step.
@@ -172,10 +172,10 @@ Step::Step(editor::State& state, std::string label, std::string merge_key)
 }
 
 Step::~Step() {
-    History& history = state_.history;
+    History& history = state.history;
     if (history.open_depth == 0) return;
     if (--history.open_depth > 0) return; // an inner guard; the outermost one closes the step
-    if (history.open_index < history.steps.size()) closeEntry(state_);
+    if (history.open_index < history.steps.size()) closeEntry(state);
 }
 
 void attributes(editor::State& state, editor::NodeRef node) {

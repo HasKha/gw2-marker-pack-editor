@@ -546,9 +546,9 @@ TEST_CASE("the engine calls script-* functions by name, ignoring case", "[behavi
     CHECK(call("Ticked", Hook::Tick) == true);
     CHECK_FALSE(call("Missing", Hook::Filter));
 
-    const size_t errors = engine.console().errors();
+    const size_t errors = engine.console.errors();
     CHECK_FALSE(call("Broken", Hook::Trigger));
-    CHECK(engine.console().errors() == errors + 1);
+    CHECK(engine.console.errors() == errors + 1);
 }
 
 TEST_CASE("scripts reach a marker's behaviors through GetBehavior", "[behaviors][script]") {
@@ -564,9 +564,9 @@ TEST_CASE("scripts reach a marker's behaviors through GetBehavior", "[behaviors]
     host.mumble = &world.mumble;
     viewer::script::Engine engine(host);
     const auto eval = [&](const std::string& expression) {
-        engine.console().clear();
+        engine.console.clear();
         REQUIRE(engine.run(0, "test.lua", "local m = World:MarkerByGuid('AAECAwQFBgcICQoLDA0ODw==')\nprint(" + expression + ")"));
-        return engine.console().messages().back().text;
+        return engine.console.messages().back().text;
     };
 
     CHECK(eval("m:GetBehavior('InfoModifier').InfoValue") == "Before");

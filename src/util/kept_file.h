@@ -15,22 +15,22 @@ class KeptFile
 {
 public:
     // What the store holds at `revision` is what the file holds: it was just read from it.
-    void loaded(uint64_t revision) { handed_ = revision; }
+    void loaded(uint64_t revision) { handed = revision; }
 
     // Hands `text()` to `jobs` to be written to `file` when the store moved past what was handed
     // over last. Writes of one file land in order, so the last handed over is what stays.
     template <class Text>
     void save(JobQueue* jobs, const std::filesystem::path& file, uint64_t revision, const Text& text) {
-        if (ready(written_) && !take(written_).value_or(false)) handed_ = kNothing;
-        if (file.empty() || revision == handed_) return;
-        handed_ = revision;
-        written_ = jobs->ask([file, text = text()] { return json_file::writeText(file, text); });
+        if (ready(written) && !take(written).value_or(false)) handed = kNothing;
+        if (file.empty() || revision == handed) return;
+        handed = revision;
+        written = jobs->ask([file, text = text()] { return json_file::writeText(file, text); });
     }
 
 private:
     static constexpr uint64_t kNothing = ~0ull;
-    uint64_t handed_ = kNothing;
-    std::future<bool> written_; // the last handed over
+    uint64_t handed = kNothing;
+    std::future<bool> written; // the last handed over
 };
 
 } // namespace util

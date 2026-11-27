@@ -39,7 +39,7 @@ public:
 
     // Moves whenever a state changes, so whoever derives visibility from these knows to
     // derive it again.
-    uint64_t revision() const { return revision_; }
+    uint64_t revision() const { return current_revision; }
 
     // A missing or unreadable file leaves no choices made.
     void load(const std::filesystem::path& file);
@@ -48,8 +48,8 @@ public:
     [[nodiscard]] bool save(const std::filesystem::path& file) const;
 
 private:
-    std::unordered_map<std::string, bool> states_;
-    uint64_t revision_ = 0;
+    std::unordered_map<std::string, bool> states;
+    uint64_t current_revision = 0;
 };
 
 // What scripts keep through Storage: one flat string-to-string store across every pack, as
@@ -66,7 +66,7 @@ public:
 
     // Moves whenever a value changes. Pathing writes at most every five seconds rather than on
     // every change; a script may write every tick.
-    uint64_t revision() const { return revision_; }
+    uint64_t revision() const { return current_revision; }
 
     void load(const std::filesystem::path& file);
     // The values as the file holds them, and that written to `file`.
@@ -74,8 +74,8 @@ public:
     [[nodiscard]] bool save(const std::filesystem::path& file) const;
 
 private:
-    std::unordered_map<std::string, std::string> values_;
-    uint64_t revision_ = 0;
+    std::unordered_map<std::string, std::string> values;
+    uint64_t current_revision = 0;
 };
 
 } // namespace viewer::store

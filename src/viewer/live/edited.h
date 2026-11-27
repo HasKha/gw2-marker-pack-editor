@@ -61,11 +61,10 @@ public:
     void clear();
 
     // Behaviors keep their state in it from one frame to the next, until it is built again.
-    runtime::LiveMap& live() { return live_; }
-    const runtime::LiveMap& live() const { return live_; }
+    runtime::LiveMap live;
 
     // Every marker and trail of the pack, baked: what the editor's overlay places its handles by.
-    const BakedPathables& baked() const { return baked_; }
+    const BakedPathables& baked() const { return baked_pathables; }
 
 private:
     // Reads the points and map of every trail without them, and the colour of every trail still
@@ -73,13 +72,12 @@ private:
     bool resolveTrails(const TrailLookup& trail, const ColourLookup& colour);
     void rebuild(int map_id);
 
-    bool open_ = false;
-    uint64_t revision_ = 0;
-    BakedPathables baked_;
-    std::vector<char> shown_;
-    bool unresolved_ = false; // a trail whose file or texture waits for a later frame
-    uint64_t builds_ = 0; // never reset, so a live map's revision is never reused
-    runtime::LiveMap live_;
+    bool open = false;
+    uint64_t revision = 0;
+    BakedPathables baked_pathables;
+    std::vector<char> shown;
+    bool unresolved = false; // a trail whose file or texture waits for a later frame
+    uint64_t builds = 0; // never reset, so a live map's revision is never reused
 };
 
 } // namespace viewer::edited

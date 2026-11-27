@@ -51,11 +51,11 @@ public:
     TempDir(const TempDir&) = delete;
     TempDir& operator=(const TempDir&) = delete;
 
-    const std::filesystem::path& path() const { return path_; }
-    std::filesystem::path operator/(std::string_view leaf) const { return path_ / leaf; }
+    const std::filesystem::path& path() const { return folder; }
+    std::filesystem::path operator/(std::string_view leaf) const { return folder / leaf; }
 
 private:
-    std::filesystem::path path_;
+    std::filesystem::path folder;
 };
 
 // Writes `text` to `path` byte for byte, creating its folder first: how a test lays out a

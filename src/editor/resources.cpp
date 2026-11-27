@@ -8,17 +8,17 @@
 namespace resources {
 
 Cache::Cache(const pack::Pack* pending)
-    : pending_(pending) {}
+    : pending(pending) {}
 
 Cache::~Cache() {
     clearAll();
-    textures_.setApi(nullptr, nullptr, nullptr);
-    source_.reset();
-    jobs_.stop();
+    textures.setApi(nullptr, nullptr, nullptr);
+    pack_source.reset();
+    jobs.stop();
 }
 
 void Cache::setApi(AddonAPI* api) {
-    textures_.setApi(api, &jobs_, &viewer::textureUploads());
+    textures.setApi(api, &jobs, &viewer::textureUploads());
 }
 
 // What reads the bytes behind a normalized path on the worker. Added in the editor and not
@@ -26,13 +26,13 @@ void Cache::setApi(AddonAPI* api) {
 // back as a pending asset, and an added image is not in the source until a save. They are
 // copied now, since the frame goes on changing them; the source is kept open by the read.
 viewer::TextureCache::Reader Cache::readerFor(const std::string& key) const {
-    if (const pack::Pack::AddedAsset* added = pending_ ? pending_->findAddedAsset(key) : nullptr) {
+    if (const pack::Pack::AddedAsset* added = pending ? pending->findAddedAsset(key) : nullptr) {
         return [bytes = added->bytes](const std::string&, std::vector<uint8_t>* out) {
             *out = bytes;
             return true;
         };
     }
-    return [source = source_](const std::string& path, std::vector<uint8_t>* out) {
+    return [source = pack_source](const std::string& path, std::vector<uint8_t>* out) {
         std::string error;
         return source && source->read(path, out, &error);
     };
@@ -51,13 +51,13 @@ std::optional<T> Cache::lookup(
     const Ask& ask) {
     if (deferred) *deferred = false;
     if (const auto it = done.find(key); it != done.end()) return it->second;
-    if (const pack::Pack::AddedAsset* added = pending_ ? pending_->findAddedAsset(key) : nullptr) {
+    if (const pack::Pack::AddedAsset* added = pending ? pending->findAddedAsset(key) : nullptr) {
         return done.emplace(key, ask(&added->bytes)).first->second;
     }
 
     auto [it, missed] = reading.try_emplace(key);
     if (missed)
-        it->second = jobs_.ask([read = readerFor(key), key, ask, still = std::weak_ptr<char>(wanted_)] {
+        it->second = jobs.ask([read = readerFor(key), key, ask, still = std::weak_ptr<char>(wanted)] {
             std::vector<uint8_t> bytes;
             return ask(!still.expired() && read(key, &bytes) ? &bytes : nullptr);
         });
@@ -75,30 +75,30 @@ std::optional<T> Cache::lookup(
 
 // Drops every cached and pending read, for a new source.
 void Cache::clearAll() {
-    textures_.clear();
-    trails_.clear();
-    reading_trails_.clear();
-    trail_colours_.clear();
-    reading_colours_.clear();
-    wanted_ = std::make_shared<char>();
+    textures.clear();
+    trails.clear();
+    reading_trails.clear();
+    trail_colours.clear();
+    reading_colours.clear();
+    wanted = std::make_shared<char>();
 }
 
 void Cache::waitForReads() {
-    jobs_.wait();
+    jobs.wait();
 }
 
 void Cache::setSource(std::unique_ptr<pack::DataSource> source) {
-    source_ = std::move(source);
+    pack_source = std::move(source);
     clearAll();
 }
 
 void Cache::forget(const std::string& path) {
     const std::string key = pack::normalizePath(path);
-    trails_.erase(key);
-    reading_trails_.erase(key);
-    trail_colours_.erase(key);
-    reading_colours_.erase(key);
-    textures_.forget(key);
+    trails.erase(key);
+    reading_trails.erase(key);
+    trail_colours.erase(key);
+    reading_colours.erase(key);
+    textures.forget(key);
 }
 
 viewer::Image Cache::image(const std::string& path) {
@@ -106,7 +106,7 @@ viewer::Image Cache::image(const std::string& path) {
     // pending asset until the first save.
     if (path.empty()) return {};
     const std::string key = pack::normalizePath(path);
-    return textures_.get(key, [this, &key] { return readerFor(key); });
+    return textures.get(key, [this, &key] { return readerFor(key); });
 }
 
 std::shared_ptr<const pack::trl::Trail> Cache::trail(const std::string& path, bool* deferred) {
@@ -117,14 +117,14 @@ std::shared_ptr<const pack::trl::Trail> Cache::trail(const std::string& path, bo
         std::string error;
         return bytes && pack::trl::read(*bytes, parsed.get(), &error) ? parsed : nullptr;
     };
-    return lookup(trails_, reading_trails_, pack::normalizePath(path), deferred, parse).value_or(nullptr);
+    return lookup(trails, reading_trails, pack::normalizePath(path), deferred, parse).value_or(nullptr);
 }
 
 std::optional<ImU32> Cache::trailColour(const std::string& path, bool* deferred) {
     const auto sample = [](const std::vector<uint8_t>* bytes) {
         return bytes ? viewer::trail_colour::sample(*bytes) : viewer::trail_colour::NO_COLOUR;
     };
-    return lookup(trail_colours_, reading_colours_, pack::normalizePath(path), deferred, sample);
+    return lookup(trail_colours, reading_colours, pack::normalizePath(path), deferred, sample);
 }
 
 } // namespace resources

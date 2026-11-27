@@ -50,18 +50,18 @@ class Writer
 {
 public:
     Writer(lua_State* L, bool pretty, const std::string& indent)
-        : L_(L)
-        , pretty_(pretty)
-        , indent_(indent) {}
+        : lua(L)
+        , pretty(pretty)
+        , indent(indent) {}
 
     void table(const sol::table& table, int level) {
-        if (level > kMaxDepth) raise(L_, "table is nested too deeply for LSON");
+        if (level > kMaxDepth) raise(lua, "table is nested too deeply for LSON");
 
         if (table.begin() == table.end()) {
-            out_ += "{}";
+            out += "{}";
             return;
         }
-        out_ += '{';
+        out += '{';
 
         // The array part, bare, as long as it runs unbroken from 1.
         lua_Integer length = 0;
@@ -69,7 +69,7 @@ public:
 
         bool first = true;
         const auto separate = [&] {
-            if (!first) out_ += ',';
+            if (!first) out += ',';
             first = false;
             newline(level);
         };
@@ -79,27 +79,27 @@ public:
             value(table.raw_get<sol::object>(i), level + 1);
         }
         for (const auto& [key, item] : table) {
-            if (key.get_type() == sol::type::number && isInteger(L_, key)) {
+            if (key.get_type() == sol::type::number && isInteger(lua, key)) {
                 const lua_Integer index = key.as<lua_Integer>();
                 if (index >= 1 && index <= length) continue;
             }
             separate();
             this->key(key, level);
-            out_ += pretty_ ? " = " : "=";
+            out += pretty ? " = " : "=";
             value(item, level + 1);
         }
 
         newline(level - 1);
-        out_ += '}';
+        out += '}';
     }
 
-    std::string take() { return std::move(out_); }
+    std::string take() { return std::move(out); }
 
 private:
     void newline(int level) {
-        if (!pretty_) return;
-        out_ += '\n';
-        for (int i = 0; i < level; ++i) out_ += indent_;
+        if (!pretty) return;
+        out += '\n';
+        for (int i = 0; i < level; ++i) out += indent;
     }
 
     void key(const sol::object& key, int level) {
@@ -107,22 +107,22 @@ private:
             const std::string name = key.as<std::string>();
             if (!name.empty() && isIdentifierStart(name[0]) && std::all_of(name.begin(), name.end(), isIdentifierChar) &&
                 !isKeyword(name)) {
-                out_ += name;
+                out += name;
                 return;
             }
         }
-        out_ += '[';
+        out += '[';
         value(key, level + 1);
-        out_ += ']';
+        out += ']';
     }
 
     void value(const sol::object& value, int level) {
         switch (value.get_type()) {
-        case sol::type::boolean: out_ += value.as<bool>() ? "true" : "false"; break;
+        case sol::type::boolean: out += value.as<bool>() ? "true" : "false"; break;
         case sol::type::number: number(value); break;
         case sol::type::string: string(value.as<std::string>()); break;
         case sol::type::table: table(value.as<sol::table>(), level); break;
-        default: raise(L_, std::string("type '") + lua_typename(L_, static_cast<int>(value.get_type())) + "' is not supported in LSON");
+        default: raise(lua, std::string("type '") + lua_typename(lua, static_cast<int>(value.get_type())) + "' is not supported in LSON");
         }
     }
 
@@ -130,44 +130,44 @@ private:
     // integer, so it stays a float — Lua.RtWriteValue's WriteNumber. NaN is nil and the
     // infinities the strings NeoLua writes for them.
     void number(const sol::object& value) {
-        if (isInteger(L_, value)) {
-            out_ += std::to_string(value.as<lua_Integer>());
+        if (isInteger(lua, value)) {
+            out += std::to_string(value.as<lua_Integer>());
             return;
         }
         const double number = value.as<double>();
         if (std::isnan(number)) {
-            out_ += "nil";
+            out += "nil";
         } else if (std::isinf(number)) {
-            out_ += number > 0 ? "\"+Infinity\"" : "\"-Infinity\"";
+            out += number > 0 ? "\"+Infinity\"" : "\"-Infinity\"";
         } else {
             char buffer[32];
             const auto result = std::to_chars(buffer, buffer + sizeof(buffer), static_cast<float>(number));
             const std::string_view text(buffer, static_cast<size_t>(result.ptr - buffer));
-            out_ += text;
-            if (text.find_first_of(".eE") == std::string_view::npos) out_ += ".0";
+            out += text;
+            if (text.find_first_of(".eE") == std::string_view::npos) out += ".0";
         }
     }
 
     void string(const std::string& text) {
-        out_ += '"';
+        out += '"';
         for (char c : text) {
             switch (c) {
-            case '\0': out_ += "\\x00"; break;
-            case '\\': out_ += "\\\\"; break;
-            case '"': out_ += "\\\""; break;
-            case '\n': out_ += "\\n"; break;
-            case '\r': out_ += "\\r"; break;
-            case '\t': out_ += "\\t"; break;
-            default: out_ += c; break;
+            case '\0': out += "\\x00"; break;
+            case '\\': out += "\\\\"; break;
+            case '"': out += "\\\""; break;
+            case '\n': out += "\\n"; break;
+            case '\r': out += "\\r"; break;
+            case '\t': out += "\\t"; break;
+            default: out += c; break;
             }
         }
-        out_ += '"';
+        out += '"';
     }
 
-    lua_State* L_;
-    bool pretty_;
-    const std::string& indent_;
-    std::string out_;
+    lua_State* lua;
+    bool pretty;
+    const std::string& indent;
+    std::string out;
 };
 
 // ── Reading ───────────────────────────────────────────────────────────────────
@@ -176,25 +176,25 @@ class Reader
 {
 public:
     Reader(sol::state_view lua, std::string_view text)
-        : lua_(lua)
-        , text_(text) {}
+        : lua(lua)
+        , text(text) {}
 
     sol::table table(int depth) {
         if (depth > kMaxDepth) fail("table is nested too deeply");
         expect('{');
-        sol::table result = lua_.create_table();
+        sol::table result = lua.create_table();
         lua_Integer next_index = 1;
 
         skipSpace();
         if (peek() == '}') {
-            ++at_;
+            ++at;
             return result;
         }
         for (;;) {
             field(result, &next_index, depth);
             skipSpace();
             if (peek() == ',' || peek() == ';') {
-                ++at_;
+                ++at;
                 skipSpace();
                 if (peek() == '}') break; // an optional last separator
                 continue;
@@ -207,38 +207,38 @@ public:
 
     void end() {
         skipSpace();
-        if (at_ != text_.size()) fail("unexpected text after the table");
+        if (at != text.size()) fail("unexpected text after the table");
     }
 
 private:
-    [[noreturn]] void fail(const std::string& what) { raise(lua_.lua_state(), "LSON: " + what + " at offset " + std::to_string(at_)); }
+    [[noreturn]] void fail(const std::string& what) { raise(lua.lua_state(), "LSON: " + what + " at offset " + std::to_string(at)); }
 
-    char peek() const { return at_ < text_.size() ? text_[at_] : '\0'; }
+    char peek() const { return at < text.size() ? text[at] : '\0'; }
 
     void skipSpace() {
         for (;;) {
-            while (at_ < text_.size() && std::isspace(static_cast<unsigned char>(text_[at_]))) ++at_;
-            if (text_.substr(at_, 2) != "--") return;
-            while (at_ < text_.size() && text_[at_] != '\n') ++at_;
+            while (at < text.size() && std::isspace(static_cast<unsigned char>(text[at]))) ++at;
+            if (text.substr(at, 2) != "--") return;
+            while (at < text.size() && text[at] != '\n') ++at;
         }
     }
 
     void expect(char c) {
         skipSpace();
         if (peek() != c) fail(std::string("'") + c + "' expected");
-        ++at_;
+        ++at;
     }
 
     std::string_view identifier() {
-        const size_t start = at_;
-        while (at_ < text_.size() && isNameChar(text_[at_])) ++at_;
-        return text_.substr(start, at_ - start);
+        const size_t start = at;
+        while (at < text.size() && isNameChar(text[at])) ++at;
+        return text.substr(start, at - start);
     }
 
     void field(sol::table& table, lua_Integer* next_index, int depth) {
         skipSpace();
         if (peek() == '[') {
-            ++at_;
+            ++at;
             const sol::object key = value(depth);
             if (key.get_type() == sol::type::lua_nil) fail("nil cannot be a key");
             expect(']');
@@ -247,15 +247,15 @@ private:
             return;
         }
         if (isNameStart(peek())) {
-            const size_t start = at_;
+            const size_t start = at;
             const std::string_view name = identifier();
             skipSpace();
             if (!isKeyword(name) && peek() == '=') {
-                ++at_;
+                ++at;
                 table.raw_set(std::string(name), value(depth));
                 return;
             }
-            at_ = start; // a keyword value: nil, true, false
+            at = start; // a keyword value: nil, true, false
         }
         table.raw_set((*next_index)++, value(depth));
     }
@@ -264,13 +264,13 @@ private:
         skipSpace();
         const char c = peek();
         if (c == '{') return table(depth + 1);
-        if (c == '"' || c == '\'') return sol::make_object(lua_, quoted());
+        if (c == '"' || c == '\'') return sol::make_object(lua, quoted());
         if (c == '-' || c == '.' || (c >= '0' && c <= '9')) return number();
         if (isNameStart(c)) {
             const std::string_view word = identifier();
-            if (word == "nil") return sol::make_object(lua_, sol::lua_nil);
-            if (word == "true") return sol::make_object(lua_, true);
-            if (word == "false") return sol::make_object(lua_, false);
+            if (word == "nil") return sol::make_object(lua, sol::lua_nil);
+            if (word == "true") return sol::make_object(lua, true);
+            if (word == "false") return sol::make_object(lua, false);
             fail("unexpected '" + std::string(word) + "'");
         }
         fail("a value expected");
@@ -279,18 +279,18 @@ private:
     sol::object number() {
         const bool negative = peek() == '-';
         if (negative) {
-            ++at_;
+            ++at;
             skipSpace();
         }
         // Everything that could be part of a numeral; from_chars then says whether it is one.
-        const size_t start = at_;
-        while (at_ < text_.size()) {
-            const char c = text_[at_];
-            const bool exponent_sign = (c == '+' || c == '-') && at_ > start && (text_[at_ - 1] == 'e' || text_[at_ - 1] == 'E');
+        const size_t start = at;
+        while (at < text.size()) {
+            const char c = text[at];
+            const bool exponent_sign = (c == '+' || c == '-') && at > start && (text[at - 1] == 'e' || text[at - 1] == 'E');
             if (!std::isalnum(static_cast<unsigned char>(c)) && c != '.' && !exponent_sign) break;
-            ++at_;
+            ++at;
         }
-        const std::string_view digits = text_.substr(start, at_ - start);
+        const std::string_view digits = text.substr(start, at - start);
         if (digits.empty()) fail("a number expected");
         const bool hex = digits.starts_with("0x") || digits.starts_with("0X");
 
@@ -299,33 +299,33 @@ private:
             const auto result = std::from_chars(digits.data() + 2, digits.data() + digits.size(), value, 16);
             if (result.ptr != digits.data() + digits.size()) fail("malformed number");
             const lua_Integer integer = static_cast<lua_Integer>(value);
-            return sol::make_object(lua_, negative ? -integer : integer);
+            return sol::make_object(lua, negative ? -integer : integer);
         }
         if (digits.find_first_of(".eE") == std::string_view::npos) {
             lua_Integer value = 0;
             const auto result = std::from_chars(digits.data(), digits.data() + digits.size(), value);
             if (result.ptr == digits.data() + digits.size() && result.ec == std::errc())
-                return sol::make_object(lua_, negative ? -value : value);
+                return sol::make_object(lua, negative ? -value : value);
         }
         double value = 0.0;
         const auto result = std::from_chars(digits.data(), digits.data() + digits.size(), value);
         if (result.ptr != digits.data() + digits.size()) fail("malformed number");
-        return sol::make_object(lua_, negative ? -value : value);
+        return sol::make_object(lua, negative ? -value : value);
     }
 
     // A short string with Lua's escapes.
     std::string quoted() {
-        const char quote = text_[at_++];
+        const char quote = text[at++];
         std::string out;
-        while (at_ < text_.size() && text_[at_] != quote) {
-            char c = text_[at_++];
+        while (at < text.size() && text[at] != quote) {
+            char c = text[at++];
             if (c == '\n') fail("unfinished string");
             if (c != '\\') {
                 out += c;
                 continue;
             }
-            if (at_ >= text_.size()) break;
-            c = text_[at_++];
+            if (at >= text.size()) break;
+            c = text[at++];
             switch (c) {
             case 'n': out += '\n'; break;
             case 't': out += '\t'; break;
@@ -337,17 +337,17 @@ private:
             case '\n': out += '\n'; break;
             case 'x': {
                 unsigned value = 0;
-                const auto result = std::from_chars(text_.data() + at_, text_.data() + std::min(at_ + 2, text_.size()), value, 16);
-                if (result.ptr != text_.data() + at_ + 2) fail("malformed \\x escape");
-                at_ += 2;
+                const auto result = std::from_chars(text.data() + at, text.data() + std::min(at + 2, text.size()), value, 16);
+                if (result.ptr != text.data() + at + 2) fail("malformed \\x escape");
+                at += 2;
                 out += static_cast<char>(value);
                 break;
             }
             default:
                 if (c >= '0' && c <= '9') {
                     unsigned value = static_cast<unsigned>(c - '0');
-                    for (int i = 0; i < 2 && at_ < text_.size() && std::isdigit(static_cast<unsigned char>(text_[at_])); ++i) {
-                        value = value * 10 + static_cast<unsigned>(text_[at_++] - '0');
+                    for (int i = 0; i < 2 && at < text.size() && std::isdigit(static_cast<unsigned char>(text[at])); ++i) {
+                        value = value * 10 + static_cast<unsigned>(text[at++] - '0');
                     }
                     if (value > 255) fail("escape too large");
                     out += static_cast<char>(value);
@@ -357,13 +357,13 @@ private:
             }
         }
         if (peek() != quote) fail("unfinished string");
-        ++at_;
+        ++at;
         return out;
     }
 
-    sol::state_view lua_;
-    std::string_view text_;
-    size_t at_ = 0;
+    sol::state_view lua;
+    std::string_view text;
+    size_t at = 0;
 };
 
 } // namespace

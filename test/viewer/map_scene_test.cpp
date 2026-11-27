@@ -84,7 +84,7 @@ class MenuFrames
 {
 public:
     MenuFrames()
-        : context_(ImGui::CreateContext()) {
+        : imgui_context(ImGui::CreateContext()) {
         ImGuiIO& io = ImGui::GetIO();
         io.IniFilename = nullptr;
         io.DisplaySize = ImVec2(kDisplay.x, kDisplay.y);
@@ -94,24 +94,24 @@ public:
         int height = 0;
         io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
 
-        tree_.nodes.resize(3);
-        tree_.nodes[0].id = "tyria";
-        tree_.nodes[0].label = "Tyria";
-        tree_.nodes[1].id = "tyria.chests";
-        tree_.nodes[1].label = "Chests";
-        tree_.nodes[1].parent = 0;
-        tree_.nodes[2].id = "tyria.paths";
-        tree_.nodes[2].label = "Paths";
-        tree_.nodes[2].parent = 0;
-        live_.markers.push_back(marker({500, 0, 500}));
-        live_.markers[0].marker.tip_name = "Chest";
-        live_.markers[0].node = 1;
-        live_.trails.push_back(trail({{430, 0, 500}, {470, 0, 500}}));
-        live_.trails[0].node = 2;
-        scene_ = build(live_);
-        view_ = *map::view(mumble(), kDisplay, 1.0f);
+        tree.nodes.resize(3);
+        tree.nodes[0].id = "tyria";
+        tree.nodes[0].label = "Tyria";
+        tree.nodes[1].id = "tyria.chests";
+        tree.nodes[1].label = "Chests";
+        tree.nodes[1].parent = 0;
+        tree.nodes[2].id = "tyria.paths";
+        tree.nodes[2].label = "Paths";
+        tree.nodes[2].parent = 0;
+        live.markers.push_back(marker({500, 0, 500}));
+        live.markers[0].marker.tip_name = "Chest";
+        live.markers[0].node = 1;
+        live.trails.push_back(trail({{430, 0, 500}, {470, 0, 500}}));
+        live.trails[0].node = 2;
+        scene = build(live);
+        view = *map::view(mumble(), kDisplay, 1.0f);
     }
-    ~MenuFrames() { ImGui::DestroyContext(context_); }
+    ~MenuFrames() { ImGui::DestroyContext(imgui_context); }
 
     MenuFrames(const MenuFrames&) = delete;
     MenuFrames& operator=(const MenuFrames&) = delete;
@@ -119,15 +119,15 @@ public:
     // Where the marker's icon is on the screen.
     glm::vec2 onMarker() const {
         glm::vec2 min, max;
-        REQUIRE(map_scene::iconRect(scene_.icons.at(0), view_, &min, &max));
+        REQUIRE(map_scene::iconRect(scene.icons.at(0), view, &min, &max));
         return (min + max) * 0.5f;
     }
 
     // Where continent point `continent` is on the screen.
-    glm::vec2 at(glm::dvec2 continent) const { return map::project(view_, continent); }
+    glm::vec2 at(glm::dvec2 continent) const { return map::project(view, continent); }
 
     // The category the menu was opened on.
-    size_t menuNode() const { return menu_.menu_node; }
+    size_t menuNode() const { return menu.menu_node; }
 
     // One frame with the mouse at `mouse`, right clicked since the last when `clicked`; and, as
     // over the game's map, the click never handed to ImGui. Whether a popup is open once it ends.
@@ -135,25 +135,25 @@ public:
         ImGui::GetIO().MousePos = ImVec2(mouse.x, mouse.y);
         ImGui::NewFrame();
         ui::map_menu::Context context;
-        context.scene = &scene_;
-        context.view = &view_;
-        context.live = {&live_};
-        context.tree = &tree_;
-        context.states = &states_;
+        context.scene = &scene;
+        context.view = &view;
+        context.live = {&live};
+        context.tree = &tree;
+        context.states = &states;
         context.right_clicked = clicked;
-        ui::map_menu::draw(context, &menu_);
+        ui::map_menu::draw(context, &menu);
         ImGui::Render();
         return ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopup);
     }
 
 private:
-    ImGuiContext* context_;
-    registry::CategoryTree tree_;
-    runtime::LiveMap live_;
-    map_scene::MapScene scene_;
-    map::View view_;
-    store::CategoryStates states_;
-    ui::map_menu::View menu_;
+    ImGuiContext* imgui_context;
+    registry::CategoryTree tree;
+    runtime::LiveMap live;
+    map_scene::MapScene scene;
+    map::View view;
+    store::CategoryStates states;
+    ui::map_menu::View menu;
 };
 
 } // namespace

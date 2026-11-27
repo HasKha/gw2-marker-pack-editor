@@ -26,7 +26,7 @@ class PackFolder
 public:
     // Lists `folder`, creating it, and starts loading every pack in it. Blish HUD's packs are
     // drawn once imported into ours, never from its folder. An empty path finds nothing.
-    void open(std::filesystem::path folder, util::JobQueue* jobs, AddonAPI* api);
+    void open(std::filesystem::path folder, util::JobQueue* queue, AddonAPI* nexus);
 
     // Stops the loader and drops what the worker has yet to answer.
     void stop();
@@ -46,12 +46,12 @@ public:
     // made after the delete, the worker running both in order.
     void remove(runtime::Installed* installed, const std::filesystem::path& path);
 
-    const std::filesystem::path& folder() const { return folder_; }
-    bool loading() const { return loader_.busy(); }
+    const std::filesystem::path& folder() const { return packs_folder; }
+    bool loading() const { return loader.busy(); }
     // Every pack the last listing found, loaded or not.
-    size_t found() const { return discovered_.size(); }
+    size_t found() const { return discovered.size(); }
     // The packs on disk as the catalog sees them.
-    const std::vector<catalog::LocalPack>& local() const { return local_; }
+    const std::vector<catalog::LocalPack>& local() const { return local_packs; }
     // How many packs are installed, or how loading goes.
     std::string status(const runtime::Installed& installed) const;
 
@@ -76,24 +76,24 @@ private:
     void applyListing(runtime::Installed* installed);
     bool isDiscovered(const std::filesystem::path& path) const;
 
-    std::filesystem::path folder_;
-    util::JobQueue* jobs_ = nullptr;
-    AddonAPI* api_ = nullptr;
+    std::filesystem::path packs_folder;
+    util::JobQueue* jobs = nullptr;
+    AddonAPI* api = nullptr;
 
-    registry::Loader loader_;
+    registry::Loader loader;
     // Every path the last listing found, so a pack the editor lets go of is read again only if it
     // was one of ours to begin with.
-    std::vector<std::filesystem::path> discovered_;
-    std::vector<catalog::LocalPack> local_;
+    std::vector<std::filesystem::path> discovered;
+    std::vector<catalog::LocalPack> local_packs;
 
     // A listing is asked for once the loader is done, since the pack it reads may be about to go.
-    bool rescan_pending_ = false;
-    std::future<Listing> listing_;
+    bool rescan_pending = false;
+    std::future<Listing> listing;
     // When packs were last checked for a write since they were read, and the check while it runs.
-    std::chrono::steady_clock::time_point last_change_check_{};
-    std::future<std::vector<ReadAt>> change_check_;
+    std::chrono::steady_clock::time_point last_change_check{};
+    std::future<std::vector<ReadAt>> change_check;
     // Downloads being moved into place on the worker: those that could not be, and why.
-    std::future<Failed> placing_;
+    std::future<Failed> placing;
 };
 
 } // namespace viewer

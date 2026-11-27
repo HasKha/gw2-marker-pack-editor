@@ -41,7 +41,7 @@ public:
     struct State;
 
 private:
-    std::unique_ptr<State> state_;
+    std::unique_ptr<State> state;
 };
 
 // Makes the windows' font, with the icons, the current font, at the size of the current one,

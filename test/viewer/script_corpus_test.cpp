@@ -123,7 +123,7 @@ TEST_CASE("every corpus script loads and ticks on every map of its pack without 
             mumble.map_id = map;
             mumble.player_position = standingPoint(live);
 
-            engine.console().clear();
+            engine.console.clear();
             engine.reset();
             engine.loadPacks();
             for (int tick = 1; tick <= kTicks; ++tick) engine.tick(tick * kTickSeconds, kTickSeconds);
@@ -149,7 +149,7 @@ TEST_CASE("every corpus script loads and ticks on every map of its pack without 
             // handlers — Teh's Trails' highlight pulse and heart follower — and nowhere else.
             for (int tick = kTicks + 1; tick <= 2 * kTicks; ++tick) engine.tick(tick * kTickSeconds, kTickSeconds);
 
-            for (const viewer::script::Message& message : engine.console().messages()) {
+            for (const viewer::script::Message& message : engine.console.messages()) {
                 if (message.level != viewer::script::Level::Error || knownPackBug(file, message.text)) continue;
                 errors.push_back("map " + std::to_string(map) + ": " + message.text);
             }

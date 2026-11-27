@@ -123,12 +123,12 @@ std::optional<CronSchedule> CronSchedule::parse(std::string_view text) {
     if (*weekdays & (uint64_t{1} << 7)) *weekdays = (*weekdays | 1) & 0x7F;
 
     CronSchedule schedule;
-    schedule.seconds_ = *seconds;
-    schedule.minutes_ = *minutes;
-    schedule.hours_ = static_cast<uint32_t>(*hours);
-    schedule.days_ = static_cast<uint32_t>(*days);
-    schedule.months_ = static_cast<uint16_t>(*months);
-    schedule.weekdays_ = static_cast<uint8_t>(*weekdays);
+    schedule.second_bits = *seconds;
+    schedule.minute_bits = *minutes;
+    schedule.hour_bits = static_cast<uint32_t>(*hours);
+    schedule.day_bits = static_cast<uint32_t>(*days);
+    schedule.month_bits = static_cast<uint16_t>(*months);
+    schedule.weekday_bits = static_cast<uint8_t>(*weekdays);
     return schedule;
 }
 
@@ -136,12 +136,12 @@ std::optional<int> CronSchedule::firstTimeOfDay(int start) const {
     const int start_hour = start / 3600;
     const int start_minute = start / 60 % 60;
     const int start_second = start % 60;
-    for (int hour = firstAtOrAfter(hours_, start_hour); hour >= 0; hour = firstAtOrAfter(hours_, hour + 1)) {
+    for (int hour = firstAtOrAfter(hour_bits, start_hour); hour >= 0; hour = firstAtOrAfter(hour_bits, hour + 1)) {
         const bool same_hour = hour == start_hour;
-        for (int minute = firstAtOrAfter(minutes_, same_hour ? start_minute : 0); minute >= 0;
-             minute = firstAtOrAfter(minutes_, minute + 1)) {
+        for (int minute = firstAtOrAfter(minute_bits, same_hour ? start_minute : 0); minute >= 0;
+             minute = firstAtOrAfter(minute_bits, minute + 1)) {
             const bool same_minute = same_hour && minute == start_minute;
-            const int second = firstAtOrAfter(seconds_, same_minute ? start_second : 0);
+            const int second = firstAtOrAfter(second_bits, same_minute ? start_second : 0);
             if (second >= 0) return hour * 3600 + minute * 60 + second;
         }
     }
@@ -159,8 +159,8 @@ std::optional<UtcMillis> CronSchedule::next(UtcMillis from) const {
         const sys_days day = first_day + days{offset};
         const year_month_day date{day};
         const unsigned weekday = std::chrono::weekday{day}.c_encoding();
-        const bool matches = (months_ >> static_cast<unsigned>(date.month()) & 1) && (days_ >> static_cast<unsigned>(date.day()) & 1) &&
-                             (weekdays_ >> weekday & 1);
+        const bool matches = (month_bits >> static_cast<unsigned>(date.month()) & 1) &&
+                             (day_bits >> static_cast<unsigned>(date.day()) & 1) && (weekday_bits >> weekday & 1);
         if (!matches) continue;
         if (const std::optional<int> time = firstTimeOfDay(start)) {
             const int64_t second = duration_cast<seconds>(day.time_since_epoch()).count() + *time;

@@ -31,19 +31,19 @@ public:
 
     // From any thread, any number of times; never undone.
     void cancel();
-    bool cancelled() const { return cancelled_.load(std::memory_order_acquire); }
+    bool cancelled() const { return is_cancelled.load(std::memory_order_acquire); }
 
-    // For http.cpp. `request` is the handle a request is about to block in, closed by cancel()
+    // For http.cpp. `handle` is the one a request is about to block in, closed by cancel()
     // if it comes first; false, with the handle still the caller's, when it has come already.
-    bool attach(void* request) const;
+    bool attach(void* handle) const;
     // Done with the attached handle: false when cancel() closed it, which leaves it no longer
     // the caller's to close.
     bool release() const;
 
 private:
-    mutable std::mutex mutex_;
-    mutable void* request_ = nullptr;
-    std::atomic<bool> cancelled_{false};
+    mutable std::mutex mutex;
+    mutable void* request = nullptr;
+    std::atomic<bool> is_cancelled{false};
 };
 
 // A server's answer, whatever its status.

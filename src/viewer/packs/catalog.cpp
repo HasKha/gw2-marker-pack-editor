@@ -128,26 +128,26 @@ State state(const Package& package, const LocalPack* local) {
 
 void AutoUpdate::set(const std::string& package, bool on) {
     if (on) {
-        off_.erase(package);
+        off.erase(package);
     } else {
-        off_.insert(package);
+        off.insert(package);
     }
 }
 
 void AutoUpdate::load(const std::filesystem::path& file) {
-    off_.clear();
+    off.clear();
     const std::optional<nlohmann::json> parsed = util::json_file::readObject(file);
     if (!parsed) return;
     const auto it = parsed->find("not_kept_updated");
     if (it == parsed->end() || !it->is_array()) return;
     for (const nlohmann::json& name : *it) {
-        if (name.is_string()) off_.insert(name.get<std::string>());
+        if (name.is_string()) off.insert(name.get<std::string>());
     }
 }
 
 bool AutoUpdate::save(const std::filesystem::path& file) const {
     nlohmann::json out;
-    out["not_kept_updated"] = off_;
+    out["not_kept_updated"] = off;
     return util::json_file::write(file, out);
 }
 

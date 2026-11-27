@@ -44,7 +44,7 @@ public:
     void requestOpenFolder(const std::filesystem::path& default_folder);
     void requestSaveFile(const std::filesystem::path& default_folder, std::string_view default_name, std::vector<Filter> filters);
 
-    bool isPending() const { return pending_.load(); }
+    bool isPending() const { return pending.load(); }
 
     // Poll once per frame from the render thread. Yields the picked path exactly once;
     // empty when the user cancelled, errored, or nothing is ready yet.
@@ -57,12 +57,12 @@ private:
 
     void spawn(DialogFn fn);
 
-    // Guards result_ and worker_. pending_ is separately atomic so isPending() never blocks
+    // Guards result and worker. pending is separately atomic so isPending() never blocks
     // the render thread behind a dialog that is being torn down.
-    std::mutex mutex_;
-    std::thread worker_;
-    std::optional<std::filesystem::path> result_;
-    std::atomic<bool> pending_{false};
+    std::mutex mutex;
+    std::thread worker;
+    std::optional<std::filesystem::path> result;
+    std::atomic<bool> pending{false};
 };
 
 } // namespace file_dialog

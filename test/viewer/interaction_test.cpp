@@ -17,7 +17,7 @@ class InfoFrames
 {
 public:
     InfoFrames()
-        : context_(ImGui::CreateContext()) {
+        : context(ImGui::CreateContext()) {
         ImGuiIO& io = ImGui::GetIO();
         io.IniFilename = nullptr;
         io.DisplaySize = ImVec2(1920.0f, 1080.0f);
@@ -28,7 +28,7 @@ public:
         io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
         screen.info.push_back("Kill marsh drakes each time you WP here");
     }
-    ~InfoFrames() { ImGui::DestroyContext(context_); }
+    ~InfoFrames() { ImGui::DestroyContext(context); }
 
     InfoFrames(const InfoFrames&) = delete;
     InfoFrames& operator=(const InfoFrames&) = delete;
@@ -46,7 +46,7 @@ public:
     viewer::behaviors::Screen screen;
 
 private:
-    ImGuiContext* context_;
+    ImGuiContext* context;
 };
 
 ImVec2 centre(const ImGuiWindow* window) {

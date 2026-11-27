@@ -48,42 +48,42 @@ Check ask(std::string_view key, const http::Cancel& cancel) {
 }
 
 void Registration::submit() {
-    if (std::string key = trimmed(field_); key.empty()) {
-        status_ = "Paste a key in the field first.";
+    if (std::string key = trimmed(field); key.empty()) {
+        status = "Paste a key in the field first.";
     } else {
-        status_.clear();
-        check_ = std::make_unique<http::Background<Checked>>();
-        check_->start(
+        status.clear();
+        check = std::make_unique<http::Background<Checked>>();
+        check->start(
             [key = std::move(key)](const http::Cancel& cancel) -> std::optional<Checked> { return Checked{key, ask(key, cancel)}; });
     }
 }
 
 std::optional<std::string> Registration::takeAccepted() {
-    if (util::ready(saved_) && !util::take(saved_).value_or(false)) {
-        status_ = "Key added, but it could not be saved: you will need to add it again next time.";
+    if (util::ready(saved) && !util::take(saved).value_or(false)) {
+        status = "Key added, but it could not be saved: you will need to add it again next time.";
     }
-    if (!check_ || !check_->finished()) return std::nullopt;
+    if (!check || !check->finished()) return std::nullopt;
     // The job always answers; one that did not counts as the API not answering.
-    const Checked done = check_->take().value_or(Checked{});
-    check_.reset();
+    const Checked done = check->take().value_or(Checked{});
+    check.reset();
     switch (done.check.outcome) {
     case Outcome::Valid:
-        field_.clear();
-        status_ = "Key added.";
+        field.clear();
+        status = "Key added.";
         return done.key;
     case Outcome::MissingPermissions:
-        status_ =
+        status =
             "This key is missing permissions: " + done.check.missing + ". Make a new one with \"account\" and \"progression\" selected.";
         break;
-    case Outcome::Rejected: status_ = "This key was not accepted. Check that you copied all of it."; break;
-    case Outcome::NoAnswer: status_ = "Could not reach the GW2 API to check the key. Try again in a moment."; break;
+    case Outcome::Rejected: status = "This key was not accepted. Check that you copied all of it."; break;
+    case Outcome::NoAnswer: status = "Could not reach the GW2 API to check the key. Try again in a moment."; break;
     }
     return std::nullopt;
 }
 
 void Registration::stop() {
-    check_.reset();
-    saved_ = {};
+    check.reset();
+    saved = {};
 }
 
 } // namespace viewer::api_key

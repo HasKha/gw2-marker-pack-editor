@@ -92,30 +92,30 @@ Known fromCache(const nlohmann::json& cache) {
     return known;
 }
 
-void Catalog::open(const std::filesystem::path& cache_file, util::JobQueue* jobs) {
-    file_ = cache_file;
-    jobs_ = jobs;
-    if (file_.empty()) return;
-    if (const std::optional<nlohmann::json> cache = util::json_file::readObject(file_)) known_ = fromCache(*cache);
+void Catalog::open(const std::filesystem::path& cache_file, util::JobQueue* queue) {
+    file = cache_file;
+    jobs = queue;
+    if (file.empty()) return;
+    if (const std::optional<nlohmann::json> cache = util::json_file::readObject(file)) known = fromCache(*cache);
 }
 
 const Details* Catalog::find(int id) {
-    if (const auto found = known_.find(id); found != known_.end()) return found->second ? &*found->second : nullptr;
-    if (!asking_.count(id)) wanted_.insert(id);
+    if (const auto found = known.find(id); found != known.end()) return found->second ? &*found->second : nullptr;
+    if (!asking.count(id)) wanted.insert(id);
     return nullptr;
 }
 
 void Catalog::update(Clock::time_point now) {
-    if (request_ && request_->finished()) {
-        if (std::optional<Known> answer = request_->take()) {
-            known_ = std::move(*answer);
-            failed_at_.reset();
+    if (request && request->finished()) {
+        if (std::optional<Known> answer = request->take()) {
+            known = std::move(*answer);
+            failed_at.reset();
         } else {
-            wanted_.insert(asking_.begin(), asking_.end());
-            failed_at_ = now;
+            wanted.insert(asking.begin(), asking.end());
+            failed_at = now;
         }
-        request_.reset();
-        asking_.clear();
+        request.reset();
+        asking.clear();
     }
 
     // After an ask the API did not answer, the next waits this long: the tooltips stay empty
@@ -123,18 +123,18 @@ void Catalog::update(Clock::time_point now) {
     constexpr auto kRetry = std::chrono::seconds(60);
     // /v2/achievements takes at most 200 ids at once.
     constexpr size_t kBatch = 200;
-    if (request_ || wanted_.empty() || (failed_at_ && now - *failed_at_ < kRetry)) return;
+    if (request || wanted.empty() || (failed_at && now - *failed_at < kRetry)) return;
 
     std::string ids;
-    while (!wanted_.empty() && asking_.size() < kBatch) {
-        const int id = *wanted_.begin();
-        wanted_.erase(wanted_.begin());
-        asking_.insert(id);
+    while (!wanted.empty() && asking.size() < kBatch) {
+        const int id = *wanted.begin();
+        wanted.erase(wanted.begin());
+        asking.insert(id);
         ids += (ids.empty() ? "" : ",") + std::to_string(id);
     }
-    request_ = std::make_unique<http::Background<Known>>();
-    request_->start(
-        [url = "https://api.guildwars2.com/v2/achievements?ids=" + ids, asked = asking_, known = known_, file = file_](
+    request = std::make_unique<http::Background<Known>>();
+    request->start(
+        [url = "https://api.guildwars2.com/v2/achievements?ids=" + ids, asked = asking, known = known, file = file](
             const http::Cancel& cancel) mutable -> std::optional<Known> {
             const std::optional<http::Reply> reply = http::request(url, {}, cancel, std::chrono::seconds(15));
             // 206 when some of the ids are not achievements, 404 when none is.
@@ -155,13 +155,13 @@ void Catalog::update(Clock::time_point now) {
 
 void Catalog::clear() {
     stop();
-    request_.reset();
-    known_.clear();
-    wanted_.clear();
-    asking_.clear();
-    failed_at_.reset();
-    if (!file_.empty() && jobs_) {
-        jobs_->post([file = file_] {
+    request.reset();
+    known.clear();
+    wanted.clear();
+    asking.clear();
+    failed_at.reset();
+    if (!file.empty() && jobs) {
+        jobs->post([file = file] {
             std::error_code ignored;
             std::filesystem::remove(file, ignored);
         });
@@ -169,7 +169,7 @@ void Catalog::clear() {
 }
 
 void Catalog::stop() {
-    if (request_) request_->stop();
+    if (request) request->stop();
 }
 
 } // namespace viewer::achievements

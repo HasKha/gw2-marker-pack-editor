@@ -35,8 +35,8 @@ public:
     Service service() const;
 
 private:
-    good_render::Link link_;
-    good_render::Slot* slot_ = nullptr;
+    good_render::Link link;
+    good_render::Slot* slot = nullptr;
 };
 
 // The milliseconds spent in our moments since the last call, for the slow-frame log.

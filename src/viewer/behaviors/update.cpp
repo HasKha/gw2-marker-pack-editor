@@ -85,10 +85,10 @@ class Runner
 {
 public:
     Runner(runtime::LiveMap* live, const Host& host, const Frame& frame)
-        : live_(*live)
-        , host_(host)
-        , frame_(frame)
-        , player_(playerOf(*frame.mumble)) {}
+        : live_map(*live)
+        , host(host)
+        , frame(frame)
+        , player(playerOf(*frame.mumble)) {}
 
     // The filters, in StandardMarker_Behaviors' order, with the script's once and tick
     // between them and its own filter, as Script.Update runs before its IsFiltered.
@@ -107,10 +107,10 @@ public:
         };
 
         if (!stateOf(entity).filters_cleared) {
-            const MumbleState& mumble = *frame_.mumble;
+            const MumbleState& mumble = *frame.mumble;
             if (b.festivals) {
                 const bool on = std::any_of(b.festivals->begin(), b.festivals->end(), [&](const std::string& name) {
-                    return frame_.festivals && contains(*frame_.festivals, name);
+                    return frame.festivals && contains(*frame.festivals, name);
                 });
                 check(!on, FilterKind::Festival);
             }
@@ -120,32 +120,32 @@ public:
             if (b.specializations) check(!contains(*b.specializations, mumble.specialization), FilterKind::Specialization);
             if (b.map_types) check(!contains(*b.map_types, mumble.map_type), FilterKind::MapType);
             if (b.schedule)
-                check(updateSchedule(*b.schedule, b.schedule_duration, frame_.now, &stateOf(entity).schedule), FilterKind::Schedule);
-            if (b.raids) check(!b.raids->empty() && !(frame_.account && frame_.account->raidsComplete(*b.raids)), FilterKind::Raid);
+                check(updateSchedule(*b.schedule, b.schedule_duration, frame.now, &stateOf(entity).schedule), FilterKind::Schedule);
+            if (b.raids) check(!b.raids->empty() && !(frame.account && frame.account->raidsComplete(*b.raids)), FilterKind::Raid);
             if (b.mode > 0 && !entity.trail) {
-                const BakedMarker& marker = live_.markers[entity.index].marker;
+                const BakedMarker& marker = live_map.markers[entity.index].marker;
                 const bool hidden =
-                    host_.states->hidden(static_cast<Mode>(b.mode), behaviorGuid(b, marker, player_), player_.instance, frame_.now);
+                    host.states->hidden(static_cast<Mode>(b.mode), behaviorGuid(b, marker, player), player.instance, frame.now);
                 check(b.invert ? !hidden : hidden, FilterKind::Behavior);
             }
             if (b.achievement) {
-                const bool done = frame_.account && frame_.account->achievementHidden(b.achievement->id, b.achievement->bit);
+                const bool done = frame.account && frame.account->achievementHidden(b.achievement->id, b.achievement->bit);
                 check(stateOf(entity).achievement_triggered || done, FilterKind::Achievement);
             }
-            if (b.scripted && host_.script) {
-                if (b.once && !stateOf(entity).once_done) host_.script(*b.once, entity, Hook::Once, false);
+            if (b.scripted && host.script) {
+                if (b.once && !stateOf(entity).once_done) host.script(*b.once, entity, Hook::Once, false);
                 stateOf(entity).once_done = true;
-                if (b.tick) host_.script(*b.tick, entity, Hook::Tick, false);
-                if (b.filter) check(host_.script(*b.filter, entity, Hook::Filter, false).value_or(false), FilterKind::Script);
+                if (b.tick) host.script(*b.tick, entity, Hook::Tick, false);
+                if (b.filter) check(host.script(*b.filter, entity, Hook::Filter, false).value_or(false), FilterKind::Script);
             }
         }
         EntityState& state = stateOf(entity);
-        state.filtered = host_.options.auto_hide && filtered;
+        state.filtered = host.options.auto_hide && filtered;
         state.reason = state.filtered ? reason : FilterKind::None;
     }
 
     void focus(size_t index) {
-        LiveMarker& live = live_.markers[index];
+        LiveMarker& live = live_map.markers[index];
         EntityState& state = live.behavior;
         if (state.focused) return;
         state.focused = true;
@@ -157,9 +157,9 @@ public:
         // AchievementFilter's gear, whose tooltip in Pathing is the achievement's details.
         if (b.achievement && !state.filters_cleared) prompt(index, "Hide achievement marker until map change {0}", b.achievement->id);
         if (b.info && !state.filtered) showInfo(*b.info, &state);
-        if (b.bounce && host_.options.animate) {
+        if (b.bounce && host.options.animate) {
             state.bounce.phase = state.filtered ? BounceState::Phase::Resting : BounceState::Phase::Rising;
-            state.bounce.start = frame_.seconds;
+            state.bounce.start = frame.seconds;
         }
         if (b.copy) prompt(index, "Copy '" + b.copy->value + "' to clipboard {0}");
         if (!b.toggle.empty()) prompt(index, "Toggle '" + b.toggle + "' category {0}");
@@ -172,18 +172,18 @@ public:
         if (scriptRuns(live)) {
             if (b.trigger) prompt(index, "Will trigger a script {0}");
             // The last to read `live`: the call may move it.
-            if (b.focus) host_.script(*b.focus, Entity{false, index}, Hook::Focus, true);
+            if (b.focus) host.script(*b.focus, Entity{false, index}, Hook::Focus, true);
         }
 
         if (b.auto_trigger) interact(index, true);
 
-        if (live_.markers[index].behavior.filtered && host_.options.show_hidden) {
-            host_.screen->prompt = Screen::Prompt{index, filterReason(live_.markers[index]) + kUnhideSuffix, true};
+        if (live_map.markers[index].behavior.filtered && host.options.show_hidden) {
+            host.screen->prompt = Screen::Prompt{index, filterReason(live_map.markers[index]) + kUnhideSuffix, true};
         }
     }
 
     void unfocus(size_t index) {
-        LiveMarker& live = live_.markers[index];
+        LiveMarker& live = live_map.markers[index];
         EntityState& state = live.behavior;
         if (state.focused) {
             state.focused = false;
@@ -192,26 +192,26 @@ public:
             takeInfoBack(&state);
             if (b.bounce) {
                 // Whatever height it reached, it falls back from there.
-                state.bounce.from = bounceOffset(live, frame_.seconds);
+                state.bounce.from = bounceOffset(live, frame.seconds);
                 state.bounce.phase = BounceState::Phase::Settling;
-                state.bounce.start = frame_.seconds;
+                state.bounce.start = frame.seconds;
             }
-            if (scriptRuns(live) && b.focus) host_.script(*b.focus, Entity{false, index}, Hook::Focus, false);
+            if (scriptRuns(live) && b.focus) host.script(*b.focus, Entity{false, index}, Hook::Focus, false);
         }
         disconnect(index);
     }
 
     void interact(size_t index, bool auto_triggered) {
-        LiveMarker& live = live_.markers[index];
+        LiveMarker& live = live_map.markers[index];
         EntityState& state = live.behavior;
         const std::shared_ptr<const Behaviors> keep = live.marker.behaviors;
         const Behaviors& b = *keep;
 
-        if (!auto_triggered && state.filtered && host_.options.show_hidden) {
+        if (!auto_triggered && state.filtered && host.options.show_hidden) {
             state.filters_cleared = true;
             state.filtered = false;
             state.reason = FilterKind::None;
-            host_.states->clear(live.marker.guid);
+            host.states->clear(live.marker.guid);
             unfocus(index);
             return;
         }
@@ -228,70 +228,70 @@ public:
         if (b.copy) copy(b.copy.value(), auto_triggered, &state);
         if (!b.toggle.empty()) setCategory(b.toggle, !categoryEnabled(b.toggle));
         if (b.reset_guids) {
-            for (const Guid& guid : *b.reset_guids) host_.states->clear(guid);
+            for (const Guid& guid : *b.reset_guids) host.states->clear(guid);
         }
         if (!b.show.empty()) setCategory(b.show, true);
         if (!b.hide.empty()) setCategory(b.hide, false);
-        if (scriptRuns(live) && b.trigger) host_.script(*b.trigger, Entity{false, index}, Hook::Trigger, auto_triggered);
+        if (scriptRuns(live) && b.trigger) host.script(*b.trigger, Entity{false, index}, Hook::Trigger, auto_triggered);
     }
 
     // InfoModifier.InfoValue's setter: a script that changes the text of a focused marker's
     // info changes what is on screen.
     void refreshInfo(size_t index) {
-        EntityState& state = live_.markers[index].behavior;
-        const Behaviors& b = *live_.markers[index].marker.behaviors;
+        EntityState& state = live_map.markers[index].behavior;
+        const Behaviors& b = *live_map.markers[index].marker.behaviors;
         if (!state.focused || !state.shown_info || (b.info && *b.info == *state.shown_info)) return;
         takeInfoBack(&state);
         if (b.info && !state.filtered) showInfo(*b.info, &state);
     }
 
     float distanceToPlayer(const BakedMarker& marker) const {
-        return glm::distance(marker.position - glm::vec3(0.0f, marker.height_offset, 0.0f), player_.position);
+        return glm::distance(marker.position - glm::vec3(0.0f, marker.height_offset, 0.0f), player.position);
     }
 
 private:
     std::shared_ptr<const Behaviors> behaviorsOf(Entity entity) const {
-        return entity.trail ? live_.trails[entity.index].trail.behaviors : live_.markers[entity.index].marker.behaviors;
+        return entity.trail ? live_map.trails[entity.index].trail.behaviors : live_map.markers[entity.index].marker.behaviors;
     }
 
     EntityState& stateOf(Entity entity) {
-        return entity.trail ? live_.trails[entity.index].behavior : live_.markers[entity.index].behavior;
+        return entity.trail ? live_map.trails[entity.index].behavior : live_map.markers[entity.index].behavior;
     }
 
     bool scriptRuns(const LiveMarker& live) const {
-        return host_.script && live.marker.behaviors->scripted && !live.behavior.filters_cleared;
+        return host.script && live.marker.behaviors->scripted && !live.behavior.filters_cleared;
     }
 
     // SmallInteract.ShowInteract: not for a hidden marker, whose own prompt is the unhide one.
     void prompt(size_t index, std::string text, std::optional<int> achievement = std::nullopt) {
-        if (live_.markers[index].behavior.filtered) return;
-        host_.screen->prompt = Screen::Prompt{index, std::move(text), false, achievement};
+        if (live_map.markers[index].behavior.filtered) return;
+        host.screen->prompt = Screen::Prompt{index, std::move(text), false, achievement};
     }
 
     // UiStates.AddInfoString and RemoveInfoString, each of which shows the window again.
     void showInfo(const std::string& text, EntityState* state) {
-        host_.screen->info.push_back(text);
-        host_.screen->info_closed = false;
+        host.screen->info.push_back(text);
+        host.screen->info_closed = false;
         state->shown_info = text;
     }
 
     void takeInfoBack(EntityState* state) {
         if (!state->shown_info) return;
-        std::vector<std::string>& info = host_.screen->info;
+        std::vector<std::string>& info = host.screen->info;
         if (const auto at = std::find(info.begin(), info.end(), *state->shown_info); at != info.end()) info.erase(at);
-        host_.screen->info_closed = false;
+        host.screen->info_closed = false;
         state->shown_info.reset();
     }
 
     void disconnect(size_t index) {
-        if (host_.screen->prompt && host_.screen->prompt->marker == index) host_.screen->prompt.reset();
+        if (host.screen->prompt && host.screen->prompt->marker == index) host.screen->prompt.reset();
     }
 
     std::string modePrompt(const Behaviors& b, const BakedMarker& marker) const {
         switch (static_cast<Mode>(b.mode)) {
         case Mode::ReappearOnMapChange: return "Hide marker until map change {0}";
         case Mode::ReappearOnDailyReset:
-            return "Hide marker until daily reset (" + humanize((nextDailyReset(frame_.now) - frame_.now) / 1000.0, 2) + ") {0}";
+            return "Hide marker until daily reset (" + humanize((nextDailyReset(frame.now) - frame.now) / 1000.0, 2) + ") {0}";
         case Mode::OnlyVisibleBeforeActivation: return "Hide marker permanently {0}";
         case Mode::ReappearAfterTimer: return "Hide marker for " + humanize(marker.reset_length, 4) + " {0}";
         case Mode::ReappearOnMapReset: return "Hide marker until map reset {0}";
@@ -303,45 +303,45 @@ private:
     }
 
     void hideByMode(const Behaviors& b, const BakedMarker& marker) {
-        BehaviorStates& states = *host_.states;
+        BehaviorStates& states = *host.states;
         const Mode mode = static_cast<Mode>(b.mode);
         switch (mode) {
         case Mode::ReappearOnMapChange:
         case Mode::OnlyVisibleBeforeActivation:
-        case Mode::OncePerInstance: states.hide(mode, marker.guid, player_.instance); break;
-        case Mode::ReappearOnDailyReset: states.hideUntil(marker.guid, nextDailyReset(frame_.now)); break;
+        case Mode::OncePerInstance: states.hide(mode, marker.guid, player.instance); break;
+        case Mode::ReappearOnDailyReset: states.hideUntil(marker.guid, nextDailyReset(frame.now)); break;
         case Mode::ReappearAfterTimer:
-            states.hideUntil(marker.guid, frame_.now + static_cast<UtcMillis>(static_cast<double>(marker.reset_length) * 1000.0));
+            states.hideUntil(marker.guid, frame.now + static_cast<UtcMillis>(static_cast<double>(marker.reset_length) * 1000.0));
             break;
-        case Mode::OnceDailyPerCharacter: states.hideUntil(xorGuid(marker.guid, player_.character), nextDailyReset(frame_.now)); break;
-        case Mode::ReappearOnWeeklyReset: states.hideUntil(marker.guid, nextWeeklyReset(frame_.now)); break;
+        case Mode::OnceDailyPerCharacter: states.hideUntil(xorGuid(marker.guid, player.character), nextDailyReset(frame.now)); break;
+        case Mode::ReappearOnWeeklyReset: states.hideUntil(marker.guid, nextWeeklyReset(frame.now)); break;
         default: break;
         }
     }
 
     // CopyModifier.Interact.
     void copy(const Copy& copy, bool auto_triggered, EntityState* state) {
-        const ClipboardConsent consent = host_.options.clipboard;
+        const ClipboardConsent consent = host.options.clipboard;
         if (consent == ClipboardConsent::Never || (consent == ClipboardConsent::OnlyWhenInteractedWith && auto_triggered)) return;
-        if (auto_triggered && frame_.seconds - state->last_copy < kCopyRechargeSeconds) return;
-        state->last_copy = frame_.seconds;
-        if (copy.value.empty() || !host_.copy) return;
-        host_.copy(copy.value, formatMessage(copy.message, copy.value));
+        if (auto_triggered && frame.seconds - state->last_copy < kCopyRechargeSeconds) return;
+        state->last_copy = frame.seconds;
+        if (copy.value.empty() || !host.copy) return;
+        host.copy(copy.value, formatMessage(copy.message, copy.value));
     }
 
     bool categoryDefault(const std::string& id) const {
-        const size_t node = host_.tree ? host_.tree->find(id) : pack::kNoIndex;
-        return node == pack::kNoIndex || host_.tree->nodes[node].default_toggle;
+        const size_t node = host.tree ? host.tree->find(id) : pack::kNoIndex;
+        return node == pack::kNoIndex || host.tree->nodes[node].default_toggle;
     }
 
-    bool categoryEnabled(const std::string& id) const { return host_.categories->enabled(id, categoryDefault(id)); }
+    bool categoryEnabled(const std::string& id) const { return host.categories->enabled(id, categoryDefault(id)); }
 
-    void setCategory(const std::string& id, bool enabled) { host_.categories->set(id, enabled, categoryDefault(id)); }
+    void setCategory(const std::string& id, bool enabled) { host.categories->set(id, enabled, categoryDefault(id)); }
 
-    runtime::LiveMap& live_;
-    const Host& host_;
-    const Frame& frame_;
-    Player player_;
+    runtime::LiveMap& live_map;
+    const Host& host;
+    const Frame& frame;
+    Player player;
 };
 
 } // namespace

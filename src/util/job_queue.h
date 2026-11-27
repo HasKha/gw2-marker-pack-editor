@@ -53,13 +53,13 @@ public:
 private:
     void work();
 
-    std::thread worker_;
-    mutable std::mutex mutex_;
-    std::condition_variable wake_;
-    std::condition_variable idle_;
-    std::deque<std::function<void()>> queued_;
-    bool running_job_ = false;
-    bool stopping_ = false;
+    std::thread worker;
+    mutable std::mutex mutex;
+    std::condition_variable wake;
+    std::condition_variable idle;
+    std::deque<std::function<void()>> queued;
+    bool running_job = false;
+    bool stopping = false;
 };
 
 // Whether `answer` holds an answer now, without waiting for one. False for an empty future.

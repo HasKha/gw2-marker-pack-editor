@@ -20,13 +20,13 @@ std::vector<nfdu8filteritem_t> toNfdFilters(const std::vector<Filter>& filters) 
 // from being three copies of the same threading dance.
 void FileDialog::spawn(DialogFn fn) {
     bool expected = false;
-    if (!pending_.compare_exchange_strong(expected, true)) return;
+    if (!pending.compare_exchange_strong(expected, true)) return;
 
     {
-        std::lock_guard lock(mutex_);
-        if (worker_.joinable()) worker_.join(); // previous dialog already finished
-        result_.reset();
-        worker_ = std::thread([this, fn = std::move(fn)] {
+        std::lock_guard lock(mutex);
+        if (worker.joinable()) worker.join(); // previous dialog already finished
+        result.reset();
+        worker = std::thread([this, fn = std::move(fn)] {
             std::optional<std::filesystem::path> picked;
             if (NFD_Init() == NFD_OKAY) {
                 nfdu8char_t* out_path = nullptr;
@@ -37,10 +37,10 @@ void FileDialog::spawn(DialogFn fn) {
                 NFD_Quit();
             }
             {
-                std::lock_guard lock(mutex_);
-                result_ = std::move(picked);
+                std::lock_guard lock(mutex);
+                result = std::move(picked);
             }
-            pending_.store(false);
+            pending.store(false);
         });
     }
 }
@@ -78,21 +78,21 @@ void FileDialog::requestSaveFile(const std::filesystem::path& default_folder, st
 }
 
 std::optional<std::filesystem::path> FileDialog::takeResult() {
-    if (pending_.load()) return std::nullopt;
-    std::lock_guard lock(mutex_);
-    std::optional<std::filesystem::path> out = std::move(result_);
-    result_.reset();
+    if (pending.load()) return std::nullopt;
+    std::lock_guard lock(mutex);
+    std::optional<std::filesystem::path> out = std::move(result);
+    result.reset();
     return out;
 }
 
 FileDialog::~FileDialog() {
-    // The worker takes `mutex_` to store its result on the way out, so joining it while
+    // The worker takes `mutex` to store its result on the way out, so joining it while
     // holding that lock deadlocks — and unload with a dialog still open is exactly when
     // this runs. Take the thread out under the lock, then join with the lock released.
     std::thread finishing;
     {
-        std::lock_guard lock(mutex_);
-        finishing = std::move(worker_);
+        std::lock_guard lock(mutex);
+        finishing = std::move(worker);
     }
 
     if (finishing.joinable()) finishing.join();
