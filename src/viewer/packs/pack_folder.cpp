@@ -8,6 +8,7 @@
 #include <system_error>
 
 #include "util/path_text.h"
+#include "viewer/ui/fonts.h"
 #include "viewer/viewer.h"
 
 namespace viewer {
@@ -77,6 +78,7 @@ std::string PackFolder::status(const runtime::Installed& installed) const {
 void PackFolder::installLoaded(runtime::Installed* installed) {
     while (std::unique_ptr<registry::LoadedPack> loaded = loader_.take()) {
         if (!loaded->error.empty()) api_->Log(ELogLevel_WARNING, ADDON_NAME, (util::pathText(loaded->path) + ": " + loaded->error).c_str());
+        ui::fonts::require(loaded->glyphs);
         runtime::uninstall(installed, loaded->path);
         runtime::install(installed, std::move(loaded));
     }

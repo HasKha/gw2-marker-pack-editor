@@ -64,7 +64,7 @@ src/viewer/
                  Nexus's GameBinds.xml), interact_key (that bind, heard on the window thread)
   gw2_api/       the GW2 API, for achievement and raid filters: account, achievements, api_key
   ui/            main_menu, options, pack_catalog, import_window, script_console, interaction,
-                 diagnostics (the options page's Development section), map_menu, fonts (Font Awesome merged into Nexus's font), achievement_tooltip,
+                 diagnostics (the options page's Development section), map_menu, fonts (Font Awesome merged into Nexus's font, and Windows' fonts for text beyond Latin), glyphs (which characters that text needs), achievement_tooltip,
                  style (the palette and shared widgets, the editor's too)
 ```
 

@@ -99,6 +99,10 @@ LoadedPack loadPack(const std::filesystem::path& path) {
         if (loaded.source->readText(key, &text, &error)) loaded.scripts.emplace(key, std::move(text));
     }
 
+    // A script's strings too: what it prints, and the names of the markers and menus it makes.
+    loaded.glyphs = ui::glyphs::of(model);
+    for (const auto& [key, text] : loaded.scripts) loaded.glyphs.add(text);
+
     loaded.pathables = bake(model);
     loaded.categories = bakeCategories(model);
     loaded.declared.categories = std::move(model.categories);

@@ -1,26 +1,50 @@
 #include "viewer/ui/fonts.h"
 
 #include <IconsFontAwesome7.h>
+#include <ShlObj.h>
 #include <d3d11.h>
 #include <imgui.h>
+#include <imgui_internal.h>
 #include <wrl/client.h>
 
 #include <cmath>
 #include <cstring>
+#include <filesystem>
+#include <fstream>
+#include <span>
+#include <type_traits>
+#include <utility>
+#include <vector>
 
 #include "viewer/ui/font_awesome_solid.h"
+#include "viewer/ui/glyphs.h"
 
 namespace viewer::ui::fonts {
+
+// Ranges are built as uint16_t and handed to ImGui as they are.
+static_assert(std::is_same_v<ImWchar, uint16_t>);
 
 struct Fonts::State {
     // Its vectors come from ImGui's allocator, which is Nexus's: it goes with the session, while
     // Nexus is still there, not as the DLL detaches.
     ImFontAtlas atlas;
     Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> view;
+    // The views of atlases built over, each with the frame it was retired in: what that frame
+    // drew before the build still samples it.
+    std::vector<std::pair<int, Microsoft::WRL::ComPtr<ID3D11ShaderResourceView>>> retired;
     ImFont* font = nullptr;
     ImFont* heading = nullptr;
     bool tried = false;
     ID3D11Device* device = nullptr; // the viewer's, which holds it
+
+    // The host's font as the first push found it, which every build is made from: Nexus frees
+    // its own when the player picks another font. FontData is null; the file is `host_data`.
+    ImFontConfig host;
+    std::vector<unsigned char> host_data;
+
+    glyphs::Set wanted; // everything require() was handed
+    bool stale = false; // `wanted` holds characters the atlas was not built with
+    double built_at = 0.0; // ImGui::GetTime() at the last build
 };
 
 namespace {
@@ -34,13 +58,70 @@ constexpr float kHeadingScale = 1.2f;
 
 constexpr ImWchar kIconRanges[] = {ICON_MIN_FA, ICON_MAX_16_FA, 0};
 
-// Latin-1 and Latin Extended-A and B, as Nexus builds every font but its default one, whose
-// Chinese would cost a large atlas for nothing our windows write.
-constexpr ImWchar kTextRanges[] = {0x0020, 0x00FF, 0x0100, 0x024F, 0};
-
 // How much of Font Awesome's line box is above the baseline, from its hhea table: 448 units of
 // 512. Every icon spans that box.
 constexpr float kIconAscent = 448.0f / 512.0f;
+
+// The least time between two builds, in seconds. Packs install one after another as the game
+// starts, each with characters of its own; a build per pack would read and rasterize the CJK
+// font for each. Until the next build a new character draws as ImGui's '?'.
+constexpr double kRebuildInterval = 1.0;
+
+// Windows' own fonts, tried in order for what the host's font does not have, each for the blocks
+// it is there for (every block when none). All ship with Windows 10 and 11 whatever its language.
+constexpr glyphs::Block kCjk[] = {{0x2E80, 0x9FFF}, {0xF900, 0xFAFF}, {0xFE30, 0xFE4F}, {0xFF00, 0xFFEF}};
+constexpr glyphs::Block kHangul[] = {{0x1100, 0x11FF}, {0x3130, 0x318F}, {0xA960, 0xA97F}, {0xAC00, 0xD7FF}};
+
+struct Fallback {
+    const wchar_t* file;
+    std::span<const glyphs::Block> blocks;
+};
+
+constexpr Fallback kFallbacks[] = {
+    {L"segoeui.ttf", {}}, // Latin beyond Extended-B, Greek, Cyrillic, Armenian, Georgian, Hebrew
+    {L"msyh.ttc", kCjk}, // Microsoft YaHei: Chinese, simplified and traditional, and Japanese kana
+    {L"malgun.ttf", kHangul}, // Malgun Gothic: Korean
+    {L"seguisym.ttf", {}}, // Segoe UI Symbol: arrows, stars, dingbats, box drawing
+};
+
+// One fallback's file, read for a build, with the characters it is asked for.
+struct FallbackFile {
+    std::vector<unsigned char> data;
+    std::vector<uint16_t> ranges;
+};
+
+std::filesystem::path fontsFolder() {
+    PWSTR folder = nullptr;
+    if (FAILED(SHGetKnownFolderPath(FOLDERID_Fonts, 0, nullptr, &folder))) return {};
+    std::filesystem::path path(folder);
+    CoTaskMemFree(folder);
+    return path;
+}
+
+std::vector<unsigned char> readFile(const std::filesystem::path& path) {
+    std::ifstream in(path, std::ios::binary | std::ios::ate);
+    if (!in) return {};
+    std::vector<unsigned char> data(static_cast<size_t>(in.tellg()));
+    in.seekg(0);
+    if (!in.read(reinterpret_cast<char*>(data.data()), static_cast<std::streamsize>(data.size()))) return {};
+    return data;
+}
+
+// The fallbacks with something in `wanted` to try, read. None for an empty set, so a player
+// whose packs are all Latin reads no font file of Windows'.
+std::vector<FallbackFile> readFallbacks(const glyphs::Set& wanted) {
+    std::vector<FallbackFile> files;
+    if (wanted.empty()) return files;
+    const std::filesystem::path folder = fontsFolder();
+    if (folder.empty()) return files;
+    for (const Fallback& fallback : kFallbacks) {
+        std::vector<uint16_t> ranges = wanted.ranges(fallback.blocks);
+        if (ranges.size() == 1) continue;
+        std::vector<unsigned char> data = readFile(folder / fallback.file);
+        if (!data.empty()) files.push_back({std::move(data), std::move(ranges)});
+    }
+    return files;
+}
 
 bool upload(Fonts::State& fonts) {
     unsigned char* pixels = nullptr;
@@ -84,42 +165,76 @@ void alignIcons(ImFont* built) {
     }
 }
 
-// A copy of `source`'s font file at its size, with the icons merged into it. The copy is ours
-// because Nexus frees its own when the player picks another font.
-void build(Fonts::State& fonts, const ImFont* source) {
-    // Without a device, or with a host font that holds no font file, the windows keep the host's.
-    const ImFontConfig* config = source->ConfigData;
-    if (!fonts.device || !config || !config->FontData) return;
+// The host's font at `size`, for `ranges`, as a new font of the atlas.
+ImFont* addHost(Fonts::State& fonts, float size, const std::vector<uint16_t>& ranges) {
+    ImFontConfig config = fonts.host;
+    config.FontData = IM_ALLOC(fonts.host_data.size());
+    std::memcpy(config.FontData, fonts.host_data.data(), fonts.host_data.size());
+    config.FontDataSize = static_cast<int>(fonts.host_data.size());
+    config.FontDataOwnedByAtlas = true;
+    config.SizePixels = size;
+    config.GlyphRanges = ranges.data();
+    config.MergeMode = false;
+    config.DstFont = nullptr;
+    return fonts.atlas.AddFont(&config);
+}
 
-    ImFontConfig text = *config;
-    text.FontData = IM_ALLOC(static_cast<size_t>(config->FontDataSize));
-    std::memcpy(text.FontData, config->FontData, static_cast<size_t>(config->FontDataSize));
-    text.FontDataOwnedByAtlas = true;
-    text.GlyphRanges = kTextRanges;
-    text.MergeMode = false;
-    text.DstFont = nullptr;
-    ImFont* built = fonts.atlas.AddFont(&text);
+// Each fallback at `size`, merged into the font added last: the host's characters stay its own.
+void mergeFallbacks(Fonts::State& fonts, std::vector<FallbackFile>& files, float size) {
+    for (FallbackFile& file : files) {
+        ImFontConfig config;
+        config.FontData = file.data.data();
+        config.FontDataSize = static_cast<int>(file.data.size());
+        config.FontDataOwnedByAtlas = false; // `files` outlives the build, and is read once for both sizes
+        config.SizePixels = size;
+        config.GlyphRanges = file.ranges.data();
+        config.MergeMode = true;
+        // Thousands of CJK glyphs: oversampling would triple the atlas for no gain at this size.
+        config.OversampleH = 1;
+        config.OversampleV = 1;
+        config.PixelSnapH = true;
+        fonts.atlas.AddFont(&config);
+    }
+}
 
+// Builds the atlas from the start from the host's font, with the icons merged in and, when
+// `with_fallbacks`, Windows' fonts for the wanted characters the host's lacks. Whether it worked;
+// without, the windows keep the host's font.
+bool build(Fonts::State& fonts, bool with_fallbacks) {
+    // What this frame drew so far sampled the old texture, so its view stays to the next frame.
+    if (fonts.view) fonts.retired.emplace_back(ImGui::GetFrameCount(), std::move(fonts.view));
+    fonts.atlas.Clear();
+    fonts.atlas.TexID = nullptr;
+    fonts.font = nullptr;
+    fonts.heading = nullptr;
+
+    std::vector<uint16_t> ranges;
+    for (const glyphs::Block& block : glyphs::kBase) {
+        ranges.push_back(static_cast<uint16_t>(block.first));
+        ranges.push_back(static_cast<uint16_t>(block.last));
+    }
+    // The host's font is tried for the wanted characters first: one with Cyrillic draws its own.
+    const std::vector<uint16_t> wanted = fonts.wanted.ranges();
+    ranges.insert(ranges.end(), wanted.begin(), wanted.end());
+
+    std::vector<FallbackFile> fallbacks = with_fallbacks ? readFallbacks(fonts.wanted) : std::vector<FallbackFile>{};
+    const float size = fonts.host.SizePixels;
+
+    ImFont* built = addHost(fonts, size, ranges);
     ImFontConfig icons;
     icons.MergeMode = true;
-    icons.GlyphMinAdvanceX = config->SizePixels;
+    icons.GlyphMinAdvanceX = size;
     fonts.atlas.AddFontFromMemoryCompressedTTF(
         font_awesome_solid_compressed_data,
         static_cast<int>(font_awesome_solid_compressed_size),
-        config->SizePixels,
+        size,
         &icons,
         kIconRanges);
+    mergeFallbacks(fonts, fallbacks, size);
 
     // The heading, built at its size rather than scaled up from the text's, which blurs.
-    ImFontConfig large = *config;
-    large.FontData = IM_ALLOC(static_cast<size_t>(config->FontDataSize));
-    std::memcpy(large.FontData, config->FontData, static_cast<size_t>(config->FontDataSize));
-    large.FontDataOwnedByAtlas = true;
-    large.SizePixels = config->SizePixels * kHeadingScale;
-    large.GlyphRanges = kTextRanges;
-    large.MergeMode = false;
-    large.DstFont = nullptr;
-    ImFont* built_heading = fonts.atlas.AddFont(&large);
+    ImFont* built_heading = addHost(fonts, size * kHeadingScale, ranges);
+    mergeFallbacks(fonts, fallbacks, size * kHeadingScale);
 
     const bool uploaded = upload(fonts);
     // The glyphs are all that is drawn from; the font files and the pixels were only for building.
@@ -128,11 +243,63 @@ void build(Fonts::State& fonts, const ImFont* source) {
     if (!uploaded) {
         fonts.atlas.Clear();
         fonts.atlas.TexID = nullptr;
-        return;
+        return false;
     }
     alignIcons(built);
     fonts.font = built;
     fonts.heading = built_heading;
+    return true;
+}
+
+// Builds the atlas with what is wanted, falling back to the host's font alone, which is how it
+// always worked, should Windows' fonts not build: an atlas past the device's largest texture.
+void rebuild(Fonts::State& fonts) {
+    fonts.stale = false;
+    fonts.built_at = ImGui::GetTime();
+    if (!build(fonts, true)) build(fonts, false);
+}
+
+// Keeps a copy of `source`'s font file and how it was added, to build from. False when it holds
+// no file, or there is no device to build on: the windows keep the host's font.
+bool takeHost(Fonts::State& fonts, const ImFont* source) {
+    const ImFontConfig* config = source->ConfigData;
+    if (!fonts.device || !config || !config->FontData || config->FontDataSize <= 0) return false;
+    const auto* data = static_cast<const unsigned char*>(config->FontData);
+    fonts.host_data.assign(data, data + config->FontDataSize);
+    fonts.host = *config;
+    fonts.host.FontData = nullptr;
+    fonts.host.FontDataSize = 0;
+    fonts.host.GlyphRanges = nullptr;
+    fonts.host.DstFont = nullptr;
+    return true;
+}
+
+// What is being typed into a field, ours or Nexus's, is wanted too: a pasted or typed character
+// the font lacks draws from the next build on.
+void wantTyped(Fonts::State& fonts) {
+    const ImGuiContext& g = *ImGui::GetCurrentContext();
+    if (!g.ActiveId || g.InputTextState.ID != g.ActiveId) return;
+    const ImGuiInputTextState& state = g.InputTextState;
+    for (int i = 0; i < state.CurLenW && i < state.TextW.Size; ++i) {
+        if (fonts.wanted.add(static_cast<char32_t>(state.TextW[i]))) fonts.stale = true;
+    }
+}
+
+// The first push builds; a later one builds again once something new is wanted, unless it is
+// inside one of ours, whose font a build would free.
+void update(Fonts::State& fonts, const ImFont* host) {
+    const int frame = ImGui::GetFrameCount();
+    std::erase_if(fonts.retired, [frame](const auto& retired) { return retired.first < frame; });
+    if (!fonts.tried) {
+        fonts.tried = true;
+        if (takeHost(fonts, host)) rebuild(fonts);
+        return;
+    }
+    if (fonts.host_data.empty()) return;
+    wantTyped(fonts);
+    if (fonts.stale && host->ContainerAtlas != &fonts.atlas && ImGui::GetTime() - fonts.built_at >= kRebuildInterval) {
+        rebuild(fonts);
+    }
 }
 
 } // namespace
@@ -152,10 +319,7 @@ void Fonts::setDevice(ID3D11Device* device) {
 
 void push() {
     const ImFont* host = ImGui::GetFont();
-    if (current && !current->tried) {
-        current->tried = true;
-        build(*current, host);
-    }
+    if (current) update(*current, host);
     ImFont* font = current ? current->font : nullptr;
     if (!font) {
         ImGui::PushFont(ImGui::GetFont());
@@ -179,6 +343,10 @@ void pushHeading() {
     }
     heading->Scale = host->FontSize * host->Scale * kHeadingScale / heading->FontSize;
     ImGui::PushFont(heading);
+}
+
+void require(const glyphs::Set& glyphs) {
+    if (current && current->wanted.add(glyphs)) current->stale = true;
 }
 
 bool ready() {

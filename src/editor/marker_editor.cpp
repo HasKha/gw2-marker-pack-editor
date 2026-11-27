@@ -35,6 +35,7 @@
 #include "viewer/packs/registry.h"
 #include "viewer/render/scene.h"
 #include "viewer/ui/fonts.h"
+#include "viewer/ui/glyphs.h"
 #include "viewer/ui/style.h"
 #include "viewer/viewer.h"
 
@@ -374,6 +375,7 @@ void Editor::openPack(std::filesystem::path path) {
     }
 
     state_.pack = pack::loadPack(*source);
+    viewer::ui::fonts::require(viewer::ui::glyphs::of(state_.pack));
 
     // Icons and .trl data are read straight out of the source as markers become visible, so
     // it has to outlive the load.

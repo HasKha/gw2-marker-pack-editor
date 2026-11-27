@@ -16,6 +16,7 @@
 
 #include "pack/source.h"
 #include "viewer/live/bake.h"
+#include "viewer/ui/glyphs.h"
 
 // The installed packs: where they are, loading them on a worker, and the one category tree
 // they share.
@@ -63,6 +64,10 @@ struct LoadedPack {
     // The pack's categories alone, with their attributes and nothing else of the model: what
     // a marker one of its scripts creates inherits from (Pack:CreateMarker).
     pack::Pack declared;
+
+    // Every character its XML and scripts hold beyond Latin, which our windows' font is built
+    // with once the pack is installed (ui::fonts::require).
+    ui::glyphs::Set glyphs;
 };
 
 // When the pack at `path` was last written: an archive's own time, or for a folder the newest of
