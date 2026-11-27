@@ -14,12 +14,12 @@ If you had Marker Pack Editor (`MarkerPackEditor.dll`), delete it.
 
 ### Features
 
-- View marker packs.
-- Optionally, use the built-in editor.
-- Support for API key.
-- Support for LUA scripting.
-- Feature parity with BlishHUD Pathing module.
-- Draw markers behind in-game windows, characters, or terrain when used together with the [Good Render](https://github.com/HasKha/gw2-good-render).
+- View marker packs. Displayed markers are accurate to Blish HUD's Pathing module.
+- Combine with the the [Good Render](https://github.com/HasKha/gw2-good-render) for smooth marker rendering under the game's interface and optionally occluded by only characters, or characters + terrain.
+- Full support for Lua scripts in addons.
+- Enter your API Key to have markers hide your completed achievements. Achievement descriptions are also loaded from the API.
+- Contains a marker pack editor.
+- Optimized for sub-ms rendering performance to not impact your framerate even with tons of markers loaded.
 
 ---
 
@@ -60,6 +60,3 @@ Pull requests are welcome.
 - Run the tests before opening it. A bug fix ideally comes with a test that fails without the fix.
 - Follow [docs/code_style.md](docs/code_style.md).
 
-### Docs
-
-Every doc in `docs/` is listed in [CLAUDE.md](CLAUDE.md#docs), with when to read it.
