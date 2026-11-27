@@ -148,9 +148,16 @@ void draw(const std::vector<Line>& lines, const std::function<void()>& frame_tim
     }
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("For a bug report.");
 
+    // Each heading's lines indented under it, as the options page's other subsections are, up to
+    // the next heading.
+    bool in_subsection = false;
     for (const Line& line : lines) {
         switch (line.kind) {
-        case Line::Kind::Heading: style::subheading(line.icon, line.text.c_str()); break;
+        case Line::Kind::Heading:
+            if (in_subsection) style::endSubsection();
+            style::beginSubsection(line.icon, line.text.c_str());
+            in_subsection = true;
+            break;
         case Line::Kind::Text: ImGui::Text("%s", line.text.c_str()); break;
         case Line::Kind::FrameTime:
             ImGui::Text("%s", line.text.c_str());
@@ -165,6 +172,7 @@ void draw(const std::vector<Line>& lines, const std::function<void()>& frame_tim
             break;
         }
     }
+    if (in_subsection) style::endSubsection();
 }
 
 } // namespace viewer::ui::diagnostics

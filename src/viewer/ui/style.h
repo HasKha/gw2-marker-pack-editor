@@ -45,6 +45,17 @@ float buttonWidth(std::initializer_list<const char*> labels);
 // above it.
 void subheading(const char* icon, const char* text);
 
+// A section of a page: a tree node of `icon` and `label`, its whole row clickable, open at first
+// when `default_open`. `id` names it, so that the label can change and the icon draw or not
+// without the node closing; its content is in that ID's scope. True when open, and then popped
+// with ImGui::TreePop().
+bool section(const char* id, const char* icon, const char* label, bool default_open = false);
+
+// A group inside a section: its subheading, and under it what follows indented by an icon's width,
+// until endSubsection().
+void beginSubsection(const char* icon, const char* text);
+void endSubsection();
+
 // A link, which imgui 1.80 has none of: underlined text in the link colour, lighter and with a
 // hand while hovered, and `tooltip` then. True when clicked.
 bool link(const char* text, const char* tooltip);

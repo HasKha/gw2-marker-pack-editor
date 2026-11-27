@@ -441,6 +441,7 @@ WorldOptions Session::worldOptions() {
     options.enabled = persisted.world_pathables;
     options.max_opacity = persisted.max_opacity;
     options.view_distance = persisted.view_distance;
+    options.view_fade = persisted.view_fade;
     options.max_trail_speed = persisted.max_trail_speed;
     options.marker_scale = persisted.marker_scale;
     options.combat_fade = persisted.combat_fade;

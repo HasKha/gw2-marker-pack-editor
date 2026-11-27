@@ -52,8 +52,8 @@ public:
     size_t found() const { return discovered.size(); }
     // The packs on disk as the catalog sees them.
     const std::vector<catalog::LocalPack>& local() const { return local_packs; }
-    // How many packs are installed, or how loading goes.
-    std::string status(const runtime::Installed& installed) const;
+    // How loading goes, for while loading(): how many of the packs found are in.
+    std::string loadingStatus(const runtime::Installed& installed) const;
 
     // Every pack in `folder`, and each as the catalog sees them. Reads the disk.
     struct Listing {

@@ -133,28 +133,34 @@ float fadeInOf(double in_view_since, float seconds) {
 // What marker.hlsl's distance fade leaves of a marker on average, a pixel's distance standing
 // in for the marker's: fading as `mult` goes from 0 at fadeNear to 1 at fadeFar, it scales a
 // pixel by 1 - mult and dissolves the pixels whose dissolve texture value is under `mult`,
-// and clips everything past fadeFar. The near and far it is handed are inches, capped by the
-// view distance as StandardMarker.World.Render caps them — which is how Max View Distance,
-// meant in metres, ends up cutting every marker off at that many inches.
-float shaderFade(float distance_inches, float fade_near, float fade_far, float view_distance) {
+// and clips everything past fadeFar, in inches. StandardMarker.World.Render hands it the fades
+// capped by the view distance, which fades a marker from short of the view distance when its own
+// fade is longer; ours are the marker's own, the view distance applied over them (viewFade).
+float shaderFade(float distance_inches, float fade_near, float fade_far) {
     // The share of the dissolve's pixels kept at mult = 0+, 0.05, ..., 1: of Pathing's
     // ref/png/42975.png, the texels whose 0.21 r + 0.71 b + 0.071 g, as marker.hlsl weighs
     // them, is at least mult. A fifth are black, gone as soon as a fade starts.
     constexpr float kKept[21] = {0.801f, 0.742f, 0.659f, 0.596f, 0.554f, 0.527f, 0.495f, 0.467f, 0.442f, 0.414f, 0.390f,
                                  0.361f, 0.333f, 0.298f, 0.269f, 0.224f, 0.177f, 0.135f, 0.095f, 0.064f, 0.000f};
 
-    // Populate_FadeNearAndFar: either negative turns both off, to float.MaxValue.
-    if (fade_near < 0.0f || fade_far < 0.0f) fade_near = fade_far = std::numeric_limits<float>::max();
-    const float far_inches = std::min(fade_far, view_distance);
-    const float near_inches = std::min(fade_near, view_distance - (fade_far - fade_near));
-
-    if (far_inches > 0.0f && distance_inches > far_inches) return 0.0f;
-    if (near_inches <= 0.0f || far_inches <= 0.0f || distance_inches <= near_inches) return 1.0f;
-    const float mult = far_inches > near_inches ? std::min((distance_inches - near_inches) / (far_inches - near_inches), 1.0f) : 1.0f;
+    // Populate_FadeNearAndFar: either negative turns both off.
+    if (fade_near < 0.0f || fade_far < 0.0f) return 1.0f;
+    if (fade_far > 0.0f && distance_inches > fade_far) return 0.0f;
+    if (fade_near <= 0.0f || fade_far <= 0.0f || distance_inches <= fade_near) return 1.0f;
+    const float mult = fade_far > fade_near ? std::min((distance_inches - fade_near) / (fade_far - fade_near), 1.0f) : 1.0f;
     const float step = mult * 20.0f;
     const int below = std::min(static_cast<int>(step), 19);
     const float kept = kKept[below] + (kKept[below + 1] - kKept[below]) * (step - static_cast<float>(below));
     return (1.0f - mult) * kept;
+}
+
+// What Max View Distance and the fade before it leave of a pathable `distance_inches` away, over
+// whatever fades of its own it has: nothing from the view distance on, in the inches Pathing's
+// shaders take it in, whole up to view_fade short of it, linear between.
+float viewFade(float distance_inches, const WorldOptions& options) {
+    if (distance_inches >= options.view_distance) return 0.0f;
+    if (options.view_fade <= 0.0f) return 1.0f;
+    return std::min((options.view_distance - distance_inches) / options.view_fade, 1.0f);
 }
 
 // Appends one layer's markers to `markers` and its trails to `out`, unsorted. `settings_opacity` is GetOpacity's settings,
@@ -185,7 +191,8 @@ void appendLayer(
         const float own_opacity = filtered ? 0.5f
                                            : marker.alpha * fadeFactor(inches, marker.fade_near, marker.fade_far) * settings_opacity *
                                                  fadeInOf(live_marker.in_view_since, seconds);
-        const float opacity = own_opacity * shaderFade(inches, marker.fade_near, marker.fade_far, options.view_distance);
+        const float opacity =
+            own_opacity * shaderFade(inches, marker.fade_near, marker.fade_far) * viewFade(inches, options);
         if (opacity <= kInvisibleOpacity) continue;
         if (!marker.has_rotation && marker.cull == Cull::Clockwise) continue;
         const glm::vec3 position = marker.position + glm::vec3(0.0f, behaviors::bounceOffset(live_marker, seconds), 0.0f);
@@ -240,12 +247,22 @@ void appendLayer(
         const ImTextureID image = keptImage(layer.texture, layer.edited, live_trail.texture_pack, trail.texture, &live_trail.image);
         if (!image && !layer.edited) continue;
 
-        // StandardTrail.World.Render: the view distance caps the fade, in the fade's inches.
-        const float fade_far = std::min(trail.fade_far, options.view_distance);
-        const float fade_near = std::min(trail.fade_near, options.view_distance - (trail.fade_far - trail.fade_near));
+        // The trail's own fade, then the view distance's over it (viewFade). StandardTrail.World.Render
+        // caps the fade by the view distance instead, which fades a trail from short of it when its
+        // own fade is longer. Either fade negative turns both off, as Populate_FadeNearAndFar does.
+        // fadeNear is held between 0 and fadeFar: a fadeFar under fadeNear cuts the trail there.
+        const bool fades = trail.fade_near >= 0.0f && trail.fade_far >= 0.0f;
+        const float fade_far = fades ? trail.fade_far : std::numeric_limits<float>::max();
+        const float fade_near = fades ? std::clamp(trail.fade_near, 0.0f, fade_far) : fade_far;
         const float scroll = seconds * std::min(trail.anim_speed, options.max_trail_speed);
         const float fade_in = fadeInOf(live_trail.in_view_since, seconds);
-        const auto fadeAt = [&](float metres) { return fadeFactor(metresToInches(metres), fade_near, fade_far); };
+        // Falling with distance, as boxShows relies on.
+        const auto fadeAt = [&](float metres) {
+            const float inches = metresToInches(metres);
+            if (inches >= fade_far) return 0.0f;
+            const float own = inches <= fade_near ? 1.0f : 1.0f - (inches - fade_near) / (fade_far - fade_near);
+            return own * viewFade(inches, options);
+        };
         // `fade` is the quad's distance fade, from fadeNear to fadeFar. Pathing's trail.hlsl
         // never reads fadeNear, so its trails stay whole up to fadeFar and are cut off there;
         // fading them out instead is ours, on purpose.

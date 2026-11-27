@@ -114,6 +114,9 @@ sink for the same reason. Publishing is an atomic pointer swap.
   `fadeFar` where Pathing's ignore `fadeNear`, a long step cut into pieces that fade alone (`cutStep`);
   fades near the character and camera not at all, which needs a shader of our own. Distance is measured from
   where a marker is drawn, `heightOffset` included.
+- **Max View Distance comes after a pathable's own fades, not into them** (`viewFade`): nothing past it, and
+  the Fade Distance option fades out over the stretch before it, 200 inches by default. Pathing caps
+  `fadeNear` and `fadeFar` with it instead, so a pack's fade longer than the view distance starts short of it.
 - **What is wholly out of view is left out of the scene**, against the view widened for the frame or two
   until it is drawn (`ViewBounds` in `scene.cpp`); what is partly in view is drawn whole. A trail's ribbon is
   built once per live map and passed over a stretch at a time, by its fade and the view.

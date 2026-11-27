@@ -94,9 +94,16 @@ struct Scene {
 struct WorldOptions {
     bool enabled = true; // "Show Markers in World"
     float max_opacity = 1.0f; // "Max Opacity", over every fade
-    // "Max View Distance". Pathing measures a marker's distance against it in metres and hands
-    // it to the trail shader beside fadeNear and fadeFar, in inches; both are kept.
+    // "Max View Distance". Pathing measures a marker's distance against it in metres, and caps a
+    // pathable's fadeNear and fadeFar with it in inches, where it cuts everything off. Both are
+    // kept, but the inches' cut comes after a pack's own fades rather than capping them: a pack's
+    // fade longer than the view distance no longer fades from short of it.
     float view_distance = 25000.0f;
+    // Ours: how far short of the view distance, in the same inches, markers and trails start to
+    // fade, reaching nothing at it. Over every other fade, a pack's own included. Blish HUD has
+    // none, which is 0, a cut at the view distance; ours fades over the length of a trail's
+    // default fade, 700 to 900.
+    float view_fade = 200.0f;
     float max_trail_speed = 10.0f; // "Max Trail Animation Speed"
     float marker_scale = 1.0f; // "Marker Scale": iconSize and minSize
     bool combat_fade = true; // "Fade Markers and Trails During Combat": half opacity

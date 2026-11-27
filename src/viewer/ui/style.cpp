@@ -9,6 +9,15 @@
 
 namespace viewer::ui::style {
 
+namespace {
+
+// A subsection's indent, in font heights: about a Font Awesome icon's width, so that what is under
+// a subheading starts near where its words do. Not measured from a glyph, so it is the same before
+// the icons are built and whichever icon heads it.
+constexpr float kSubsectionIndentEms = 1.5f;
+
+} // namespace
+
 ImVec4 muted() {
     // Enough to tell apart from the text beside it, and still read on a bright background.
     constexpr float kAlpha = 0.65f;
@@ -45,6 +54,20 @@ float buttonWidth(std::initializer_list<const char*> labels) {
 void subheading(const char* icon, const char* text) {
     ImGui::Spacing();
     ImGui::TextColored(ACCENT, "%s", fonts::label(icon, text).c_str());
+}
+
+bool section(const char* id, const char* icon, const char* label, bool default_open) {
+    const ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_SpanAvailWidth | (default_open ? ImGuiTreeNodeFlags_DefaultOpen : 0);
+    return ImGui::TreeNodeEx(id, flags, "%s", fonts::label(icon, label).c_str());
+}
+
+void beginSubsection(const char* icon, const char* text) {
+    subheading(icon, text);
+    ImGui::Indent(ImGui::GetFontSize() * kSubsectionIndentEms);
+}
+
+void endSubsection() {
+    ImGui::Unindent(ImGui::GetFontSize() * kSubsectionIndentEms);
 }
 
 bool link(const char* text, const char* tooltip) {

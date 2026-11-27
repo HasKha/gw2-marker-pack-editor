@@ -109,6 +109,7 @@ TEST_CASE("map and world settings start at Pathing's defaults and are kept", "[v
     CHECK(defaults.world_pathables);
     CHECK(defaults.max_opacity == 1.0f);
     CHECK(defaults.view_distance == 25000.0f);
+    CHECK(defaults.view_fade == 200.0f);
     CHECK(defaults.max_trail_speed == 10.0f);
     CHECK(defaults.marker_scale == 1.0f);
     CHECK(defaults.combat_fade);
@@ -122,6 +123,7 @@ TEST_CASE("map and world settings start at Pathing's defaults and are kept", "[v
     settings.map_tooltips = false;
     settings.info_display = 1;
     settings.view_distance = 300.0f;
+    settings.view_fade = 120.0f;
     settings.marker_scale = 1.5f;
     settings.combat_fade = false;
     REQUIRE(viewer::settings::save(temp.path(), settings));
@@ -134,6 +136,7 @@ TEST_CASE("map and world settings start at Pathing's defaults and are kept", "[v
     CHECK_FALSE(loaded.map_tooltips);
     CHECK(loaded.info_display == 1);
     CHECK(loaded.view_distance == 300.0f);
+    CHECK(loaded.view_fade == 120.0f);
     CHECK(loaded.marker_scale == 1.5f);
     CHECK_FALSE(loaded.combat_fade);
 }

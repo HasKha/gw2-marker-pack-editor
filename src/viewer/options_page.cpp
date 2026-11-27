@@ -75,11 +75,12 @@ bool dpiScalingCombo(settings::Settings* settings) {
 // The settings one map has of its own, under its name.
 bool drawOneMap(const char* icon, const char* name, int* markers, int* trails, float* opacity) {
     ImGui::PushID(name);
-    ui::style::subheading(icon, name);
+    ui::style::beginSubsection(icon, name);
     bool changed = visibilityCombo("Markers", markers);
     changed |= visibilityCombo("Trails", trails);
     ImGui::SetNextItemWidth(ImGui::GetFontSize() * kFieldWidthEms);
     changed |= ImGui::SliderFloat("Opacity", opacity, 0.0f, 1.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+    ui::style::endSubsection();
     ImGui::PopID();
     return changed;
 }
@@ -125,11 +126,11 @@ bool aboveBelowCheckbox(bool* value, ImTextureID above, ImTextureID below) {
 
 } // namespace
 
-// The page's sections, the first three open until the player closes them: what a new player sets
-// up, the API key among it, before what fine-tunes the drawing. Each control does what it says as
-// it is used; a setting changed is saved within the frame, at the end of its section.
+// The page's sections, each a tree node, the first three open until the player closes them: what a
+// new player sets up, the API key among it, before what fine-tunes the drawing. Each control does
+// what it says as it is used; a setting changed is saved within the frame, at the end of its section.
 void Session::drawOptionsPage() {
-    if (ImGui::CollapsingHeader("Interface", ImGuiTreeNodeFlags_DefaultOpen)) {
+    if (ui::style::section("interface", ICON_FA_DISPLAY, "Interface", true)) {
         if (ImGui::Checkbox("Show the menu in Nexus's right-click menu", &persisted.menu_in_nexus)) {
             showInNexusMenu(persisted.menu_in_nexus);
             saveSettings();
@@ -138,9 +139,10 @@ void Session::drawOptionsPage() {
             showIcon(persisted.menu_icon);
             saveSettings();
         }
+        ImGui::TreePop();
     }
 
-    if (ImGui::CollapsingHeader("Marker Packs", ImGuiTreeNodeFlags_DefaultOpen)) {
+    if (ui::style::section("marker_packs", ICON_FA_BOX_ARCHIVE, "Marker Packs", true)) {
         if (ImGui::Checkbox("Enable Lua scripts", &persisted.run_scripts)) {
             saveSettings();
             // Off throws every handler away, and what scripts did to the map with them; on starts
@@ -149,16 +151,16 @@ void Session::drawOptionsPage() {
             replaceLiveMap(live_map.map_id);
         }
 
-        // One width for the three, so they stand as a column.
+        // Manage and Reload side by side at one width, how loading goes under them while it does,
+        // then Import.
         const std::string manage = ui::fonts::label(ICON_FA_BOX_ARCHIVE, "Manage Packs");
         const std::string reload = ui::fonts::label(ICON_FA_ROTATE_RIGHT, "Reload Packs");
-        const std::string import = ui::fonts::label(ICON_FA_FILE_IMPORT, "Import from Blish HUD...");
-        const float width = ui::style::buttonWidth({manage.c_str(), reload.c_str(), import.c_str()});
+        const float width = ui::style::buttonWidth({manage.c_str(), reload.c_str()});
         if (ui::style::button(manage.c_str(), true, width)) windows.catalog = true;
-        if (ui::style::button(reload.c_str(), true, width)) pack_folder.reload(&installed);
         ImGui::SameLine();
-        ImGui::Text("%s", pack_folder.status(installed).c_str());
-        if (ui::style::button(import.c_str(), true, width)) {
+        if (ui::style::button(reload.c_str(), true, width)) pack_folder.reload(&installed);
+        if (pack_folder.loading()) ImGui::Text("%s", pack_folder.loadingStatus(installed).c_str());
+        if (ImGui::Button(ui::fonts::label(ICON_FA_FILE_IMPORT, "Import from Blish HUD...").c_str())) {
             // Reads again what Blish HUD has now: the window opens once the worker has read it
             // (drawImport).
             if (importer.running()) {
@@ -167,9 +169,10 @@ void Session::drawOptionsPage() {
                 importer.findOnWorker(registry::blishMarkersFolder(), &jobs);
             }
         }
+        ImGui::TreePop();
     }
 
-    if (ImGui::CollapsingHeader("GW2 API Key", ImGuiTreeNodeFlags_DefaultOpen)) {
+    if (ui::style::section("api_key", ICON_FA_KEY, "GW2 API Key", true)) {
         // How a key is made, the applications page's address a link. When the line has no room
         // for the address, it goes under the words, where the bullet's text starts.
         ImGui::Bullet();
@@ -253,19 +256,27 @@ void Session::drawOptionsPage() {
                 "Forgets your saved account progress and achievement details,\n"
                 "and downloads them again.");
         }
+        ImGui::TreePop();
     }
 
-    if (ImGui::CollapsingHeader("Markers")) {
+    if (ui::style::section("markers", ICON_FA_LOCATION_DOT, "Markers in World")) {
         bool changed = ImGui::Checkbox("Show markers in the world", &persisted.world_pathables);
 
-        ui::style::subheading(ICON_FA_EYE, "Appearance");
+        ui::style::beginSubsection(ICON_FA_EYE, "Appearance");
         ui::style::beginDisabled(!persisted.world_pathables);
         ImGui::SetNextItemWidth(ImGui::GetFontSize() * kFieldWidthEms);
         changed |= ImGui::SliderFloat("Max opacity", &persisted.max_opacity, 0.0f, 1.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
         ImGui::SetNextItemWidth(ImGui::GetFontSize() * kFieldWidthEms);
-        changed |= ImGui::SliderFloat("Max view distance", &persisted.view_distance, 25.0f, 50000.0f, "%.0f", ImGuiSliderFlags_AlwaysClamp);
+        changed |= ImGui::SliderFloat("Max view distance", &persisted.view_distance, 25.0f, 5000.0f, "%.0f");
         ImGui::SetNextItemWidth(ImGui::GetFontSize() * kFieldWidthEms);
-        changed |= ImGui::SliderFloat("Marker scale", &persisted.marker_scale, 0.1f, 4.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+        changed |= ImGui::SliderFloat("Fade distance", &persisted.view_fade, 0.0f, 1000.0f, "%.0f", ImGuiSliderFlags_AlwaysClamp);
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip(
+                "How far before the max view distance markers and trails start to fade out.\n"
+                "0 cuts them off at the max view distance.");
+        }
+        ImGui::SetNextItemWidth(ImGui::GetFontSize() * kFieldWidthEms);
+        changed |= ImGui::SliderFloat("Marker scale", &persisted.marker_scale, 0.1f, 4.0f, "%.2f");
         ImGui::SetNextItemWidth(ImGui::GetFontSize() * kFieldWidthEms);
         changed |=
             ImGui::SliderFloat("Max trail animation speed", &persisted.max_trail_speed, 0.0f, 10.0f, "%.1f", ImGuiSliderFlags_AlwaysClamp);
@@ -298,8 +309,9 @@ void Session::drawOptionsPage() {
         }
         changed |= ImGui::Checkbox("Fade markers and trails during combat", &persisted.combat_fade);
         ui::style::endDisabled();
+        ui::style::endSubsection();
 
-        ui::style::subheading(ICON_FA_WAND_MAGIC_SPARKLES, "Behavior");
+        ui::style::beginSubsection(ICON_FA_WAND_MAGIC_SPARKLES, "Behavior");
         changed |= ImGui::Checkbox("Allow markers to hide themselves", &persisted.allow_auto_hide);
         if (ImGui::IsItemHovered())
             ImGui::SetTooltip("When off, every marker shows, including those hidden by festivals, schedules or after you used them.");
@@ -312,8 +324,9 @@ void Session::drawOptionsPage() {
         ImGui::Checkbox("Show hidden markers faded, to unhide them", &show_hidden);
         if (ImGui::IsItemHovered())
             ImGui::SetTooltip("Interact with a faded marker to bring it back. Turns itself off when the game restarts.");
+        ui::style::endSubsection();
 
-        ui::style::subheading(ICON_FA_MESSAGE, "On-Screen Text");
+        ui::style::beginSubsection(ICON_FA_MESSAGE, "On-Screen Text");
         changed |= ImGui::Checkbox("Show what interacting does", &persisted.show_interact_prompt);
         if (ImGui::IsItemHovered())
             ImGui::SetTooltip("A prompt near a marker you can interact with, saying what your Interact key will do.");
@@ -322,17 +335,20 @@ void Session::drawOptionsPage() {
         ImGui::SetNextItemWidth(ImGui::GetFontSize() * kFieldWidthEms);
         changed |= ImGui::Combo("Marker info text", &persisted.info_display, kInfoDisplays, IM_ARRAYSIZE(kInfoDisplays));
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("Text some markers show at the top of the screen while you are near them.");
+        ui::style::endSubsection();
 
-        ui::style::subheading(ICON_FA_BARS, "Menu");
+        ui::style::beginSubsection(ICON_FA_BARS, "Menu");
         changed |= ImGui::Checkbox("Smart categories", &persisted.smart_categories);
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("Leaves categories with nothing on the current map out of the menu.");
         changed |= ImGui::Checkbox("Show tooltips for achievements", &persisted.achievement_tooltips);
         if (ImGui::IsItemHovered())
             ImGui::SetTooltip("Shows the achievement when you point at a category in the menu that is tied to one.");
+        ui::style::endSubsection();
         if (changed) saveSettings();
+        ImGui::TreePop();
     }
 
-    if (ImGui::CollapsingHeader("Map and Minimap")) {
+    if (ui::style::section("maps", ICON_FA_MAP_LOCATION_DOT, "Markers in Map and Minimap")) {
         bool changed = ImGui::Checkbox("Show markers on maps", &persisted.map_pathables);
         ui::style::beginDisabled(!persisted.map_pathables);
         changed |= drawOneMap(
@@ -343,7 +359,7 @@ void Session::drawOptionsPage() {
             &persisted.minimap_opacity);
         changed |=
             drawOneMap(ICON_FA_MAP, "Full Map", &persisted.map_marker_visibility, &persisted.map_trail_visibility, &persisted.map_opacity);
-        ui::style::subheading(ICON_FA_LAYER_GROUP, "Both Maps");
+        ui::style::beginSubsection(ICON_FA_LAYER_GROUP, "Both Maps");
         ImGui::SetNextItemWidth(ImGui::GetFontSize() * kFieldWidthEms);
         changed |= ImGui::SliderFloat("Trail width", &persisted.map_trail_width, 0.5f, 4.5f, "%.1f", ImGuiSliderFlags_AlwaysClamp);
         changed |= aboveBelowCheckbox(&persisted.map_above_below, aboveBelowImage(true), aboveBelowImage(false));
@@ -355,13 +371,15 @@ void Session::drawOptionsPage() {
                 "Right-click a marker on the map to turn its categories on or off.");
         }
         changed |= dpiScalingCombo(&persisted);
+        ui::style::endSubsection();
         ui::style::endDisabled();
         if (changed) saveSettings();
+        ImGui::TreePop();
     }
 
     // For pack authors and bug reports. The images' counts walk every pack's cache, so the
     // figures are gathered only while the section is open.
-    if (ImGui::CollapsingHeader("Development")) {
+    if (ui::style::section("development", ICON_FA_CODE, "Development")) {
         if (ImGui::Button(ui::fonts::label(ICON_FA_TERMINAL, "Open Lua Script Console").c_str())) windows.console = true;
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("Messages and errors from pack scripts.");
         ImGui::SameLine();
@@ -412,6 +430,7 @@ void Session::drawOptionsPage() {
             ui::style::endDisabled();
             if (changed) saveSettings();
         });
+        ImGui::TreePop();
     }
 }
 

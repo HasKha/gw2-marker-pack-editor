@@ -53,6 +53,7 @@ constexpr Field<int> kInts[] = {
 constexpr Field<float> kFloats[] = {
     {"max_opacity", &Settings::max_opacity, 0.0f, 1.0f},
     {"view_distance", &Settings::view_distance, 25.0f, 50000.0f},
+    {"view_fade", &Settings::view_fade, 0.0f, 50000.0f}, // ours: up to the farthest view distance
     {"max_trail_speed", &Settings::max_trail_speed, 0.0f, 10.0f},
     {"marker_scale", &Settings::marker_scale, 0.1f, 4.0f},
     {"map_opacity", &Settings::map_opacity, 0.0f, 1.0f},

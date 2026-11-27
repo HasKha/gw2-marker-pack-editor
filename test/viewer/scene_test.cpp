@@ -665,6 +665,106 @@ TEST_CASE("a long trail step is drawn up to fadeFar, however far its middle is",
     CHECK(farthest > 85.0f);
 }
 
+TEST_CASE("the view distance cuts a trail off whatever its fades", "[scene][regression]") {
+    // Cut off at the view distance, in inches, over the trail's own fades. Capping fadeNear at the
+    // view distance less the fade's length, as StandardTrail.World.Render does, took it below 0
+    // under 200 inches, with the trails' 700 to 900, which turned the fade off: every trail drawn
+    // however far. Fades off were never capped at all.
+    Built built;
+    built.options.view_distance = 1000.0f; // 25.4 m
+    const glm::vec3 from(0, -1, 40);
+    const glm::vec3 to(0, -1, 60);
+
+    SECTION("the view distance under the fade's length") {
+        built.options.view_distance = 25.0f;
+        installStraightTrail(&built, from, to, 700.0f, 900.0f);
+    }
+    SECTION("fades off, as Pathing's float.MaxValue") { installStraightTrail(&built, from, to, -1.0f, -1.0f); }
+    SECTION("fadeFar under fadeNear: cut at fadeFar") { installStraightTrail(&built, from, to, 3000.0f, 500.0f); }
+
+    built.build(test_camera::axisCamera());
+    CHECK(built.scene.items.empty());
+}
+
+TEST_CASE("the view distance cuts a pathable off over its own fades rather than into them", "[scene][regression]") {
+    // A trail fading from 1200 to 1500 inches, the view distance at 500 with no fade before it:
+    // whole up to 500 and gone past it. Capping the trail's fade by the view distance, as
+    // StandardTrail.World.Render does, faded it from 200 to 500 instead.
+    Built built;
+    built.options.view_distance = 500.0f;
+    built.options.view_fade = 0.0f;
+    const auto alpha = [](const viewer::SceneItem& item) { return static_cast<int>((item.colour >> IM_COL32_A_SHIFT) & 0xFF); };
+
+    SECTION("a trail") {
+        installStraightTrail(&built, {0, -1, 1}, {0, -1, 30}, 1200.0f, 1500.0f);
+        built.build(test_camera::axisCamera());
+        REQUIRE_FALSE(built.scene.items.empty());
+        float farthest = 0.0f;
+        for (const viewer::SceneItem& item : built.scene.items) {
+            CHECK(alpha(item) == 255);
+            farthest = std::max(farthest, middleOf(item).z);
+        }
+        CHECK(farthest < 500.0f * 0.0254f);
+        CHECK(farthest > 450.0f * 0.0254f);
+    }
+
+    SECTION("a marker") {
+        viewer::BakedPathables pathables;
+        pathables.markers = {marker({0, 0, 450.0f * 0.0254f}, 0), marker({0, 0, 550.0f * 0.0254f}, 0)};
+        pathables.markers[0].fade_near = pathables.markers[1].fade_near = 1200.0f;
+        pathables.markers[0].fade_far = pathables.markers[1].fade_far = 1500.0f;
+        viewer::runtime::install(&built.installed, loadedPack("pack", pathables));
+        built.build(test_camera::axisCamera());
+        REQUIRE(built.scene.items.size() == 1);
+        CHECK(built.scene.items[0].centre.z == Approx(450.0f * 0.0254f));
+        CHECK(alpha(built.scene.items[0]) == 255);
+    }
+}
+
+TEST_CASE("the fade distance fades markers and trails out up to the view distance", "[scene]") {
+    // 1000 inches, 25.4 m, faded over its last 500: whole to 12.7 m, half at 19.05 m.
+    Built built;
+    built.options.view_distance = 1000.0f;
+    built.options.view_fade = 500.0f;
+    const auto alpha = [](const viewer::SceneItem& item) { return static_cast<int>((item.colour >> IM_COL32_A_SHIFT) & 0xFF); };
+
+    SECTION("a marker, without fades of its own") {
+        viewer::BakedPathables pathables;
+        pathables.markers = {marker({0, 0, 300.0f * 0.0254f}, 0), marker({0, 0, 750.0f * 0.0254f}, 0)};
+        viewer::runtime::install(&built.installed, loadedPack("pack", pathables));
+        built.build(test_camera::axisCamera());
+        REQUIRE(built.scene.items.size() == 2);
+        // Farthest first.
+        CHECK(alpha(built.scene.items[0]) == Approx(127.5).margin(1.0));
+        CHECK(alpha(built.scene.items[1]) == 255);
+    }
+
+    SECTION("a trail, a piece at a time") {
+        installStraightTrail(&built, {0, -1, 5}, {0, -1, 30}, -1.0f, -1.0f);
+        built.build(test_camera::axisCamera());
+        REQUIRE_FALSE(built.scene.items.empty());
+        bool fading = false;
+        for (const viewer::SceneItem& item : built.scene.items) {
+            const float inches = glm::distance(middleOf(item), glm::vec3(0.0f)) / 0.0254f;
+            CHECK(inches < 1000.0f);
+            const float expected = std::clamp((1000.0f - inches) / 500.0f, 0.0f, 1.0f);
+            CHECK(alpha(item) == Approx(255.0f * expected).margin(1.0));
+            fading |= expected < 1.0f;
+        }
+        CHECK(fading);
+    }
+
+    SECTION("0, cut off at the view distance as Pathing does") {
+        built.options.view_fade = 0.0f;
+        viewer::BakedPathables pathables;
+        pathables.markers = {marker({0, 0, 990.0f * 0.0254f}, 0)};
+        viewer::runtime::install(&built.installed, loadedPack("pack", pathables));
+        built.build(test_camera::axisCamera());
+        REQUIRE(built.scene.items.size() == 1);
+        CHECK(alpha(built.scene.items[0]) == 255);
+    }
+}
+
 TEST_CASE("a moment's camera projects as ours does", "[good_render]") {
     const viewer::Camera ours = test_camera::axisCamera();
     const viewer::Camera theirs = viewer::good_render_sink::cameraFromMoment(momentCamera(ours), ours.viewport);

@@ -42,6 +42,7 @@ struct Settings {
     bool world_pathables = true;
     float max_opacity = 1.0f;
     float view_distance = 25000.0f;
+    float view_fade = 200.0f; // ours, WorldOptions::view_fade; 0 cuts off at the view distance, as Pathing does
     float max_trail_speed = 10.0f;
     float marker_scale = 1.0f;
     bool combat_fade = true;

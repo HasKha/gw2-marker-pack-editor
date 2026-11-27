@@ -68,8 +68,7 @@ void PackFolder::remove(runtime::Installed* installed, const std::filesystem::pa
     rescan();
 }
 
-std::string PackFolder::status(const runtime::Installed& installed) const {
-    if (!loader.busy()) return std::to_string(installed.packs.size()) + " packs";
+std::string PackFolder::loadingStatus(const runtime::Installed& installed) const {
     return "Loading packs: " + std::to_string(installed.packs.size()) + " of " + std::to_string(discovered.size());
 }
 
