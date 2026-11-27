@@ -41,9 +41,6 @@ bool button(const char* label, bool enabled = true, float width = 0.0f);
 // The width of the widest of `labels` as a button, for a group of buttons drawn alike.
 float buttonWidth(std::initializer_list<const char*> labels);
 
-// Every slider, dropdown and field of a form at one width, so their labels line up.
-void setFieldWidth();
-
 // A heading inside a form or a section: `icon` and `text` in the accent colour, a little space
 // above it.
 void subheading(const char* icon, const char* text);

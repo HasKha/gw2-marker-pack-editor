@@ -82,8 +82,8 @@ Each step is a short block under a comment saying what it does.
   pack not loaded), never to quieten a heading; quieter text is `style::muted()`. `TextWrapped` only for long
   or variable text.
 - **Colours and shared widgets come from `viewer/ui/style.h`**, the editor's windows too: the palette,
-  `beginDisabled` for greying out a block, buttons of one width for a group, one field width for a form, a
-  link. A colour new to the UI is added there, never as a literal where it is drawn.
+  `beginDisabled` for greying out a block, buttons of one width for a group, a link. A colour new to the UI
+  is added there, never as a literal where it is drawn.
 - **Title Case** for window titles, section headers, tabs, buttons and menu entries ("Import from Blish HUD...",
   "Manage Packs"); **sentence case** for checkbox, slider and dropdown labels, dropdown choices, tooltips and
   messages ("Show markers on maps"). A label ends in "..." when its action asks for more before it acts.

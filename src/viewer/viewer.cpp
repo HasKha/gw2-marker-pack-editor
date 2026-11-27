@@ -1,6 +1,5 @@
 #include "viewer/viewer.h"
 
-#include <IconsFontAwesome7.h>
 #include <d3d11.h>
 #include <imgui.h>
 #include <wrl/client.h>
@@ -47,6 +46,7 @@
 #include "viewer/render/scene.h"
 #include "viewer/render/textures.h"
 #include "viewer/script/engine.h"
+#include "viewer/session.h"
 #include "viewer/settings.h"
 #include "viewer/store.h"
 #include "viewer/ui/diagnostics.h"
@@ -57,7 +57,6 @@
 #include "viewer/ui/main_menu.h"
 #include "viewer/ui/map_icon_data.h"
 #include "viewer/ui/map_menu.h"
-#include "viewer/ui/options.h"
 #include "viewer/ui/pack_catalog.h"
 #include "viewer/ui/script_console.h"
 #include "viewer/utc.h"
@@ -92,215 +91,6 @@ std::atomic<bool> right_clicked{false};
 
 constexpr const char* kMenuPopup = "##marker_pack_menu";
 const std::vector<char> kNoNodes;
-
-// ── Parts of a session ──────────────────────────────────────────────────────────
-
-// The category toggles, script Storage and behaviors' timers: read at load, and written on the
-// worker whenever they changed, at most every few seconds, as Pathing flushes its states, since a
-// script may change them every tick.
-struct KeptStates {
-    static constexpr std::chrono::seconds kSaveInterval{5};
-
-    store::CategoryStates categories;
-    store::KeyValues storage;
-    behaviors::BehaviorStates timers;
-
-    std::filesystem::path folder;
-    util::KeptFile categories_file;
-    util::KeptFile storage_file;
-    util::KeptFile timers_file;
-    std::chrono::steady_clock::time_point last_save;
-
-    // Reads all three from `folder`, where they are written after. An empty folder keeps nothing.
-    void load(std::filesystem::path from) {
-        folder = std::move(from);
-        categories.load(file(store::CATEGORIES_FILE_NAME));
-        categories_file.loaded(categories.revision());
-        storage.load(file(store::STORAGE_FILE_NAME));
-        storage_file.loaded(storage.revision());
-        timers.load(file(behaviors::TIMERS_FILE_NAME));
-        timers_file.loaded(timers.revision());
-    }
-
-    // Hands what changed over to `jobs` to be written, dropping the timers that ran out first.
-    void save(util::JobQueue* jobs) {
-        categories_file.save(jobs, file(store::CATEGORIES_FILE_NAME), categories.revision(), [this] { return categories.text(); });
-        storage_file.save(jobs, file(store::STORAGE_FILE_NAME), storage.revision(), [this] { return storage.text(); });
-        timers.expire(utcNow());
-        timers_file.save(jobs, file(behaviors::TIMERS_FILE_NAME), timers.revision(), [this] { return timers.text(); });
-        last_save = std::chrono::steady_clock::now();
-    }
-
-    bool due() const { return std::chrono::steady_clock::now() - last_save > kSaveInterval; }
-
-    std::filesystem::path file(const char* name) const { return folder.empty() ? folder : folder / name; }
-};
-
-// Which nodes of the tree show by the category toggles, worked out again only when the toggles
-// or the tree moved.
-struct VisibleNodes {
-    std::vector<char> nodes;
-    uint64_t states_revision = ~0ull;
-    uint64_t tree_revision = ~0ull;
-
-    void update(const runtime::Installed& installed, const store::CategoryStates& states) {
-        if (states_revision == states.revision() && tree_revision == installed.revision) return;
-        nodes = runtime::visibleNodes(installed.tree, states);
-        states_revision = states.revision();
-        tree_revision = installed.revision;
-    }
-};
-
-// For the Development section: what built the last scene, how long Present's work took, and what
-// GoodRender's moments drew in the last frame. For the slow-frame log: when the last Present
-// began, where the frame since went, and which slow frames make a line.
-struct FrameStats {
-    CameraSource scene_camera = CameraSource::None;
-    ui::diagnostics::FrameTimes present_times;
-    good_render_sink::Drawn last_drawn;
-    std::chrono::steady_clock::time_point last_present{};
-    frame_log::Steps steps;
-    frame_log::Limiter slow_frames;
-};
-
-// Our windows, each drawn while its flag is set.
-struct Windows {
-    bool console = false;
-    bool catalog = false;
-    bool options = false;
-    bool import = false;
-};
-
-// The pack open in the editor this frame, as EditorHooks::edited_live hands it over: drawn in the
-// world and on the maps with the installed packs. Its markers belong to no node of our tree, which
-// the editor's own decides for, so nothing of ours turns them off.
-struct EditedPack {
-    runtime::LiveMap* live = nullptr;
-    TextureLookup texture;
-};
-
-// ── The session ─────────────────────────────────────────────────────────────────
-
-// The viewer from load to unload. Nexus calls in through the functions after it, which reach the
-// one running session.
-//
-// Members are destroyed bottom to top, and that is the teardown: each stops its own threads as it
-// goes. So the job queue comes before everything that hands it work, and is the last to stop,
-// letting a write queued in teardown land and a pack's queued image reads, with the pack gone,
-// read nothing; what a part points at comes before it.
-class Session
-{
-public:
-    Session(AddonAPI* nexus, Mumble::Data* mumble);
-    // The last save of the states, and nothing published for a sink to draw.
-    ~Session();
-    Session(const Session&) = delete;
-    Session& operator=(const Session&) = delete;
-
-    // Registers with Nexus, and lets GoodRender and RTAPI in, once the session is reachable.
-    void attach();
-    // The other way, before the session goes: Nexus's render callbacks, then the service. Once
-    // unsubscribe returns no moment can be reading the scene.
-    void detach();
-
-    void preRender();
-    void render();
-    void drawOptions();
-    // The menu's items, wherever it is shown: Nexus's menu, our icon's, or our own popup.
-    void drawItems(bool separator);
-
-private:
-    void showInNexusMenu(bool show);
-    void showIcon(bool show);
-    std::filesystem::path inFolder(const std::filesystem::path& name) const;
-    std::future<bool> saveSettings();
-    void saveStates();
-    bool setClipboard(const std::string& text, const std::string& message);
-    void replaceLiveMap(int map_id);
-    void refreshLiveMap(int map_id);
-    behaviors::Host behaviorHost();
-    behaviors::Frame behaviorFrame();
-    void takeFontDevice();
-    float uiScale();
-    bool inGameplay() const;
-    ImTextureID aboveBelowImage(bool above);
-    WorldOptions worldOptions();
-    Maps::Frame mapFrame(const TextureLookup& texture);
-    void logSlowFrame(std::chrono::steady_clock::time_point started);
-    void drawMapMenu();
-    void drawCatalog();
-    void drawImport();
-    ui::diagnostics::Figures diagnosticFigures();
-    void drawOptionsPage();
-
-    AddonAPI* api = nullptr;
-    Mumble::Data* mumble_link = nullptr;
-    // Read for its Scaling and IsGameplay only: its Width and Height go stale (see gameCamera).
-    const NexusLinkData* nexus_link = nullptr;
-    std::filesystem::path folder;
-    // The game's device, which our font's atlas is uploaded to. Taken from Nexus's swap chain once
-    // there is one.
-    Microsoft::WRL::ComPtr<ID3D11Device> font_device;
-    // After the device, so it goes first: its atlas was made on it.
-    ui::fonts::Fonts fonts;
-    // Subscribed from attach to detach.
-    std::optional<good_render_sink::Subscription> good_render;
-
-    // Every read and write of a file after load: the frame hands them over and takes the answer
-    // on a later frame, never waiting for the disk itself.
-    util::JobQueue jobs;
-
-    // What the options page edits and saves, against what this session loaded with.
-    settings::Settings persisted;
-    KeptStates states;
-
-    // What the GW2 API says: the festivals on; what the registered key says of the account
-    // (achievements and this week's raids); what achievements are, for their tooltips; and the
-    // key in the options.
-    behaviors::FestivalFetcher festivals;
-    account::Fetcher account_progress;
-    achievements::Catalog achievement_details;
-    api_key::Registration registration;
-
-    runtime::Installed installed;
-    PackFolder pack_folder;
-    runtime::LiveMap live_map;
-    VisibleNodes visible;
-    MumbleState mumble_state;
-    // What behaviors put on screen.
-    behaviors::Screen screen;
-    // Pathing's "Temporarily Show Ghost Markers", which it turns off at every start: so a session
-    // setting, never saved.
-    bool show_hidden = false;
-
-    // Scripts: one engine for every pack, built again with every live map, as Pathing's is with
-    // every map. `scripts_stale` holds from the moment the live map is replaced until the engine
-    // has been reset onto it — a script's handles are indices into the live map, so it must not
-    // tick in between. After everything its host points at.
-    std::unique_ptr<script::Engine> scripts;
-    bool scripts_stale = true;
-
-    catalog::Library library;
-    // The Blish HUD import, and what the player chose to bring.
-    blish_import::Importer importer;
-    ui::import_window::Choices import_choices;
-
-    Recycled<Scene> scenes;
-    Maps maps;
-    EditedPack edited;
-    FrameStats stats;
-    Windows windows;
-    ui::pack_catalog::View catalog_view;
-    ui::map_menu::View map_menu_view;
-
-    // Where Nexus shows the menu now: see showInNexusMenu and showIcon.
-    bool in_nexus_menu = false;
-    bool icon_shown = false;
-    // Pathing's smart categories: the menus whose hidden categories were asked for, until the
-    // map changes.
-    std::set<size_t> show_all_menus;
-    int show_all_map = 0;
-};
 
 std::unique_ptr<Session> session;
 
@@ -365,6 +155,8 @@ void onMenuKeybind(const char*, bool is_release) {
 void onAllMarkersKeybind(const char*, bool is_release) {
     if (!is_release) all_markers_requested = true;
 }
+
+} // namespace
 
 // ── Load and unload ─────────────────────────────────────────────────────────────
 
@@ -962,109 +754,6 @@ void Session::render() {
 
 // ── The options page ────────────────────────────────────────────────────────────
 
-// What the Development section shows. The images' counts walk every pack's cache, so this is
-// gathered only while the section is open.
-ui::diagnostics::Figures Session::diagnosticFigures() {
-    ui::diagnostics::Figures figures;
-    figures.service = good_render ? good_render->service() : good_render_sink::Service::None;
-    figures.drawn = stats.last_drawn;
-    figures.camera = stats.scene_camera;
-    figures.full_map_up = mumble_state.is_map_open;
-    figures.full_map_from_game = maps.fullMapFromGame();
-    if (const std::shared_ptr<const Scene> scene = published()) figures.scene_items = scene->items.size();
-    figures.present_ms = stats.present_times.last();
-    figures.present_peak_ms = stats.present_times.peak();
-    figures.map_id = live_map.map_id;
-    figures.map_described = maps.find(live_map.map_id) != nullptr;
-    figures.in_gameplay = inGameplay();
-    figures.markers = live_map.markers.size();
-    figures.trails = live_map.trails.size();
-    figures.packs_found = pack_folder.found();
-    figures.loading = pack_folder.loading();
-    for (const std::unique_ptr<runtime::InstalledPack>& pack : installed.packs) {
-        figures.packs.push_back(
-            ui::diagnostics::PackFigures{util::pathText(pack->loaded->path.filename()), pack->loaded->error, pack->textures.counts()});
-    }
-    figures.uploads_images = texture_uploads.images();
-    figures.uploads_pixels = texture_uploads.pixels();
-    figures.jobs = jobs.unfinished();
-    figures.lua_bytes = scripts->heapBytes();
-    return figures;
-}
-
-// The page's sections, the first three open until the player closes them: what a new player
-// sets up, the API key among it, before what fine-tunes the drawing. Drawn in Nexus's options
-// and in our own window (render).
-void Session::drawOptionsPage() {
-    if (ImGui::CollapsingHeader("Interface", ImGuiTreeNodeFlags_DefaultOpen) && ui::options::drawInterface(&persisted)) {
-        showInNexusMenu(persisted.menu_in_nexus);
-        showIcon(persisted.menu_icon);
-        saveSettings();
-    }
-
-    if (ImGui::CollapsingHeader("Marker Packs", ImGuiTreeNodeFlags_DefaultOpen)) {
-        switch (ui::options::drawPacks(&persisted, pack_folder.status(installed))) {
-        case ui::options::PacksAction::None: break;
-        case ui::options::PacksAction::ScriptsToggled:
-            saveSettings();
-            // Off throws every handler away, and what scripts did to the map with them; on starts
-            // them again from pack.lua.
-            scripts->reset();
-            replaceLiveMap(live_map.map_id);
-            break;
-        case ui::options::PacksAction::Manage: windows.catalog = true; break;
-        case ui::options::PacksAction::Reload: pack_folder.reload(&installed); break;
-        case ui::options::PacksAction::Import:
-            // Reads again what Blish HUD has now: the window opens once the worker has read it
-            // (drawImport).
-            if (importer.running()) {
-                windows.import = true;
-            } else {
-                importer.findOnWorker(registry::blishMarkersFolder(), &jobs);
-            }
-            break;
-        }
-    }
-
-    if (ImGui::CollapsingHeader("GW2 API Key", ImGuiTreeNodeFlags_DefaultOpen)) {
-        switch (ui::options::drawApiKey(persisted.api_key, &registration.field, registration.checking(), registration.status)) {
-        case ui::options::KeyAction::None: break;
-        case ui::options::KeyAction::OpenApplications: desktop::openInBrowser(api_key::APPLICATIONS_URL); break;
-        case ui::options::KeyAction::Register: registration.submit(); break;
-        case ui::options::KeyAction::Remove:
-            persisted.api_key.clear();
-            saveSettings();
-            // The progress kept was the key's: it goes with it.
-            account_progress.setKey(persisted.api_key, utcNow());
-            account_progress.clearCache();
-            registration.status.clear();
-            break;
-        case ui::options::KeyAction::ClearCache:
-            account_progress.clearCache();
-            achievement_details.clear();
-            registration.status = "Saved API data cleared.";
-            break;
-        }
-    }
-
-    if (ImGui::CollapsingHeader("Markers")) {
-        if (ui::options::drawPack(&persisted, &show_hidden)) saveSettings();
-    }
-    if (ImGui::CollapsingHeader("Map and Minimap") && ui::options::drawMaps(&persisted, aboveBelowImage(true), aboveBelowImage(false))) {
-        saveSettings();
-    }
-
-    // For pack authors and bug reports.
-    if (ImGui::CollapsingHeader("Development")) {
-        if (ImGui::Button(ui::fonts::label(ICON_FA_TERMINAL, "Open Lua Script Console").c_str())) windows.console = true;
-        if (ImGui::IsItemHovered()) ImGui::SetTooltip("Messages and errors from pack scripts.");
-        ImGui::SameLine();
-        ui::diagnostics::draw(ui::diagnostics::describe(diagnosticFigures()), [this] {
-            if (ui::options::drawSlowFrameLog(&persisted)) saveSettings();
-        });
-    }
-}
-
 void Session::drawOptions() {
     frame_log::Laps laps;
     takeFontDevice();
@@ -1073,8 +762,6 @@ void Session::drawOptions() {
     ui::fonts::pop();
     laps.lap(&stats.steps.render);
 }
-
-} // namespace
 
 void load(AddonAPI* api, Mumble::Data* mumble_link) {
     session = std::make_unique<Session>(api, mumble_link);

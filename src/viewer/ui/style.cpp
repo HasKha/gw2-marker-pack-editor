@@ -42,12 +42,6 @@ float buttonWidth(std::initializer_list<const char*> labels) {
     return widest + ImGui::GetStyle().FramePadding.x * 2.0f;
 }
 
-void setFieldWidth() {
-    // Room for the longest choice in our dropdowns, "Behind characters and terrain".
-    constexpr float kFieldWidthEms = 14.0f;
-    ImGui::SetNextItemWidth(ImGui::GetFontSize() * kFieldWidthEms);
-}
-
 void subheading(const char* icon, const char* text) {
     ImGui::Spacing();
     ImGui::TextColored(ACCENT, "%s", fonts::label(icon, text).c_str());

@@ -104,7 +104,7 @@ test/
 
 Nexus's callbacks are plain function pointers, so each library is one object behind a static pointer, made
 at load and dropped at unload, with forwarding functions for its callbacks: the viewer's `Session` in
-`viewer.cpp`, the `Editor` in `marker_editor.cpp`. Each owns everything it keeps between frames.
+`viewer.cpp` (declared in `session.h`, which the options page shares), the `Editor` in `marker_editor.cpp`. Each owns everything it keeps between frames.
 
 The editor's:
 
