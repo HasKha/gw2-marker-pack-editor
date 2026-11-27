@@ -72,6 +72,10 @@ minimap, and drawing the full map's trails and icons at three zooms. Run it befo
 bin/Release/markus_viewer_test.exe "[.bench]"
 ```
 
+The same tag times what unload frees: the corpus's packs, a live map and its scripts. Measured at about
+100 ms in Release and under a second in Debug, so a slow unload is waiting on a thread, most often the
+pack loader still reading packs, rather than freeing.
+
 One case reaches the real catalog and is hidden from ctest. Run it after touching `http.*` or how the
 catalog is read:
 

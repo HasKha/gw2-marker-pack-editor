@@ -209,8 +209,8 @@ public:
 
     // Registers with Nexus, and lets GoodRender and RTAPI in, once the session is reachable.
     void attach();
-    // The other way, before the session goes. The service first: once unsubscribe returns no
-    // moment can be reading the scene.
+    // The other way, before the session goes: Nexus's render callbacks, then the service. Once
+    // unsubscribe returns no moment can be reading the scene.
     void detach();
 
     void preRender();
@@ -312,26 +312,35 @@ private:
 
 std::unique_ptr<Session> session;
 
+// The session while the callbacks below may use it: set once it is made, cleared by unload()
+// before anything of it goes. Apart from `session` because Nexus can call us after we deregister:
+// its Addons page keeps its own copy of drawOptions in its list of addons and calls it until it
+// builds that list again, while unload() runs on a thread of Nexus's own (stable, Addons.cpp and
+// Loader.cpp UnloadAddon). No lock is needed: every callback runs inside Nexus's frame, under the
+// lock CUiContext::Render holds and Renderer.Deregister takes, so once detach() has deregistered,
+// a call that saw the session has returned, and every later one sees null.
+std::atomic<Session*> live{nullptr};
+
 // ── What Nexus calls ────────────────────────────────────────────────────────────
 
 void preRender() {
-    session->preRender();
+    if (Session* running = live.load()) running->preRender();
 }
 
 void render() {
-    session->render();
+    if (Session* running = live.load()) running->render();
 }
 
 void drawOptions() {
-    session->drawOptions();
+    if (Session* running = live.load()) running->drawOptions();
 }
 
 void drawMenuItems() {
-    session->drawItems(true);
+    if (Session* running = live.load()) running->drawItems(true);
 }
 
 void drawNexusMenuItems() {
-    session->drawItems(false);
+    if (Session* running = live.load()) running->drawItems(false);
 }
 
 // Where a mouse message puts the cursor, in the game window's client pixels.
@@ -447,12 +456,15 @@ void Session::attach() {
 }
 
 void Session::detach() {
-    good_render_.reset();
-    rtapi::unload();
-
+    // First: each waits for Nexus's frame to end, so after them no callback is still using the
+    // session (see `live`), and what follows tears down nothing a callback is reading.
     api_->Renderer.Deregister(viewer::preRender);
     api_->Renderer.Deregister(viewer::render);
     api_->Renderer.Deregister(viewer::drawOptions);
+
+    good_render_.reset();
+    rtapi::unload();
+
     api_->WndProc.Deregister(onWndProc);
     placeMenu(false, false);
     api_->InputBinds.Deregister(KEYBIND_MENU_ID);
@@ -1075,11 +1087,15 @@ void Session::drawOptionsWindow() {
 
 void load(AddonAPI* api, Mumble::Data* mumble_link) {
     session = std::make_unique<Session>(api, mumble_link);
-    // Only once `session` is set: Nexus may call back as soon as a callback is registered.
+    live.store(session.get());
+    // Only once `live` is set: Nexus may call back as soon as a callback is registered.
     session->attach();
 }
 
+// Does nothing when there is no session, so a second call is harmless.
 void unload() {
+    // Before detach(), whose deregistering waits out any callback that saw the session: see `live`.
+    if (!live.exchange(nullptr)) return;
     session->detach();
     // Everything else stops as the session is destroyed: see Session's members.
     session.reset();

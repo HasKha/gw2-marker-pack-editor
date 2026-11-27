@@ -4,11 +4,20 @@
 #include <Nexus.h>
 #include <imgui.h>
 
+#include <mutex>
+
 #include "editor/marker_editor.h"
 #include "viewer/viewer.h"
 
 void AddonLoad(AddonAPI* aApi);
 void AddonUnload();
+
+// Held for the whole of AddonUnload. Nexus (stable, Loader.cpp UnloadAddon) runs each unload on a
+// detached thread of its own and keeps the addon Loaded until it frees the library, with nothing
+// stopping a second one meanwhile: its IsWaitingForUnload is never set, and toggling "Disable until
+// update" queues an unload every time. The second call must not return while the first is still
+// tearing down, since Nexus frees the library as soon as either returns.
+std::mutex unloading;
 
 AddonDefinition AddonDef = {};
 HMODULE hSelf = nullptr;
@@ -58,6 +67,9 @@ void AddonLoad(AddonAPI* aApi) {
 }
 
 void AddonUnload() {
+    // A second call waits here, then finds nothing left to stop: both unloads below do nothing
+    // the second time.
+    const std::lock_guard<std::mutex> lock(unloading);
     // The viewer first: once its callbacks are gone, nothing calls into the editor.
     viewer::unload();
     marker_editor::unload();
