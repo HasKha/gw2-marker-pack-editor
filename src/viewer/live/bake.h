@@ -32,8 +32,8 @@ struct MarkerTransform {
     bool has_rotation = false;
 };
 
-// Nothing for anything that cannot be placed: a trail, or a POI missing a coordinate. Those
-// are invisible anchors, and Pathing drops them too.
+// Nothing for anything that is not a marker: a trail or a route. Every POI is placed, as Pathing
+// places it, a missing coordinate taken as 0.
 [[nodiscard]] std::optional<MarkerTransform> markerTransform(const pack::Pack& pack, const pack::Pathable& pathable);
 
 // What of the world in front of a marker or trail hides it, when GoodRender draws it: the

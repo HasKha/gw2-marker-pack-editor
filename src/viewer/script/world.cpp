@@ -366,6 +366,8 @@ const Member<Marker> kMarkerMembers[] = {
     field<Marker, bakedMarker, &BakedMarker::in_game_visibility>("InGameVisibility"),
     field<Marker, bakedMarker, &BakedMarker::map_visibility>("MapVisibility"),
     field<Marker, bakedMarker, &BakedMarker::minimap_visibility>("MiniMapVisibility"),
+    field<Marker, bakedMarker, &BakedMarker::map_display_size>("MapDisplaySize"),
+    field<Marker, bakedMarker, &BakedMarker::scale_on_map_with_zoom>("ScaleOnMapWithZoom"),
     {.name = "HeightOffset",
      .get = [](sol::state_view lua, Marker& self) { return sol::make_object(lua, bakedMarker(lua, self).height_offset); },
      .set =

@@ -4,6 +4,7 @@
 
 #include <chrono>
 #include <map>
+#include <random>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -56,6 +57,9 @@ struct Context {
     std::unordered_map<std::string, sol::object> guid_objects; // by the 16 raw bytes
 
     bool warned_packs = false; // the deprecated `Packs` global warns once
+
+    // math.random's, as NeoLua's System.Random: seeded at random, and again by randomseed.
+    std::mt19937 random{std::random_device{}()};
 
     std::vector<double> frame_seconds; // per pack, this frame so far
 

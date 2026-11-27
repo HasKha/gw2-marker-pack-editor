@@ -921,8 +921,9 @@ void Session::drawFrame() {
 
     if (camera.valid && !camera.map_open &&
         ui::interaction::draw(
-            screen_,
+            &screen_,
             static_cast<settings::InfoDisplay>(persisted_.info_display),
+            uiScale(),
             interact_key.name(),
             persisted_.show_interact_prompt,
             &achievement_details_)) {
@@ -1005,6 +1006,7 @@ ui::diagnostics::Figures Session::diagnosticFigures() {
 // The page's sections, the first three open until the player closes them: what a new player
 // sets up, the API key among it, before what fine-tunes the drawing.
 void Session::drawOptionsPage() {
+    
     if (ImGui::CollapsingHeader("Interface", ImGuiTreeNodeFlags_DefaultOpen) && ui::options::drawInterface(&persisted_)) {
         placeMenu(persisted_.menu_in_nexus, persisted_.menu_icon);
         saveSettings();

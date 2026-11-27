@@ -23,8 +23,9 @@ one; we carry it through untouched.
 Attribute names are lowercased on read. Vendor prefixes (`bh-`) are stripped. A POI's category is the
 dot-joined `name` path, case-insensitive.
 
-TmfLib drops a POI missing `mapid` or any of `xpos`/`ypos`/`zpos`. Packs have them anyway (`hero.blish.pack`
-has 679, invisible anchors for toggles): the reader keeps them so they round-trip, and the bake skips them.
+TmfLib keeps a POI missing `mapid` or any of `xpos`/`ypos`/`zpos`, and reads both through the category
+chain: `mapid` is often a category's. Pathing places a missing coordinate at 0. `hero.blish.pack` has
+679 such POIs, hidden anchors for toggles and for its scripts, which look them up by guid.
 
 pugixml parses every corpus file (937 files, 146k elements); NanoXml's leniency is not needed.
 

@@ -1,0 +1,998 @@
+# What NeoLua printed for each case of cases.lua: written by scripts/neolua_oracle, never by hand.
+== print-basic
+a 1  True False
+== print-nothing
+
+
+== print-table
+table table
+== tostring-table
+table
+== tostring-values
+nil true false s 12
+== number-integers
+1 -7 0 2147483647 -2147483648
+== number-integral-floats
+1 5 4 0 3
+== number-fractions
+0.5 0.25 1.5 -2.75
+== number-single-precision
+0.100000001490116 0.3333333 0.6666667 3.333333 0.300000004470348
+== number-large-integral
+10000000000 16777216 2147483648
+== number-large-exponent
+9.00719925474099E+15 1.15292150460685E+18
+== number-large-single-precision
+999999986991104 1.00000002725642E+16 1.00000002004088E+20
+== number-small
+0.0009765625 9.5367431640625E-07
+== power-negative-exponent
+!error LuaParseException: Literal, function or table-ctor expected.
+== number-small-single-precision
+0.00100000004749745 9.99999974737875E-05 9.99999974737875E-06 1.00000001335143E-10
+== number-infinity
+Infinity -Infinity
+== number-nan
+true
+== number-concat
+1 1.5 5 2147483648
+== number-concat-single-precision
+0.3333333
+== number-tostring
+1.5 5 9.00719925474099E+15
+== number-tostring-single-precision
+0.3333333 1.00000002004088E+20
+== integer-overflow
+-2147483648 -2147483649 0
+== integer-and-float-equal
+true true true
+== arithmetic-division
+3.5 3 3
+== arithmetic-floor-division-negative
+-3 -3
+== arithmetic-modulo
+1 -1 1 -1 1.5
+== arithmetic-power
+1024 1.4142135623731 true
+== arithmetic-float-division-by-zero
+Infinity Infinity
+== arithmetic-float-floor-division-by-zero
+!error DivideByZeroException: Attempted to divide by zero.
+== arithmetic-modulo-huge
+-1
+== arithmetic-integer-division-by-zero
+!error DivideByZeroException: Attempted to divide by zero.
+== arithmetic-integer-modulo-by-zero
+!error DivideByZeroException: Attempted to divide by zero.
+== bitwise-operators
+1 7 6 -6 16 16
+== coercion-arithmetic
+11 12 16 2.5
+== coercion-concat
+1020 1 a2
+== coercion-equality
+true true
+== coercion-comparison
+!error LuaParseException: No operator is defined for String LessThan Int32.
+== string-comparison
+true false true true true false
+== truthiness
+true true false false false false
+== logic-operators
+x false 2  
+== for-numeric
+1,2,3,3,2,1
+== for-float-step
+1,1.5,2
+== varargs
+0 1 3 3
+== select-positive
+c
+== select-float-index
+c
+== closures
+2 1
+== string-escapes
+AB A a	b 3
+== string-escape-unicode
+!error LuaParseException: NewLine in string constant.
+== string-long
+long a]]b
+== string-length
+3 3 0
+== string-length-utf8
+1 2
+== string-sub
+ello llo el hello   he
+== string-sub-float
+ab abc abcdef
+== string-sub-text-index
+bc
+== string-sub-float-rounding
+ab ef f abcdef
+== string-byte-float
+97 98
+== string-char-float
+Hh
+== string-upper-lower
+HELLO hello ß àb
+== string-rep
+ababab  ab,ab,ab aa
+== string-reverse
+cba 
+== string-byte-char
+65 98 97 98 99
+Hi 
+== string-find-plain
+2 3 
+== string-find-pattern
+5 3 1 7 key val
+== string-find-init
+5 5
+5 5
+== string-find-empty
+
+
+
+== string-match-captures
+key trim|
+== string-match-number
+42 string
+== string-match-position-capture
+3 5
+== string-match-classes
+a B2   | ,
+== string-match-anchor
+ c
+== string-match-lazy
+a a><b
+== string-match-optional
+color ac
+== string-match-set
+x 123 ]
+== string-match-balanced
+(a(b)c) 
+== string-match-frontier
+
+== string-match-backreference
+" hi
+== string-gmatch
+a:1 b:2 c:3
+== string-gmatch-words
+one|two|three
+== string-gsub
+hell0 w0rld 2
+a/b/c 2
+-a-b-c- 4
+== string-gsub-limit
+bbaa 2
+== string-gsub-captures
+<hello> <world> 2
+ba% 1
+== string-gsub-function
+!error TargetInvocationException: Exception has been thrown by the target of an invocation.
+== string-gsub-function-nil
+X X 2
+== string-gsub-function-number
+1 1 2
+== string-gsub-table
+1 and 2 2
+== string-format-integer
+42|   42|42   |00042|7
+== string-format-float
+3.141590|3.14|  2.3|3|1.234500e+003
+== string-format-general
+1.5|100000|1e+20|0.0001
+== string-format-string
+abc|  abc|abc  |ab
+== string-format-values
+1 1.5 True
+== string-format-nil
+!error NullReferenceException: Object reference not set to an instance of an object.
+== string-format-hex
+ff|FF|10|A|%
+== string-format-quoted
+"a \"b\""
+== string-format-float-as-integer
+!error FormatException: Format specifier was invalid.
+== string-format-fraction-as-integer
+!error FormatException: Format specifier was invalid.
+== string-format-method
+3-x
+== string-format-number-as-string
+5|9.00719925474099E+15|Infinity
+== string-dotnet-members
+a_b 3 ABC true
+== string-library-absent
+nil nil nil nil
+== tonumber
+10 16 5 5 
+100 2 255 1295 5
+== tonumber-type
+integer float float
+== number-text-round-trip
+5 5 integer
+== number-as-key-text
+found 
+== type
+number number string nil boolean table function function
+== type-libraries
+userdata userdata userdata userdata function
+== math-constants
+3.14159265358979
+== math-huge
+1.79769313486232E+308 false
+== math-integer-limits
+2147483647 -2147483648
+== math-type
+integer float  float integer
+== math-floor-ceil
+2 -1 3 -2 3
+== math-floor-type
+float float
+== math-floor-large
+1099511627776
+== math-abs-min-max
+3 2.5 2.5 1 2
+== math-sqrt-exp-log
+4 1.4142135623731 1 0 3 2
+== math-trig
+0 1 true 180 3.14159265358979
+== math-neolua-additions
+true 1024 1 8 0.5 4
+== math-fmod-modf
+1 -1 3 -3 0.5
+== math-tointeger
+3 4 8 3
+== math-ult
+true true
+== math-random-unit
+true true true true
+== math-random-upper
+ seen seen  
+== math-random-range
+ seen seen  
+== math-random-float-range
+seen  
+== math-random-type
+integer float
+== math-random-single-value
+1 3 -2
+== math-random-negative-range
+ seen seen 
+== math-random-empty
+!error ArgumentOutOfRangeException: 'minValue' cannot be greater than maxValue.
+== math-random-reversed
+!error ArgumentOutOfRangeException: 'minValue' cannot be greater than maxValue.
+== math-randomseed
+true true true
+== table-concat
+1,2.5,x  b-c
+== table-concat-nested
+1,table
+== table-insert-remove
+a,b,c d z
+== table-insert-float-position
+a,b
+== table-insert-out-of-range
+1
+== table-sort
+1,2,3 a,b,C 3,2,1
+== table-unpack
+1 2 3
+2 3
+2 3
+== table-pack
+!error ArgumentNullException: 'T[]' is a pointer or byref type. These types can not converted to a LuaType.
+== table-move
+!error NullReferenceException: Object reference not set to an instance of an object.
+== table-length
+4 0 0
+== table-length-hole
+2
+== table-keys
+float text
+== table-library-extras
+true true true true
+== pairs-order
+main,hp,heart,tos,k1,k2,k3,k4,k5,k6,k7,k8
+== pairs-mixed
+1=10,2=20,3=30,x=a
+== ipairs-stops-at-nil
+1,2
+== next
+x  
+== raw-access
+meta  2 true 2 3
+== metatable-index
+hi key! true
+== metatable-newindex
+10
+== metatable-call
+5
+== metatable-arithmetic
+3 -1 cat 42
+== metatable-comparison
+true true false true
+== metatable-tostring
+custom custom
+== metatable-of-string
+false
+== coroutine-basic
+True 3
+True 20
+True 7
+suspended False cannot resume dead coroutine
+== coroutine-wrap
+True True True 3
+== coroutine-status
+suspended
+running
+suspended
+suspended
+== coroutine-error
+false suspended
+== coroutine-library-absent
+true true
+== bit32
+2 7 5 16 16 false
+== globals-absent
+nil nil nil nil nil nil
+== globals-g
+true
+== globals-g-is-the-environment
+42 set false true
+== globals-neolua
+true true true true true
+== goto
+3
+== integer-for-loop-type
+integer,integer
+== nil-counter
+3
+== nil-field-counter
+1
+== nil-call
+!error LuaRuntimeException: Can not call nil value.
+== nil-index
+!error LuaRuntimeException: Object is nil.
+== print-trailing-nil
+1 
+1 
+1
+1
+== math-type-of-text
+0 0
+== nil-metatable
+nil nil
+== nil-bitwise-float
+3 -2 2
+== nil-floor-division-type
+integer integer integer integer
+== nil-unset-global-counter-float
+0.5 float
+== boolean-and-boolean-add
+!error LuaParseException: No operator is defined for Boolean Add Boolean.
+== boolean-and-boolean-compare
+True
+== boolean-and-boolean-concat
+truefalse
+== nil-and-boolean-add
+!error LuaRuntimeException: No operator is defined for Object Add Boolean.
+== boolean-and-nil-add
+!error LuaRuntimeException: No operator is defined for Boolean Add Object.
+== nil-concat-number-text
+5 5
+== nil-with-table-metamethod
+table's
+== nil-with-table-metamethod-add
+!error NullReferenceException: Object reference not set to an instance of an object.
+== op nil + 1
+1 integer
+== op 1 + nil
+!error LuaRuntimeException: No operator is defined for Int32 Add Object.
+== op nil + 2.5
+2.5 float
+== op 2.5 + nil
+!error LuaRuntimeException: No operator is defined for Double Add Object.
+== op nil + nil
+!error LuaRuntimeException: No operator is defined for Object Add Object.
+== op nil + "1"
+!error FormatException: Can not format 'nil' to dec.
+== op "1" + nil
+!error LuaRuntimeException: No operator is defined for String Add Object.
+== op nil + "a"
+!error FormatException: Can not format 'nil' to dec.
+== op "a" + nil
+!error LuaRuntimeException: No operator is defined for String Add Object.
+== op nil + {}
+!error NullReferenceException: Object reference not set to an instance of an object.
+== op false + 1
+1 integer
+== op 1 + false
+!error LuaRuntimeException: No operator is defined for Int32 Add Boolean.
+== op true + 1
+2 integer
+== op 1 + true
+!error LuaRuntimeException: No operator is defined for Int32 Add Boolean.
+== op false + "a"
+!error FormatException: Can not format 'false' to dec.
+== op "a" + true
+!error LuaRuntimeException: No operator is defined for String Add Boolean.
+== op nil - 1
+-1 integer
+== op 1 - nil
+!error LuaRuntimeException: No operator is defined for Int32 Subtract Object.
+== op nil - 2.5
+-2.5 float
+== op 2.5 - nil
+!error LuaRuntimeException: No operator is defined for Double Subtract Object.
+== op nil - nil
+!error LuaRuntimeException: No operator is defined for Object Subtract Object.
+== op nil - "1"
+!error FormatException: Can not format 'nil' to dec.
+== op "1" - nil
+!error LuaRuntimeException: No operator is defined for String Subtract Object.
+== op nil - "a"
+!error FormatException: Can not format 'nil' to dec.
+== op "a" - nil
+!error LuaRuntimeException: No operator is defined for String Subtract Object.
+== op nil - {}
+!error NullReferenceException: Object reference not set to an instance of an object.
+== op false - 1
+-1 integer
+== op 1 - false
+!error LuaRuntimeException: No operator is defined for Int32 Subtract Boolean.
+== op true - 1
+0 integer
+== op 1 - true
+!error LuaRuntimeException: No operator is defined for Int32 Subtract Boolean.
+== op false - "a"
+!error FormatException: Can not format 'false' to dec.
+== op "a" - true
+!error LuaRuntimeException: No operator is defined for String Subtract Boolean.
+== op nil * 1
+0 integer
+== op 1 * nil
+!error LuaRuntimeException: No operator is defined for Int32 Multiply Object.
+== op nil * 2.5
+0 float
+== op 2.5 * nil
+!error LuaRuntimeException: No operator is defined for Double Multiply Object.
+== op nil * nil
+!error LuaRuntimeException: No operator is defined for Object Multiply Object.
+== op nil * "1"
+!error FormatException: Can not format 'nil' to dec.
+== op "1" * nil
+!error LuaRuntimeException: No operator is defined for String Multiply Object.
+== op nil * "a"
+!error FormatException: Can not format 'nil' to dec.
+== op "a" * nil
+!error LuaRuntimeException: No operator is defined for String Multiply Object.
+== op nil * {}
+!error NullReferenceException: Object reference not set to an instance of an object.
+== op false * 1
+0 integer
+== op 1 * false
+!error LuaRuntimeException: No operator is defined for Int32 Multiply Boolean.
+== op true * 1
+1 integer
+== op 1 * true
+!error LuaRuntimeException: No operator is defined for Int32 Multiply Boolean.
+== op false * "a"
+!error FormatException: Can not format 'false' to dec.
+== op "a" * true
+!error LuaRuntimeException: No operator is defined for String Multiply Boolean.
+== op nil / 1
+0 userdata
+== op 1 / nil
+!error LuaRuntimeException: No operator is defined for Int32 Divide Object.
+== op nil / 2.5
+0 float
+== op 2.5 / nil
+!error LuaRuntimeException: No operator is defined for Double Divide Object.
+== op nil / nil
+!error LuaRuntimeException: No operator is defined for Object Divide Object.
+== op nil / "1"
+!error FormatException: Can not format 'nil' to dec.
+== op "1" / nil
+!error LuaRuntimeException: No operator is defined for String Divide Object.
+== op nil / "a"
+!error FormatException: Can not format 'nil' to dec.
+== op "a" / nil
+!error LuaRuntimeException: No operator is defined for String Divide Object.
+== op nil / {}
+!error NullReferenceException: Object reference not set to an instance of an object.
+== op false / 1
+0 userdata
+== op 1 / false
+!error LuaRuntimeException: No operator is defined for Int32 Divide Boolean.
+== op true / 1
+1 userdata
+== op 1 / true
+!error LuaRuntimeException: No operator is defined for Int32 Divide Boolean.
+== op false / "a"
+!error FormatException: Can not format 'false' to dec.
+== op "a" / true
+!error LuaRuntimeException: No operator is defined for String Divide Boolean.
+== op nil // 1
+0 integer
+== op 1 // nil
+!error LuaRuntimeException: No operator is defined for Int32 -100 Object.
+== op nil // 2.5
+0 userdata
+== op 2.5 // nil
+!error LuaRuntimeException: No operator is defined for Double -100 Object.
+== op nil // nil
+!error LuaRuntimeException: No operator is defined for Object -100 Object.
+== op nil // "1"
+!error FormatException: Can not format 'nil' to dec.
+== op "1" // nil
+!error LuaRuntimeException: No operator is defined for String -100 Object.
+== op nil // "a"
+!error FormatException: Can not format 'nil' to dec.
+== op "a" // nil
+!error LuaRuntimeException: No operator is defined for String -100 Object.
+== op nil // {}
+!error NullReferenceException: Object reference not set to an instance of an object.
+== op false // 1
+0 integer
+== op 1 // false
+!error LuaRuntimeException: No operator is defined for Int32 -100 Boolean.
+== op true // 1
+1 integer
+== op 1 // true
+!error LuaRuntimeException: No operator is defined for Int32 -100 Boolean.
+== op false // "a"
+!error FormatException: Can not format 'false' to dec.
+== op "a" // true
+!error LuaRuntimeException: No operator is defined for String -100 Boolean.
+== op nil % 1
+0 integer
+== op 1 % nil
+!error LuaRuntimeException: No operator is defined for Int32 Modulo Object.
+== op nil % 2.5
+0 float
+== op 2.5 % nil
+!error LuaRuntimeException: No operator is defined for Double Modulo Object.
+== op nil % nil
+!error LuaRuntimeException: No operator is defined for Object Modulo Object.
+== op nil % "1"
+!error FormatException: Can not format 'nil' to dec.
+== op "1" % nil
+!error LuaRuntimeException: No operator is defined for String Modulo Object.
+== op nil % "a"
+!error FormatException: Can not format 'nil' to dec.
+== op "a" % nil
+!error LuaRuntimeException: No operator is defined for String Modulo Object.
+== op nil % {}
+!error NullReferenceException: Object reference not set to an instance of an object.
+== op false % 1
+0 integer
+== op 1 % false
+!error LuaRuntimeException: No operator is defined for Int32 Modulo Boolean.
+== op true % 1
+0 integer
+== op 1 % true
+!error LuaRuntimeException: No operator is defined for Int32 Modulo Boolean.
+== op false % "a"
+!error FormatException: Can not format 'false' to dec.
+== op "a" % true
+!error LuaRuntimeException: No operator is defined for String Modulo Boolean.
+== op nil ^ 1
+0 float
+== op 1 ^ nil
+1 float
+== op nil ^ 2.5
+0 float
+== op 2.5 ^ nil
+1 float
+== op nil ^ nil
+1 float
+== op nil ^ "1"
+0 float
+== op "1" ^ nil
+1 float
+== op nil ^ "a"
+!error FormatException: Can not format 'a' to dec.
+== op "a" ^ nil
+!error FormatException: Can not format 'a' to dec.
+== op nil ^ {}
+!error LuaRuntimeException: No conversion defined from LuaTable to Double.
+== op false ^ 1
+0 float
+== op 1 ^ false
+1 float
+== op true ^ 1
+1 float
+== op 1 ^ true
+1 float
+== op false ^ "a"
+!error FormatException: Can not format 'a' to dec.
+== op "a" ^ true
+!error FormatException: Can not format 'a' to dec.
+== op nil & 1
+0 integer
+== op 1 & nil
+!error LuaRuntimeException: No operator is defined for Int32 And Object.
+== op nil & 2.5
+0 userdata
+== op 2.5 & nil
+!error LuaRuntimeException: No operator is defined for Double And Object.
+== op nil & nil
+!error LuaRuntimeException: No operator is defined for Object And Object.
+== op nil & "1"
+!error FormatException: Can not format 'nil' to dec.
+== op "1" & nil
+!error LuaRuntimeException: No operator is defined for String And Object.
+== op nil & "a"
+!error FormatException: Can not format 'nil' to dec.
+== op "a" & nil
+!error LuaRuntimeException: No operator is defined for String And Object.
+== op nil & {}
+!error NullReferenceException: Object reference not set to an instance of an object.
+== op false & 1
+0 integer
+== op 1 & false
+!error LuaRuntimeException: No operator is defined for Int32 And Boolean.
+== op true & 1
+1 integer
+== op 1 & true
+!error LuaRuntimeException: No operator is defined for Int32 And Boolean.
+== op false & "a"
+!error FormatException: Can not format 'false' to dec.
+== op "a" & true
+!error LuaRuntimeException: No operator is defined for String And Boolean.
+== op nil | 1
+1 integer
+== op 1 | nil
+!error LuaRuntimeException: No operator is defined for Int32 Or Object.
+== op nil | 2.5
+2 userdata
+== op 2.5 | nil
+!error LuaRuntimeException: No operator is defined for Double Or Object.
+== op nil | nil
+!error LuaRuntimeException: No operator is defined for Object Or Object.
+== op nil | "1"
+!error FormatException: Can not format 'nil' to dec.
+== op "1" | nil
+!error LuaRuntimeException: No operator is defined for String Or Object.
+== op nil | "a"
+!error FormatException: Can not format 'nil' to dec.
+== op "a" | nil
+!error LuaRuntimeException: No operator is defined for String Or Object.
+== op nil | {}
+!error NullReferenceException: Object reference not set to an instance of an object.
+== op false | 1
+1 integer
+== op 1 | false
+!error LuaRuntimeException: No operator is defined for Int32 Or Boolean.
+== op true | 1
+1 integer
+== op 1 | true
+!error LuaRuntimeException: No operator is defined for Int32 Or Boolean.
+== op false | "a"
+!error FormatException: Can not format 'false' to dec.
+== op "a" | true
+!error LuaRuntimeException: No operator is defined for String Or Boolean.
+== op nil ~ 1
+1 integer
+== op 1 ~ nil
+!error LuaRuntimeException: No operator is defined for Int32 ExclusiveOr Object.
+== op nil ~ 2.5
+2 userdata
+== op 2.5 ~ nil
+!error LuaRuntimeException: No operator is defined for Double ExclusiveOr Object.
+== op nil ~ nil
+!error LuaRuntimeException: No operator is defined for Object ExclusiveOr Object.
+== op nil ~ "1"
+!error FormatException: Can not format 'nil' to dec.
+== op "1" ~ nil
+!error LuaRuntimeException: No operator is defined for String ExclusiveOr Object.
+== op nil ~ "a"
+!error FormatException: Can not format 'nil' to dec.
+== op "a" ~ nil
+!error LuaRuntimeException: No operator is defined for String ExclusiveOr Object.
+== op nil ~ {}
+!error NullReferenceException: Object reference not set to an instance of an object.
+== op false ~ 1
+1 integer
+== op 1 ~ false
+!error LuaRuntimeException: No operator is defined for Int32 ExclusiveOr Boolean.
+== op true ~ 1
+0 integer
+== op 1 ~ true
+!error LuaRuntimeException: No operator is defined for Int32 ExclusiveOr Boolean.
+== op false ~ "a"
+!error FormatException: Can not format 'false' to dec.
+== op "a" ~ true
+!error LuaRuntimeException: No operator is defined for String ExclusiveOr Boolean.
+== op nil << 1
+0 integer
+== op 1 << nil
+!error LuaRuntimeException: No operator is defined for Int32 LeftShift Object.
+== op nil << 2.5
+0 userdata
+== op 2.5 << nil
+!error LuaRuntimeException: No operator is defined for Double LeftShift Object.
+== op nil << nil
+!error LuaRuntimeException: No operator is defined for Object LeftShift Object.
+== op nil << "1"
+!error FormatException: Can not format 'nil' to dec.
+== op "1" << nil
+!error LuaRuntimeException: No operator is defined for String LeftShift Object.
+== op nil << "a"
+!error FormatException: Can not format 'nil' to dec.
+== op "a" << nil
+!error LuaRuntimeException: No operator is defined for String LeftShift Object.
+== op nil << {}
+!error LuaRuntimeException: No conversion defined from LuaTable to Int32.
+== op false << 1
+0 integer
+== op 1 << false
+!error LuaRuntimeException: No operator is defined for Int32 LeftShift Boolean.
+== op true << 1
+2 integer
+== op 1 << true
+!error LuaRuntimeException: No operator is defined for Int32 LeftShift Boolean.
+== op false << "a"
+!error FormatException: Can not format 'false' to dec.
+== op "a" << true
+!error LuaRuntimeException: No operator is defined for String LeftShift Boolean.
+== op nil >> 1
+0 integer
+== op 1 >> nil
+!error LuaRuntimeException: No operator is defined for Int32 RightShift Object.
+== op nil >> 2.5
+0 userdata
+== op 2.5 >> nil
+!error LuaRuntimeException: No operator is defined for Double RightShift Object.
+== op nil >> nil
+!error LuaRuntimeException: No operator is defined for Object RightShift Object.
+== op nil >> "1"
+!error FormatException: Can not format 'nil' to dec.
+== op "1" >> nil
+!error LuaRuntimeException: No operator is defined for String RightShift Object.
+== op nil >> "a"
+!error FormatException: Can not format 'nil' to dec.
+== op "a" >> nil
+!error LuaRuntimeException: No operator is defined for String RightShift Object.
+== op nil >> {}
+!error LuaRuntimeException: No conversion defined from LuaTable to Int32.
+== op false >> 1
+0 integer
+== op 1 >> false
+!error LuaRuntimeException: No operator is defined for Int32 RightShift Boolean.
+== op true >> 1
+0 integer
+== op 1 >> true
+!error LuaRuntimeException: No operator is defined for Int32 RightShift Boolean.
+== op false >> "a"
+!error FormatException: Can not format 'false' to dec.
+== op "a" >> true
+!error LuaRuntimeException: No operator is defined for String RightShift Boolean.
+== op nil < 1
+True boolean
+== op 1 < nil
+False boolean
+== op nil < 2.5
+True boolean
+== op 2.5 < nil
+False boolean
+== op nil < nil
+!error LuaRuntimeException: No operator is defined for Object LessThan Object.
+== op nil < "1"
+!error NullReferenceException: Object reference not set to an instance of an object.
+== op "1" < nil
+False boolean
+== op nil < "a"
+!error NullReferenceException: Object reference not set to an instance of an object.
+== op "a" < nil
+False boolean
+== op nil < {}
+!error NullReferenceException: Object reference not set to an instance of an object.
+== op false < 1
+True boolean
+== op 1 < false
+False boolean
+== op true < 1
+False boolean
+== op 1 < true
+False boolean
+== op false < "a"
+!error LuaRuntimeException: No operator is defined for Boolean LessThan String.
+== op "a" < true
+False boolean
+== op nil <= 1
+True boolean
+== op 1 <= nil
+False boolean
+== op nil <= 2.5
+True boolean
+== op 2.5 <= nil
+False boolean
+== op nil <= nil
+!error LuaRuntimeException: No operator is defined for Object LessThanOrEqual Object.
+== op nil <= "1"
+!error NullReferenceException: Object reference not set to an instance of an object.
+== op "1" <= nil
+False boolean
+== op nil <= "a"
+!error NullReferenceException: Object reference not set to an instance of an object.
+== op "a" <= nil
+False boolean
+== op nil <= {}
+!error NullReferenceException: Object reference not set to an instance of an object.
+== op false <= 1
+True boolean
+== op 1 <= false
+False boolean
+== op true <= 1
+True boolean
+== op 1 <= true
+True boolean
+== op false <= "a"
+!error LuaRuntimeException: No operator is defined for Boolean LessThanOrEqual String.
+== op "a" <= true
+True boolean
+== op nil > 1
+False boolean
+== op 1 > nil
+True boolean
+== op nil > 2.5
+False boolean
+== op 2.5 > nil
+True boolean
+== op nil > nil
+!error LuaRuntimeException: No operator is defined for Object GreaterThan Object.
+== op nil > "1"
+!error NullReferenceException: Object reference not set to an instance of an object.
+== op "1" > nil
+True boolean
+== op nil > "a"
+!error NullReferenceException: Object reference not set to an instance of an object.
+== op "a" > nil
+True boolean
+== op nil > {}
+!error NullReferenceException: Object reference not set to an instance of an object.
+== op false > 1
+False boolean
+== op 1 > false
+True boolean
+== op true > 1
+False boolean
+== op 1 > true
+False boolean
+== op false > "a"
+!error LuaRuntimeException: No operator is defined for Boolean GreaterThan String.
+== op "a" > true
+False boolean
+== op nil >= 1
+False boolean
+== op 1 >= nil
+True boolean
+== op nil >= 2.5
+False boolean
+== op 2.5 >= nil
+True boolean
+== op nil >= nil
+!error LuaRuntimeException: No operator is defined for Object GreaterThanOrEqual Object.
+== op nil >= "1"
+!error NullReferenceException: Object reference not set to an instance of an object.
+== op "1" >= nil
+True boolean
+== op nil >= "a"
+!error NullReferenceException: Object reference not set to an instance of an object.
+== op "a" >= nil
+True boolean
+== op nil >= {}
+!error NullReferenceException: Object reference not set to an instance of an object.
+== op false >= 1
+False boolean
+== op 1 >= false
+True boolean
+== op true >= 1
+True boolean
+== op 1 >= true
+True boolean
+== op false >= "a"
+!error LuaRuntimeException: No operator is defined for Boolean GreaterThanOrEqual String.
+== op "a" >= true
+True boolean
+== op nil .. 1
+1 string
+== op 1 .. nil
+1 string
+== op nil .. 2.5
+2.5 string
+== op 2.5 .. nil
+2.5 string
+== op nil .. nil
+ string
+== op nil .. "1"
+1 string
+== op "1" .. nil
+1 string
+== op nil .. "a"
+a string
+== op "a" .. nil
+a string
+== op nil .. {}
+table string
+== op false .. 1
+false1 string
+== op 1 .. false
+1false string
+== op true .. 1
+true1 string
+== op 1 .. true
+1true string
+== op false .. "a"
+falsea string
+== op "a" .. true
+atrue string
+== op nil == 1
+False boolean
+== op 1 == nil
+False boolean
+== op nil == 2.5
+False boolean
+== op 2.5 == nil
+False boolean
+== op nil == nil
+True boolean
+== op nil == "1"
+False boolean
+== op "1" == nil
+False boolean
+== op nil == "a"
+False boolean
+== op "a" == nil
+False boolean
+== op nil == {}
+False boolean
+== op false == 1
+False boolean
+== op 1 == false
+False boolean
+== op true == 1
+False boolean
+== op 1 == true
+False boolean
+== op false == "a"
+False boolean
+== op "a" == true
+False boolean
+== op -nil
+!error LuaRuntimeException: Operator is not defined for nil-values.
+== op -false
+0 userdata
+== op -true
+-1 userdata
+== op ~nil
+!error LuaRuntimeException: Operator is not defined for nil-values.
+== op ~false
+-1 integer
+== op ~true
+-2 integer
+== op #nil
+0 integer
+== op #false
+!error LuaRuntimeException: No length for bool.
+== op #true
+!error LuaRuntimeException: No length for bool.
+== concat-table
+tablex
+== error-call-nil
+!error LuaRuntimeException: Can not call nil value.
+== error-index-nil
+!error LuaRuntimeException: Object is nil.
+== error-compare-mixed
+!error LuaParseException: No operator is defined for Int32 LessThan String.
+== error-string-arg-not-number
+!error FormatException: Can not format 'x' to dec.
+== error-setmetatable-number
+!error LuaRuntimeException: No conversion defined from Int32 to LuaTable.
+== error-after-print
+before
+!error LuaRuntimeException: 'Object:x' not found.

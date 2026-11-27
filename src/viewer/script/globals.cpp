@@ -3,6 +3,9 @@
 #include <algorithm>
 #include <charconv>
 #include <cmath>
+#include <cstdint>
+#include <limits>
+#include <random>
 
 #include "pack/attributes.h"
 #include "viewer/game/mumble.h"
@@ -369,8 +372,8 @@ std::string attributeText(lua_State* L, const sol::object& value) {
 }
 
 // I:Marker / Pack:CreateMarker: a marker on the live map of the calling pack, its attributes
-// resolved against that pack's categories as a pack's own markers are. Pathing gives a
-// missing coordinate 0, and an unknown map the current one.
+// resolved against that pack's categories as a pack's own markers are, a missing coordinate
+// included. Pathing gives an unknown map the current one.
 sol::object createMarker(sol::state_view lua, size_t pack_index, const sol::object& attributes) {
     Context& ctx = context(lua);
     const runtime::Installed& installed = *ctx.host.installed;
@@ -383,9 +386,6 @@ sol::object createMarker(sol::state_view lua, size_t pack_index, const sol::obje
             if (key.get_type() == sol::type::string) pathable.attributes.set(key.as<std::string>(), attributeText(lua, value));
         }
     }
-    for (const char* axis : {"xpos", "ypos", "zpos"}) {
-        if (!pathable.attributes.value(axis)) pathable.attributes.set(axis, "0");
-    }
     if (const std::string* type = pathable.attributes.value("type")) {
         pathable.category_id = pack::attributeKey(*type);
         const pack::Category* category = declared.findCategory(pathable.category_id);
@@ -396,7 +396,6 @@ sol::object createMarker(sol::state_view lua, size_t pack_index, const sol::obje
     marker.pack = pack_index;
     marker.texture_pack = pack_index;
     marker.node = installed.tree.find(pathable.category_id);
-    // Made even when it cannot be placed, from a default bake.
     marker.marker = bakeMarker(declared, pathable).value_or(BakedMarker{});
     if (!declared.effectiveValue(pathable, "mapid") || marker.marker.map_id < 0) marker.marker.map_id = mumble(lua).map_id;
 
@@ -560,11 +559,14 @@ const Member<Menu> kMenuMembers[] = {
          }},
 };
 
-// PathingGlobal's `Packs`: World under its old name, with a warning the first time.
-sol::object deprecatedGlobal(sol::this_state state, const sol::table&, const sol::object& key) {
-    sol::state_view lua(state);
-    if (key.get_type() != sol::type::string || key.as<std::string_view>() != "Packs") return sol::lua_nil;
+// The names PathingGlobal answers with no member of its own: `_G`, which NeoLua compiles to
+// the environment a chunk runs in, and `Packs`, World under its old name with a warning the
+// first time.
+sol::object unlistedGlobal(sol::this_state state, const sol::table&, const sol::object& key) {
     Context& ctx = context(state);
+    if (key.get_type() != sol::type::string) return sol::lua_nil;
+    if (key.as<std::string_view>() == "_G") return ctx.env;
+    if (key.as<std::string_view>() != "Packs") return sol::lua_nil;
     if (!ctx.warned_packs) {
         ctx.console.push(Level::System, "system", "`Packs` is deprecated.  Use `World` instead.");
         ctx.warned_packs = true;
@@ -616,13 +618,12 @@ void bindGlobals(sol::state_view lua, sol::table env) {
     env["Menu"] = pushMenu(lua, 0);
 
     // Scripting/PathingGlobal.cs, "Replicated LuaGlobal": these and no others. Lua's own stand
-    // in for NeoLua's wherever the two agree. NeoLua's rawmembers, rawarray, mpairs and
-    // nextKey, and its bit32, have no counterpart here; no corpus script calls them.
+    // in for NeoLua's wherever the two agree, which lua_parity_test holds them to. NeoLua's
+    // rawmembers, rawarray, mpairs and nextKey, and its bit32, have no counterpart here; no
+    // corpus script calls them.
     for (const char* name :
-         {"getmetatable",
-          "ipairs",
+         {"ipairs",
           "pairs",
-          "next",
           "rawequal",
           "rawget",
           "rawlen",
@@ -630,7 +631,6 @@ void bindGlobals(sol::state_view lua, sol::table env) {
           "select",
           "setmetatable",
           "tonumber",
-          "tostring",
           "type",
           "_VERSION",
           "coroutine",
@@ -641,6 +641,72 @@ void bindGlobals(sol::state_view lua, sol::table env) {
     }
     env["os"] = makeOsLibrary(lua);
 
+    // tostring writes a table as LuaTable.ToString does, "table" without its address, so two
+    // tables are the same text under Pathing.
+    env["tostring"] = [](sol::this_state state, const sol::object& value) { return tostringText(state, value); };
+
+    // getmetatable is a LuaTable's MetaTable: nil for anything but a table, a string's and nil's
+    // included, though Lua gives both one.
+    env["getmetatable"] = [](sol::this_state state, const sol::object& value) -> sol::object {
+        if (value.get_type() != sol::type::table) return sol::make_object(state, sol::lua_nil);
+        return sol::state_view(state)["getmetatable"](value).get<sol::object>();
+    };
+    setNeoLuaOperators(lua);
+
+    // PathingGlobal's next returns the key and its value always, nil and nil at the end.
+    const sol::function next_function =
+        lua.safe_script("local next = next\nreturn function(t, k) local key, value = next(t, k) return key, value end");
+    env["next"] = next_function;
+
+    // What Lua 5.4 has that NeoLua's libraries do not, so that a script finds them missing, and
+    // the census counts them, as Pathing would.
+    for (const char* name : {"pack", "packsize", "unpack"}) lua["string"][name] = sol::lua_nil;
+    for (const char* name : {"close", "isyieldable"}) lua["coroutine"][name] = sol::lua_nil;
+
+    // `math` is NeoLua's LuaLibraryMath, which keeps what Lua 5.4's math dropped: Teh's Trails and
+    // Hero's pack turn markers to face a point with atan2.
+    sol::table math_library = lua["math"];
+    math_library["atan2"] = [](double y, double x) { return std::atan2(y, x); };
+    math_library["cosh"] = [](double x) { return std::cosh(x); };
+    math_library["sinh"] = [](double x) { return std::sinh(x); };
+    math_library["tanh"] = [](double x) { return std::tanh(x); };
+    math_library["pow"] = [](double x, double y) { return std::pow(x, y); };
+    math_library["ldexp"] = [](double m, int e) { return std::ldexp(m, e); };
+    math_library["frexp"] = [](double x) {
+        int exponent = 0;
+        const double mantissa = std::frexp(x, &exponent);
+        return std::make_tuple(mantissa, exponent);
+    };
+    math_library["e"] = std::exp(1.0);
+    math_library["huge"] = std::numeric_limits<double>::max(); // Double.MaxValue, not infinity
+    math_library["maxinteger"] = std::numeric_limits<int32_t>::max();
+    math_library["mininteger"] = std::numeric_limits<int32_t>::min();
+
+    // math.type of what is no number returns nothing, not nil: it shows as the last argument
+    // of a print, which writes nothing for it.
+    const sol::function math_type =
+        lua.safe_script("local type = math.type return function(x) local t = type(x) if t then return t end end");
+    math_library["type"] = math_type;
+
+    // math.random is Random.Next(1, m) and Random.Next(m, n), whose upper bounds are exclusive:
+    // Hero's math.random(1, 6) never gives 6 under Pathing. Its bounds go through
+    // Convert.ToInt32, so a float is rounded half to even, and a lower bound past the upper one
+    // throws, as Next does.
+    math_library["random"] = [](sol::this_state state, sol::variadic_args args) -> sol::object {
+        std::mt19937& random = context(state).random;
+        if (argIsNil(args, 0) && argIsNil(args, 1))
+            return sol::make_object(state, std::uniform_real_distribution<double>(0.0, 1.0)(random));
+        const bool upper_only = argIsNil(args, 1);
+        const int low = upper_only ? 1 : argConvertInt(state, args, 0, "random");
+        const int high = argConvertInt(state, args, upper_only ? 0 : 1, "random");
+        if (low > high) raise(state, "bad argument to 'random' ('minValue' cannot be greater than maxValue)");
+        return sol::make_object(state, low == high ? low : std::uniform_int_distribution<int>(low, high - 1)(random));
+    };
+    math_library["randomseed"] = [](sol::this_state state, sol::variadic_args args) {
+        std::mt19937& random = context(state).random;
+        random.seed(argIsNil(args, 0) ? std::random_device{}() : static_cast<uint32_t>(argConvertInt(state, args, 0, "randomseed")));
+    };
+
     // `table` is NeoLua's LuaTable, which has LSON besides Lua's own functions.
     sol::table table_library = lua["table"];
     table_library["ToLson"] =
@@ -649,12 +715,31 @@ void bindGlobals(sol::state_view lua, sol::table env) {
         };
     table_library["FromLson"] = [](sol::this_state state, const std::string& text) { return fromLson(sol::state_view(state), text); };
 
-    // print(...) is Debug.Print of every argument's text, joined by spaces; nil prints empty.
+    // The census covers the libraries too: a function NeoLua has and they lack is nil, and a
+    // script calling it errors. A tick handler that errors is dropped, taking everything else it
+    // ran with it, so the gap has to show in the corpus sweep rather than only in game.
+    for (const char* name : {"coroutine", "math", "os", "string", "table"}) {
+        sol::table library = env[name];
+        sol::table meta = lua.create_table();
+        meta[sol::meta_function::index] = [name](sol::this_state state, const sol::table&, const sol::object& key) {
+            detail::recordMissing(state, name, key);
+            return sol::lua_nil;
+        };
+        library[sol::metatable_key] = meta;
+    }
+
+    // print(...) is Debug.Print of every argument's .NET ToString, joined by spaces: nil prints
+    // empty and a boolean True or False, where tostring gives true.
     env["print"] = [](sol::this_state state, sol::variadic_args args) {
         std::string line;
         for (size_t i = 0; i < args.size(); ++i) {
             if (i > 0) line += ' ';
-            line += textOf(state, args[i]);
+            const sol::object value = args[i];
+            if (value.get_type() == sol::type::boolean) {
+                line += value.as<bool>() ? "True" : "False";
+            } else if (value.get_type() != sol::type::lua_nil && value.get_type() != sol::type::none) {
+                line += tostringText(state, value);
+            }
         }
         context(state).console.push(Level::Info, callerLocation(state).source, line);
     };
@@ -666,7 +751,7 @@ void bindGlobals(sol::state_view lua, sol::table env) {
     };
 
     sol::table meta = lua.create_table();
-    meta[sol::meta_function::index] = deprecatedGlobal;
+    meta[sol::meta_function::index] = unlistedGlobal;
     env[sol::metatable_key] = meta;
 }
 

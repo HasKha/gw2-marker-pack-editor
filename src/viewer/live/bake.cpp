@@ -113,22 +113,18 @@ const ImVec2 kBillboardUv[4] = {{0, 1}, {1, 1}, {1, 0}, {0, 0}};
 std::optional<MarkerTransform> markerTransform(const pack::Pack& pack, const pack::Pathable& pathable) {
     if (pathable.type != pack::PathableType::Poi) return std::nullopt;
 
-    // A POI without a position is an invisible anchor; the loader drops those and so do we.
-    // See docs/format.md.
-    const std::string* x = pathable.attributes.value("xpos");
-    const std::string* y = pathable.attributes.value("ypos");
-    const std::string* z = pathable.attributes.value("zpos");
-    if (!x || !y || !z) return std::nullopt;
-
-    const std::optional<float> px = pack::parseFloat(*x);
-    const std::optional<float> py = pack::parseFloat(*y);
-    const std::optional<float> pz = pack::parseFloat(*z);
-    if (!px || !py || !pz) return std::nullopt;
+    // Populate_Position: each coordinate as its category chain gives it, 0 when none does or it
+    // does not read. A POI with no position at all is still a marker, at the origin: Hero's pack
+    // keeps hidden anchors of that kind on its maps, which its scripts look up by guid.
+    const auto coordinate = [&](const char* name) {
+        const std::string* value = pack.effectiveValue(pathable, name);
+        return value ? pack::parseFloat(*value).value_or(0.0f) : 0.0f;
+    };
 
     MarkerTransform out;
     out.height_offset = pack.effectiveFloat(pathable, "heightoffset");
     // Where it is drawn, not its bare coordinate — which is what the gizmo has to sit on.
-    out.position = glm::vec3(*px, *py + out.height_offset, *pz);
+    out.position = glm::vec3(coordinate("xpos"), coordinate("ypos") + out.height_offset, coordinate("zpos"));
     out.has_rotation = resolveRotation(pack, pathable, &out.rotation);
     return out;
 }

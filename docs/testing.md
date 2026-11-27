@@ -54,8 +54,10 @@ is handed, and `test/viewer/test_camera.h` is a camera with hand-written project
 |---|---|
 | `corpus_test.cpp`, `bake_test.cpp` | every pack parses, saves stably, bakes; a baked value equals the editor's effective value |
 | `script_test.cpp` | one case per API rule: call styles, census, errors and budget, sandbox, `os`, LSON |
-| `script_corpus_test.cpp` | every corpus `pack.lua` on each of its maps: reset, load, three ticks, every `script-*` function its pathables name. Fails on any console error, and on census entries for Hero's pack and Teh's Trails. A pack's own bug, which Pathing raises too, goes in `kPackBugs` with the reason |
+| `script_corpus_test.cpp` | every corpus `pack.lua` on each of its maps: reset, load, three ticks, every `script-*` function its pathables name, three ticks more for what those set going. Fails on any console error, and on census entries for Hero's pack and Teh's Trails. A pack's own bug, which Pathing raises too, goes in `kPackBugs` with the reason |
 | `behavior_test.cpp`, `behavior_data_test.cpp` | each filter and modifier against a hand-set MumbleLink; attributes, cron, timers, festivals |
+| `lua_parity_test.cpp` | every case of `lua_parity/cases.lua` against NeoLua's output for it, and the libraries' names against NeoLua's; each difference listed with its reason, and a listed one that has gone away fails |
+| `interaction_test.cpp` | the info window's layout, and that only its close button takes the mouse |
 | `map_test.cpp`, `map_scene_test.cpp` | the projection against Queensdale's rectangles; the map scene over a square whose continent units are metres |
 | `catalog_test.cpp` | the catalog and downloads against a local fetch |
 | `edited_test.cpp` | the editor's pack as a live map: revisions, eye toggles, deferred trail reads, picking |
@@ -86,3 +88,20 @@ bin/Release/markus_viewer_test.exe "[.web]"
 Not covered: undo, the editor's indexes, `saveToDirectory`'s asset half (the folder source is a real
 checkout), the windows, and the sinks in game. Those are checked once in game per change, with what to look
 for decided in advance.
+
+## The NeoLua oracle
+
+How Pathing's Lua behaves is settled by running it. `scripts/neolua_oracle` is a .NET Framework 4.8 tool
+that runs `test/viewer/lua_parity/cases.lua` under the NeoLua package Pathing ships, built as Pathing builds
+it, and writes `expected.txt` and `surface.txt` beside it. Both are checked in, so the test needs no .NET.
+Run it again after adding or changing a case; it needs the .NET SDK, and restores NeoLua from NuGet:
+
+```bash
+dotnet run -c Release --project scripts/neolua_oracle
+```
+
+A question about NeoLua becomes a case: a few lines that print the answer, with nothing in them that changes
+between runs. `cases.lua`'s header says how a case is written. A new case that differs goes in one of the
+test's lists, with its reason. The lists say whether matching it would take another interpreter, whether
+NeoLua fails there, or whether it is not matched yet. A listed case passes whatever Markus prints, so a
+case shows one difference: keep it small.

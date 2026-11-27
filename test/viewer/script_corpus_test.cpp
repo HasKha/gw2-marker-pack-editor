@@ -145,6 +145,9 @@ TEST_CASE("every corpus script loads and ticks on every map of its pack without 
                     }
                 }
             }
+            // Then ticks again: much of what a focus or trigger starts runs from the pack's tick
+            // handlers — Teh's Trails' highlight pulse and heart follower — and nowhere else.
+            for (int tick = kTicks + 1; tick <= 2 * kTicks; ++tick) engine.tick(tick * kTickSeconds, kTickSeconds);
 
             for (const viewer::script::Message& message : engine.console().messages()) {
                 if (message.level != viewer::script::Level::Error || knownPackBug(file, message.text)) continue;

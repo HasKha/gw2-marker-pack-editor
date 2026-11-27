@@ -145,7 +145,12 @@ sol::object argument(const sol::variadic_args& args, size_t index);
 // as Lua.RtConvertValue makes it, rather than an error. Packs rely on it: Teh's Trails sets
 // TrailSampleColor to a colour that is nil for its "Default" entry.
 float argFloat(lua_State* L, const sol::variadic_args& args, size_t index, const char* what);
+// An int parameter takes a float cut toward zero, as C#'s cast cuts it: the binder's
+// conversion, and Lua's own libraries' too (cmake/lua/neolua.h).
 int argInt(lua_State* L, const sol::variadic_args& args, size_t index, const char* what);
+// Convert.ToInt32, which a library calls itself where it takes any object: rounded half to
+// even, and an error past Int32.
+int argConvertInt(lua_State* L, const sol::variadic_args& args, size_t index, const char* what);
 bool argBool(const sol::variadic_args& args, size_t index); // Lua truthiness
 std::string argString(lua_State* L, const sol::variadic_args& args, size_t index, const char* what); // numbers become text
 bool argIsNil(const sol::variadic_args& args, size_t index);
@@ -156,5 +161,8 @@ bool isInteger(lua_State* L, const sol::object& value);
 // A value assigned to a property, converted likewise.
 float valueFloat(lua_State* L, const sol::object& value, const char* what);
 std::string valueString(lua_State* L, const sol::object& value);
+// What NeoLua's tostring makes of a value: Lua's text, but "table" for a table with no
+// __tostring, as LuaTable.ToString writes it, where Lua adds the table's address.
+std::string tostringText(lua_State* L, const sol::object& value);
 
 } // namespace viewer::script

@@ -182,7 +182,6 @@ std::shared_ptr<const TrailLines> TrailCache::get(const runtime::LiveMap& live, 
         Path path;
         path.trail = lines->paths.size();
         path.first = lines->lines.size();
-        path.colour = trail.sample_colour; // what Pathing draws a trail with on the map: never its alpha
         path.min = glm::dvec2(std::numeric_limits<double>::max());
         path.max = glm::dvec2(std::numeric_limits<double>::lowest());
         if (trail.geometry) {
@@ -363,6 +362,7 @@ void build(
             if (!allowed(trail_level, out->full_map ? trail.map_visibility : trail.minimap_visibility)) continue;
             Path path = lines->paths[i];
             path.layer = layer;
+            path.colour = trail.sample_colour; // what Pathing draws a trail with on the map: never its alpha
             out->paths.push_back(path);
         }
 

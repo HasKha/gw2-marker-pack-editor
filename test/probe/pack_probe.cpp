@@ -322,10 +322,9 @@ void lintPack(const pack::Pack& loaded, const pack::DataSource& archive) {
         if (count > 1) report("duplicate GUID", guid + " used by " + std::to_string(count) + " markers");
     }
 
-    // TmfLib refuses a POI without a position or map id. Packs do contain position-less
-    // POIs on purpose, as invisible anchors for toggles and achievements — those get
-    // dropped by the loader too, but the author clearly does not care. Only the ones
-    // meant to be drawn are worth reporting.
+    // Pathing puts a POI without a position at the origin, and one without a map id on no map.
+    // Packs do contain position-less POIs on purpose, as invisible anchors for toggles and
+    // scripts. Only the ones meant to be drawn are worth reporting.
     int invisible_without_position = 0;
     for (const pack::Pathable& pathable : loaded.pathables) {
         if (pathable.type != pack::PathableType::Poi) continue;
@@ -334,18 +333,18 @@ void lintPack(const pack::Pack& loaded, const pack::DataSource& archive) {
             loaded.effectiveValue(pathable, "xpos") && loaded.effectiveValue(pathable, "ypos") && loaded.effectiveValue(pathable, "zpos");
         if (!has_position) {
             if (loaded.effectiveBool(pathable, "ingamevisibility")) {
-                report("POI without a position", "type=" + pathable.category_id + " — the loader will drop it");
+                report("POI without a position", "type=" + pathable.category_id + " — drawn at the origin");
             } else {
                 ++invisible_without_position;
             }
         }
 
         if (!loaded.effectiveValue(pathable, "mapid")) {
-            report("POI without a map id", "type=" + pathable.category_id + " — the loader will drop it");
+            report("POI without a map id", "type=" + pathable.category_id + " — on no map");
         }
     }
     if (invisible_without_position > 0) {
-        std::printf("    %-24s %d invisible POIs have no position (anchors; dropped by the loader)\n", "note", invisible_without_position);
+        std::printf("    %-24s %d invisible POIs have no position (anchors, at the origin)\n", "note", invisible_without_position);
     }
 
     for (const pack::Pathable& pathable : loaded.pathables) {

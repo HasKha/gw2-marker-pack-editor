@@ -18,6 +18,9 @@ inline const ImVec4 ERROR_TEXT(1.0f, 0.4f, 0.4f, 1.0f);
 // SmallInteract's tints: orange for what a marker will do, light blue for a hidden marker.
 inline const ImVec4 PROMPT(1.0f, 142.0f / 255.0f, 50.0f / 255.0f, 1.0f);
 inline const ImVec4 UNHIDE(173.0f / 255.0f, 216.0f / 255.0f, 230.0f / 255.0f, 1.0f);
+// A marker's info window: Pathing draws the game's dark window art under it at 0.9 opacity.
+inline const ImVec4 INFO_BACKGROUND(0.06f, 0.06f, 0.07f, 0.9f);
+inline const ImVec4 INFO_CLOSE(0.75f, 0.75f, 0.75f, 1.0f);
 // The description label's colour in Pathing's AchievementTooltipView: 204 of 255 grey.
 inline const ImVec4 ACHIEVEMENT_DESCRIPTION(204.0f / 255.0f, 204.0f / 255.0f, 204.0f / 255.0f, 1.0f);
 

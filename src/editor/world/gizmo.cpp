@@ -67,9 +67,9 @@ struct Target {
     bool has_rotation = false;
 };
 
-// In selection order, so targets.front() is the first thing the user selected. A category,
-// or a POI missing a coordinate, has no transform and is skipped rather than blocking the
-// gizmo, so a mixed selection still moves what it can.
+// In selection order, so targets.front() is the first thing the user selected. A category
+// has no transform and is skipped rather than blocking the gizmo, so a mixed selection still
+// moves what it can. A POI missing a coordinate sits where the viewer draws it, at 0 there.
 //
 // Points take priority over the node selection when there are any. The trail they belong to
 // is necessarily selected too — that is what opened the editor — so obeying both would drag

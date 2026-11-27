@@ -7,6 +7,7 @@
 #include <imgui_internal.h>
 #include <wrl/client.h>
 
+#include <algorithm>
 #include <cmath>
 #include <cstring>
 #include <filesystem>
@@ -34,6 +35,8 @@ struct Fonts::State {
     std::vector<std::pair<int, Microsoft::WRL::ComPtr<ID3D11ShaderResourceView>>> retired;
     ImFont* font = nullptr;
     ImFont* heading = nullptr;
+    ImFont* overlay = nullptr;
+    float overlay_pixels = 0.0f; // what pushOverlay() last asked for; none built while 0
     bool tried = false;
     ID3D11Device* device = nullptr; // the viewer's, which holds it
 
@@ -43,7 +46,7 @@ struct Fonts::State {
     std::vector<unsigned char> host_data;
 
     glyphs::Set wanted; // everything require() was handed
-    bool stale = false; // `wanted` holds characters the atlas was not built with
+    bool stale = false; // `wanted` holds characters the atlas was not built with, or `overlay_pixels` a size
     double built_at = 0.0; // ImGui::GetTime() at the last build
 };
 
@@ -207,6 +210,7 @@ bool build(Fonts::State& fonts, bool with_fallbacks) {
     fonts.atlas.TexID = nullptr;
     fonts.font = nullptr;
     fonts.heading = nullptr;
+    fonts.overlay = nullptr;
 
     std::vector<uint16_t> ranges;
     for (const glyphs::Block& block : glyphs::kBase) {
@@ -236,6 +240,12 @@ bool build(Fonts::State& fonts, bool with_fallbacks) {
     ImFont* built_heading = addHost(fonts, size * kHeadingScale, ranges);
     mergeFallbacks(fonts, fallbacks, size * kHeadingScale);
 
+    ImFont* built_overlay = nullptr;
+    if (fonts.overlay_pixels > 0.0f) {
+        built_overlay = addHost(fonts, fonts.overlay_pixels, ranges);
+        mergeFallbacks(fonts, fallbacks, fonts.overlay_pixels);
+    }
+
     const bool uploaded = upload(fonts);
     // The glyphs are all that is drawn from; the font files and the pixels were only for building.
     fonts.atlas.ClearInputData();
@@ -248,6 +258,7 @@ bool build(Fonts::State& fonts, bool with_fallbacks) {
     alignIcons(built);
     fonts.font = built;
     fonts.heading = built_heading;
+    fonts.overlay = built_overlay;
     return true;
 }
 
@@ -343,6 +354,23 @@ void pushHeading() {
     }
     heading->Scale = host->FontSize * host->Scale * kHeadingScale / heading->FontSize;
     ImGui::PushFont(heading);
+}
+
+void pushOverlay(float pixels) {
+    // Whole pixels, so a size that drifts by a fraction, as a scale worked out per frame may, does
+    // not ask for a build every time.
+    const float wanted = std::max(1.0f, std::round(pixels));
+    if (current && current->overlay_pixels != wanted) {
+        current->overlay_pixels = wanted;
+        current->stale = true;
+    }
+    ImFont* font = current ? (current->overlay ? current->overlay : current->heading) : nullptr;
+    if (!font) {
+        ImGui::PushFont(ImGui::GetFont());
+        return;
+    }
+    font->Scale = wanted / font->FontSize;
+    ImGui::PushFont(font);
 }
 
 void require(const glyphs::Set& glyphs) {

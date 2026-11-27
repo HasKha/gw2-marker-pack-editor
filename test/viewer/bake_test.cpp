@@ -43,18 +43,25 @@ Loaded loadXml(const corpus::TempDir& temp, const std::string& body) {
 
 } // namespace
 
-TEST_CASE("a POI without a full position is not baked", "[bake]") {
+// Pathing's Populate_Position: Hero's pack has hidden anchors with no position and their map id
+// from their category, which its HT simulation finds by guid. Dropping them failed its script.
+TEST_CASE("a POI without a full position is baked with 0 for what it lacks, its map its category's", "[bake][regression]") {
     const corpus::TempDir temp("bake_position");
-    const Loaded loaded = loadXml(temp, R"(<POIs>
+    const Loaded loaded = loadXml(temp, R"(<MarkerCategory name="m" mapid="1437" heightoffset="0"/>
+    <POIs>
         <POI type="c" xpos="1" ypos="2" zpos="3"/>
-        <POI type="c" xpos="1" ypos="2"/>
-        <POI type="c" xpos="1" ypos="two" zpos="3"/>
+        <POI type="m" xpos="1" ypos="2"/>
+        <POI type="m" xpos="1" ypos="two" zpos="3"/>
+        <POI type="m"/>
     </POIs>)");
 
     const viewer::BakedPathables baked = viewer::bake(loaded.model);
-    REQUIRE(baked.markers.size() == 1);
-    CHECK(baked.markers[0].pathable == 0);
+    REQUIRE(baked.markers.size() == 4);
     CHECK(baked.markers[0].category == loaded.model.pathables[0].category);
+    CHECK(baked.markers[1].position == glm::vec3(1, 2, 0));
+    CHECK(baked.markers[2].position == glm::vec3(1, 0, 3));
+    CHECK(baked.markers[3].position == glm::vec3(0, 0, 0));
+    CHECK(baked.markers[3].map_id == 1437);
 }
 
 TEST_CASE("heightoffset lifts where a marker is drawn", "[bake]") {

@@ -62,6 +62,12 @@ void pop();
 // The current font while ours is not built.
 void pushHeading();
 
+// Inside a push(), the windows' font at `pixels` tall whatever Nexus's is, for text over the
+// world, until pop(). Without the icons. Built at that size, rounded, by a build a while after it
+// is first asked for; until then the heading's, scaled to it. The current font while ours is not
+// built.
+void pushOverlay(float pixels);
+
 // Builds the font with `glyphs` too, at a push() a while from now: the atlas is built again from
 // the start, so arrivals close together share a build. On the render thread. Nothing without a
 // current Fonts.

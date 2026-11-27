@@ -156,10 +156,7 @@ public:
         if (b.mode > 0 && !state.filters_cleared) prompt(index, modePrompt(b, live.marker));
         // AchievementFilter's gear, whose tooltip in Pathing is the achievement's details.
         if (b.achievement && !state.filters_cleared) prompt(index, "Hide achievement marker until map change {0}", b.achievement->id);
-        if (b.info && !state.filtered) {
-            host_.screen->info.push_back(*b.info);
-            state.shown_info = *b.info;
-        }
+        if (b.info && !state.filtered) showInfo(*b.info, &state);
         if (b.bounce && host_.options.animate) {
             state.bounce.phase = state.filtered ? BounceState::Phase::Resting : BounceState::Phase::Rising;
             state.bounce.start = frame_.seconds;
@@ -245,10 +242,7 @@ public:
         const Behaviors& b = *live_.markers[index].marker.behaviors;
         if (!state.focused || !state.shown_info || (b.info && *b.info == *state.shown_info)) return;
         takeInfoBack(&state);
-        if (b.info && !state.filtered) {
-            host_.screen->info.push_back(*b.info);
-            state.shown_info = *b.info;
-        }
+        if (b.info && !state.filtered) showInfo(*b.info, &state);
     }
 
     float distanceToPlayer(const BakedMarker& marker) const {
@@ -274,10 +268,18 @@ private:
         host_.screen->prompt = Screen::Prompt{index, std::move(text), false, achievement};
     }
 
+    // UiStates.AddInfoString and RemoveInfoString, each of which shows the window again.
+    void showInfo(const std::string& text, EntityState* state) {
+        host_.screen->info.push_back(text);
+        host_.screen->info_closed = false;
+        state->shown_info = text;
+    }
+
     void takeInfoBack(EntityState* state) {
         if (!state->shown_info) return;
         std::vector<std::string>& info = host_.screen->info;
         if (const auto at = std::find(info.begin(), info.end(), *state->shown_info); at != info.end()) info.erase(at);
+        host_.screen->info_closed = false;
         state->shown_info.reset();
     }
 

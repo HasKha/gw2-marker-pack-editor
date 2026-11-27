@@ -11,12 +11,15 @@
 // Pathing draws the game's own window art and gear icon.
 namespace viewer::ui::interaction {
 
-// Draws the last info string as `info` says, and the prompt when `show_prompt`, its "{0}"
-// replaced by `key_name` — over an achievement's details, from `achievements`, for an
-// achievement marker's gear. True when the prompt was clicked, which interacts as the key does.
+// Draws the last info string as `info` says, laid out as Pathing's InfoWindow at `ui_scale`
+// screen pixels per UI pixel, and closed into `screen->info_closed` by its X; and the prompt when
+// `show_prompt`, its "{0}" replaced by `key_name` — over an achievement's details, from
+// `achievements`, for an achievement marker's gear. True when the prompt was clicked, which
+// interacts as the key does.
 bool draw(
-    const behaviors::Screen& screen,
+    behaviors::Screen* screen,
     settings::InfoDisplay info,
+    float ui_scale,
     const std::string& key_name,
     bool show_prompt,
     achievements::Catalog* achievements);

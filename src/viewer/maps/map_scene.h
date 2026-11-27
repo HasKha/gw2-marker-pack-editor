@@ -81,7 +81,10 @@ struct Path {
     ImU32 colour = IM_COL32_WHITE; // the trail's sample colour, before any opacity
 };
 
-// Every trail of a live map, on the continent: one Path per LiveMap::trails, in that order.
+// Every trail of a live map, on the continent: one Path per LiveMap::trails, in that order. Only
+// what scripts cannot change: a Path's colour here is left white, since scripts recolour trails
+// from frame to frame (Teh's Trails greys all but the segment to follow), and build() takes it
+// from the live trail.
 struct TrailLines {
     std::vector<Line> lines;
     std::vector<Path> paths;

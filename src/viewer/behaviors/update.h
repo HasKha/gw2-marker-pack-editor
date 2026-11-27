@@ -46,6 +46,9 @@ struct Screen {
     };
 
     std::vector<std::string> info;
+    // Closed with the info window's X: hidden until `info` changes, as Pathing's InfoWindow hides
+    // until UpdateInfoText shows it again.
+    bool info_closed = false;
     std::optional<Prompt> prompt;
 };
 

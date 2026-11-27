@@ -161,5 +161,7 @@ void bindWorld(sol::state_view lua); // Marker, Trail, Category, World
 void bindGlobals(sol::state_view lua, sol::table env);
 // Pathing's own `os` (Scripting/Lib/Std/LuaLibraryOS.cs), which is not Lua's.
 sol::table makeOsLibrary(sol::state_view lua);
+// NeoLua's operators on nil and the booleans, as those types' metatables (operators.cpp).
+void setNeoLuaOperators(sol::state_view lua);
 
 } // namespace viewer::script

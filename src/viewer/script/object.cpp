@@ -1,6 +1,8 @@
 #include "viewer/script/object.h"
 
+#include <algorithm>
 #include <cmath>
+#include <limits>
 #include <optional>
 #include <stdexcept>
 
@@ -95,7 +97,31 @@ int argInt(lua_State* L, const sol::variadic_args& args, size_t index, const cha
     const sol::object value = argument(args, index);
     const std::optional<double> number = asNumber(value);
     if (!number) badArgument(L, index, what, "number", value);
-    return static_cast<int>(std::lround(*number));
+    // Past Int32, C#'s unchecked cast wraps; clamping keeps this one defined, and no script
+    // gets there.
+    constexpr double low = std::numeric_limits<int>::min();
+    constexpr double high = std::numeric_limits<int>::max();
+    return std::isnan(*number) ? 0 : static_cast<int>(std::clamp(std::trunc(*number), low, high));
+}
+
+int argConvertInt(lua_State* L, const sol::variadic_args& args, size_t index, const char* what) {
+    const sol::object value = argument(args, index);
+    const std::optional<double> number = asNumber(value);
+    if (!number) badArgument(L, index, what, "number", value);
+
+    // Half to even by hand: nearbyint would take the rounding mode from whatever the game set.
+    double whole = std::floor(*number);
+    const double fraction = *number - whole;
+    if (fraction > 0.5 || (fraction == 0.5 && std::fmod(whole, 2.0) != 0.0)) whole += 1.0;
+
+    constexpr double low = std::numeric_limits<int>::min();
+    constexpr double high = std::numeric_limits<int>::max();
+    if (!(whole >= low && whole <= high))
+        raise(
+            L,
+            std::string("bad argument #") + std::to_string(index + 1) + " to '" + what +
+                "' (Value was either too large or too small for an Int32)");
+    return static_cast<int>(whole);
 }
 
 bool argBool(const sol::variadic_args& args, size_t index) {
@@ -131,6 +157,16 @@ std::string valueString(lua_State* L, const sol::object& value) {
     if (value.get_type() == sol::type::string) return value.as<std::string>();
     sol::state_view lua(L);
     return lua["tostring"](value).get<std::string>();
+}
+
+std::string tostringText(lua_State* L, const sol::object& value) {
+    if (value.get_type() == sol::type::table) {
+        value.push(L);
+        const bool own = luaL_getmetafield(L, -1, "__tostring") != LUA_TNIL;
+        lua_pop(L, own ? 2 : 1);
+        if (!own) return "table";
+    }
+    return valueString(L, value);
 }
 
 } // namespace viewer::script

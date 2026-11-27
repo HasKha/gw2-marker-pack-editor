@@ -389,6 +389,29 @@ TEST_CASE("map scene: a trail's lines are laid once per live map and kept") {
     CHECK(scene.paths.empty());
 }
 
+TEST_CASE("map scene: a trail a script recolours is drawn in its new colour, its lines kept", "[regression]") {
+    // Teh's Trails greys every segment but the one to follow, and colours that one, each time the
+    // player reaches the next: the map showed the colours of the first frame for good.
+    runtime::LiveMap live;
+    live.map_id = 15;
+    live.trails.push_back(trail({{100, 0, 100}, {200, 0, 300}}));
+    live.trails.back().trail.sample_colour = IM_COL32(80, 80, 80, 255);
+    const map::MapDetails details = squareKilometre();
+    map_scene::TrailCache trails;
+
+    map_scene::MapScene first;
+    map_scene::build(live, {}, details, mumble(), {}, 1.0f, 1.0f, everyTexture(), &trails, &first);
+    REQUIRE(first.paths.size() == 1);
+    CHECK(first.paths[0].colour == IM_COL32(80, 80, 80, 255));
+
+    live.trails.back().trail.sample_colour = IM_COL32(255, 213, 74, 255);
+    map_scene::MapScene second;
+    map_scene::build(live, {}, details, mumble(), {}, 1.0f, 1.0f, everyTexture(), &trails, &second);
+    REQUIRE(second.paths.size() == 1);
+    CHECK(second.trails[0] == first.trails[0]);
+    CHECK(second.paths[0].colour == IM_COL32(255, 213, 74, 255));
+}
+
 TEST_CASE("map scene: every layer's icons are sorted together, and each keeps its own trails") {
     runtime::LiveMap installed;
     installed.markers = {marker({100, 0, 100}), marker({500, 0, 500})};

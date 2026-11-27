@@ -144,17 +144,32 @@ Scripts are written against Pathing's NeoLua API, .NET objects exposed almost as
   are Gw2Sharp's names as strings. Guids are interned userdata, and entity handles are cached, so equal
   lookups are one table key.
 - **Positions are Blish HUD's**, (x, z, y) of the file's. A marker's `Position` excludes `heightOffset`.
-- **Numbers**: Pathing uses Int32 and single floats; 5.4 uses 64-bit and doubles. Only overflow, precision
-  and printing (`5` vs `5.0`) differ; not imitated unless a pack needs it.
+- **Where 5.4 and NeoLua differ is measured, not guessed**: `lua_parity_test.cpp` lists every
+  difference its cases find, each with its reason. Some need another interpreter to match: Int32 and single
+  floats, `%` and `//` of negatives, `'10' == 10`, `pairs` order. See
+  [testing.md](testing.md#the-neolua-oracle).
+- **Two of NeoLua's rules are built into Lua itself**, in the one place Lua makes each decision, so that
+  every library and every `..` follows them: a float is written as .NET writes it (`5`, not `5.0`), and a
+  float passed where a library wants an integer is cut toward zero rather than refused. `cmake/lua.cmake`
+  compiles `lobject.c` and `lauxlib.c` from patched copies; `cmake/lua/neolua.h` says what each does.
+  The rest is the bindings': `print` writes `True`, `tostring` writes a table as `table`, and
+  `math.random` is `Random.Next`, with an exclusive upper bound.
+- **nil and the booleans have NeoLua's operators**, as metatables on those two types
+  (`operators.cpp`): `hits = hits + 1` on an unset global counts from 0 under Pathing, and `"a" .. nil`
+  is `"a"`. Which side converts is NeoLua's, measured operator by operator: `nil + 1` is 1, `1 + nil` still
+  raises.
 - **The sandbox is `PathingGlobal.cs`**: no `pcall`, `error`, `load`, `io`, `debug` or `package`; `require`
   through the pack's files. NeoLua's extras are left out until a pack calls one. `os` keeps
-  `LuaLibraryOS.cs`'s quirks. `table.ToLson`/`FromLson` are NeoLua's.
+  `LuaLibraryOS.cs`'s quirks. `table.ToLson`/`FromLson` are NeoLua's, and so is `math`, with what 5.4
+  dropped (`atan2`, `pow`, ...); what 5.4 added and NeoLua lacks (`string.pack`, `coroutine.close`) is gone.
 - **A script error never escapes**: every call is protected, errors go to the console with pack, file and
   line, and a call past `Host::call_budget` is stopped by a count hook. Each pack's frame time is shown.
 - **`Storage`** is one store across packs, keyed `namespace\name`, in `kv.json`, written at most every five
   seconds.
-- **The census**: a member a script reads that the table lacks is logged once and returns nil. Over the
-  corpus, that log is what is left to implement.
+- **The census**: a member a script reads that the table lacks is logged once and returns nil; so is a
+  function the libraries (`math`, `string`, ...) lack. Over the corpus, that log is what is left to
+  implement. It matters most in tick handlers: one that errors is dropped, as Pathing drops it, and every
+  animation a pack runs from it stops with it.
 
 ## Behaviors
 

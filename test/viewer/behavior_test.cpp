@@ -226,6 +226,21 @@ TEST_CASE("walking into range focuses a marker, and out of it lets go", "[behavi
     CHECK_FALSE(world.screen.prompt);
 }
 
+TEST_CASE("info closed with its X stays closed until the info changes", "[behaviors]") {
+    Behaving world("behave_info_closed", {"info=\"Near\"", "triggerrange=\"10\" info=\"Far\""});
+    world.standAt(0);
+    world.tick();
+    world.screen.info_closed = true;
+    world.tick();
+    CHECK(world.screen.info_closed);
+
+    // Out of the first's range and into the second's: Pathing's InfoWindow shows again on either.
+    world.mumble.player_position = glm::vec3(95.0f, 0.0f, 0.0f);
+    world.tick();
+    CHECK(world.screen.info == std::vector<std::string>{"Far"});
+    CHECK_FALSE(world.screen.info_closed);
+}
+
 TEST_CASE("the behavior attribute hides a marker it was interacted with", "[behaviors]") {
     Behaving world(
         "behave_modes",
@@ -555,19 +570,19 @@ TEST_CASE("scripts reach a marker's behaviors through GetBehavior", "[behaviors]
     };
 
     CHECK(eval("m:GetBehavior('InfoModifier').InfoValue") == "Before");
-    CHECK(eval("m:GetBehavior('bouncemodifier').BounceHeight") == "2.0");
-    CHECK(eval("m:GetBehavior('CopyModifier') == nil") == "true");
-    CHECK(eval("m:GetBehavior('MountFilter'):IsFiltered()") == "true");
+    CHECK(eval("m:GetBehavior('bouncemodifier').BounceHeight") == "2");
+    CHECK(eval("m:GetBehavior('CopyModifier') == nil") == "True");
+    CHECK(eval("m:GetBehavior('MountFilter'):IsFiltered()") == "True");
     world.mumble.mount = viewer::enumValue(viewer::Gw2Enum::Mount, "Skyscale");
-    CHECK(eval("m:GetBehavior('MountFilter'):IsFiltered()") == "false");
-    CHECK(eval("m:GetBehavior('AchievementFilter') == nil") == "true");
-    CHECK(eval("m.ResetLength") == "30.0");
-    CHECK(eval("m.Focused") == "false");
+    CHECK(eval("m:GetBehavior('MountFilter'):IsFiltered()") == "False");
+    CHECK(eval("m:GetBehavior('AchievementFilter') == nil") == "True");
+    CHECK(eval("m.ResetLength") == "30");
+    CHECK(eval("m.Focused") == "False");
 
     // Focused, then the script changes what it says: the screen follows.
     world.standAt(0);
     world.tick();
-    CHECK(eval("m.Focused") == "true");
+    CHECK(eval("m.Focused") == "True");
     CHECK(world.screen.info == std::vector<std::string>{"Before"});
     eval("(function() m:GetBehavior('InfoModifier').InfoValue = 'After' end)()");
     world.tick();

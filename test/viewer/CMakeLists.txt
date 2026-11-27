@@ -12,3 +12,6 @@ target_link_libraries(markus_viewer_test PRIVATE
 )
 
 catch_discover_tests(markus_viewer_test)
+
+# The NeoLua oracle's cases and what it wrote for them: see lua_parity_test.cpp.
+target_compile_definitions(markus_viewer_test PRIVATE MARKUS_LUA_PARITY_DIR="${CMAKE_CURRENT_SOURCE_DIR}/lua_parity")

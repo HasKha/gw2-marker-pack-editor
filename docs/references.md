@@ -43,7 +43,7 @@ What else defines the API scripts are written against:
 | What | Where | Read for |
 |---|---|---|
 | **Blish HUD** | `github.com/blish-hud/Blish-HUD` — `Blish HUD/GameServices/Gw2MumbleService.cs`, `Gw2Mumble/` | every `Mumble.*` member: scripts get Blish HUD's service, so its names, units and types are the API, not MumbleLink's. `GraphicsService.cs` (`GetScaleRatio`) for the 0.897 Pathing's map corrects by |
-| **NeoLua** | `github.com/neolithos/neolua` | how a .NET object behaves in Lua: call styles, conversions, `Int32`/`Float` arithmetic |
+| **NeoLua** | `github.com/neolithos/neolua` | how a .NET object behaves in Lua: call styles, conversions, `Int32`/`Float` arithmetic. Pathing ships the 1.3.20-beta.1 package (its `packages.config`), which has no tag; the repository's default branch already fixes some of its bugs (`select`, #198). **What NeoLua does is settled by running it**: `scripts/neolua_oracle` runs that package, and wins over reading the source ([testing.md](testing.md#the-neolua-oracle)) |
 | **Gw2Sharp** | `github.com/Archomeda/Gw2Sharp` — `Gw2Sharp/Models/` | the enum names `Mumble.*` returns as strings, and their numbers |
 | **Cronos** | `github.com/HangfireIO/Cronos` — `src/Cronos/CronExpression.cs` | the `schedule` filter's cron expressions |
 | **MonoGame 3.8.0.1641** | `github.com/MonoGame/MonoGame` — `Vector3.cs`, `Color.cs`, `GameTime.cs` | the value types scripts hold |
