@@ -7,7 +7,7 @@ project(Markus)
 # that disagrees with these, and reads them with a regex: keep each a plain number on its own line
 # (docs/releasing.md).
 set(VERSION_MAJOR 2)
-set(VERSION_MINOR 7)
+set(VERSION_MINOR 8)
 set(VERSION_BUILD 0)
 
 add_compile_definitions(
