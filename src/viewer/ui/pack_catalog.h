@@ -37,9 +37,9 @@ Listing list(const catalog::Library& library, const std::vector<catalog::LocalPa
 
 // What the player asked for, and of which row.
 struct Action {
-    enum class Kind { Download, Delete, KeepUpdated, OpenPage };
+    enum class Kind { Download, Delete, KeepUpdated, OpenPage, OpenFolder };
     Kind kind = Kind::Download;
-    const Row* row = nullptr;
+    const Row* row = nullptr; // none for OpenFolder, which is the window's, not a row's
     bool value = false; // KeepUpdated's new value
 };
 

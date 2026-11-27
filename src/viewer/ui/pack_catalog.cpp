@@ -236,6 +236,14 @@ draw(View* view, const std::vector<Row>& rows, const std::string& library_status
         ImGui::SetNextItemWidth(-1.0f);
         ImGui::InputTextWithHint("##filter", "Filter by name, author or category", &view->filter);
 
+        // On the tabs' row, at its right end: drawn first, then the cursor goes back for the tab
+        // bar, whose tabs stay at the left and never reach it. A tab is a frame high, as it is.
+        const ImVec2 tabs_start = ImGui::GetCursorPos();
+        const std::string open_folder = fonts::label(ICON_FA_FOLDER_OPEN, "Open Marker Pack Folder");
+        ImGui::SetCursorPosX(tabs_start.x + ImGui::GetContentRegionAvail().x - style::buttonWidth({open_folder.c_str()}));
+        if (ImGui::SmallButton(open_folder.c_str())) actions.push_back(Action{Action::Kind::OpenFolder});
+        ImGui::SetCursorPos(tabs_start);
+
         if (ImGui::BeginTabBar("##tabs")) {
             // The tab's ID after ###, so it stays selected as its count changes.
             const size_t installed = std::count_if(rows.begin(), rows.end(), [](const Row& row) { return row.local != nullptr; });

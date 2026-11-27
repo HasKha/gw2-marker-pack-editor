@@ -546,14 +546,15 @@ void Session::drawCatalog() {
     bool retry = false;
     for (const ui::pack_catalog::Action& action :
          ui::pack_catalog::draw(&catalog_view_, listing.rows, listing.status, listing.failed, &retry, &windows_.catalog)) {
-        const ui::pack_catalog::Row& row = *action.row;
+        const ui::pack_catalog::Row* row = action.row;
         switch (action.kind) {
-        case ui::pack_catalog::Action::Kind::Download: library_.downloads().start(*row.package, pack_folder_.folder()); break;
+        case ui::pack_catalog::Action::Kind::Download: library_.downloads().start(*row->package, pack_folder_.folder()); break;
         case ui::pack_catalog::Action::Kind::Delete:
-            if (row.local) pack_folder_.remove(&installed_, row.local->path);
+            if (row->local) pack_folder_.remove(&installed_, row->local->path);
             break;
-        case ui::pack_catalog::Action::Kind::KeepUpdated: library_.setKeepUpdated(row.package->name, action.value); break;
-        case ui::pack_catalog::Action::Kind::OpenPage: desktop::openInBrowser(row.package->info); break;
+        case ui::pack_catalog::Action::Kind::KeepUpdated: library_.setKeepUpdated(row->package->name, action.value); break;
+        case ui::pack_catalog::Action::Kind::OpenPage: desktop::openInBrowser(row->package->info); break;
+        case ui::pack_catalog::Action::Kind::OpenFolder: desktop::openFolder(pack_folder_.folder()); break;
         }
     }
     if (retry) library_.requestList();
