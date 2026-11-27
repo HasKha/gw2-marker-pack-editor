@@ -44,6 +44,11 @@ struct Settings {
     float info_x = 270.0f; // its top-left corner, in screen pixels
     float info_y = 180.0f;
     bool info_movable = true; // dragged by the mouse, which it then takes from the game
+    // Ours: the interact gear's top-left corner, in screen pixels. The default is where Pathing's
+    // SmallInteract is on a 1920×1080 screen: AdvancedDefaults' InteractGearXOffset and YOffset,
+    // 0.62 and 0.58 of it.
+    float gear_x = 1190.0f;
+    float gear_y = 626.0f;
 
     // Pathing's pack settings for the world, as WorldOptions takes them.
     // Where the menu is: in Nexus's own right-click menu, and behind an icon of ours in Nexus's

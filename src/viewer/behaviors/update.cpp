@@ -178,7 +178,8 @@ public:
         if (b.auto_trigger) interact(index, true);
 
         if (live_map.markers[index].behavior.filtered && host.options.show_hidden) {
-            host.screen->prompt = Screen::Prompt{index, filterReason(live_map.markers[index]) + kUnhideSuffix, true};
+            host.screen->prompt =
+                Screen::Prompt{index, filterReason(live_map.markers[index]) + kUnhideSuffix, true, std::nullopt, frame.seconds};
         }
     }
 
@@ -265,7 +266,7 @@ private:
     // SmallInteract.ShowInteract: not for a hidden marker, whose own prompt is the unhide one.
     void prompt(size_t index, std::string text, std::optional<int> achievement = std::nullopt) {
         if (live_map.markers[index].behavior.filtered) return;
-        host.screen->prompt = Screen::Prompt{index, std::move(text), false, achievement};
+        host.screen->prompt = Screen::Prompt{index, std::move(text), false, achievement, frame.seconds};
     }
 
     void showInfo(const std::string& text, EntityState* state) {
@@ -354,6 +355,12 @@ void Screen::removeInfo(const std::string& text) {
 
 void update(runtime::LiveMap* live, const std::vector<char>& visible, const Host& host, const Frame& frame) {
     Runner runner(live, host, frame);
+
+    // SmallInteract.DoUpdate's subtle timer, which it runs whether or not the gear shows.
+    if (frame.mumble->player_position != host.screen->moved_from || frame.mumble->is_in_combat) {
+        host.screen->moved_from = frame.mumble->player_position;
+        host.screen->moved_at = frame.seconds;
+    }
 
     // By index throughout, and the size read every time: scripts called from here may add
     // markers, which run this same frame.

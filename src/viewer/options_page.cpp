@@ -72,6 +72,23 @@ bool dpiScalingCombo(settings::Settings* settings) {
     return changed;
 }
 
+// A place on screen, `x` and `y` on one line, in the range settings.cpp clamps them to. Two
+// members rather than an array, so through a copy. Its ID is the setting's, so several can share
+// a section and the label.
+bool positionField(float* x, float* y, const char* tooltip) {
+    float position[2] = {*x, *y};
+    ImGui::PushID(x);
+    ImGui::SetNextItemWidth(ImGui::GetFontSize() * kFieldWidthEms);
+    const bool changed = ImGui::DragFloat2("Position", position, 1.0f, 0.0f, 8000.0f, "%.0f", ImGuiSliderFlags_AlwaysClamp);
+    if (changed) {
+        *x = position[0];
+        *y = position[1];
+    }
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tooltip);
+    ImGui::PopID();
+    return changed;
+}
+
 // The settings one map has of its own, under its name.
 bool drawOneMap(const char* icon, const char* name, int* markers, int* trails, float* opacity) {
     ImGui::PushID(name);
@@ -338,24 +355,28 @@ void Session::drawOptionsPage() {
         if (ImGui::IsItemHovered())
             ImGui::SetTooltip("Interact with a faded marker to bring it back. Turns itself off when the game restarts.");
         ui::style::endSubsection();
-
-        ui::style::beginSubsection(ICON_FA_MESSAGE, "On-Screen Text");
-        changed |= ImGui::Checkbox("Show what interacting does", &persisted.show_interact_prompt);
-        if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("A prompt near a marker you can interact with, saying what your Interact key will do.");
-        ui::style::endSubsection();
         if (changed) saveSettings();
         ImGui::TreePop();
     }
 
-    // The box a marker's info text shows in. Its size applies a moment after it is changed, once
-    // the font is built at it (fonts::pushOverlay).
+    // What markers put on screen near you, each under a note saying which it is: the box of a
+    // marker's info text, whose size applies a moment after it is changed, once the font is built
+    // at it (fonts::pushOverlay); and the interact gear.
     if (ui::style::section("popups", ICON_FA_MESSAGE, "Popup Messages")) {
+        const auto note = [](const char* text) {
+            ImGui::PushStyleColor(ImGuiCol_Text, ui::style::muted());
+            ImGui::TextWrapped("%s", text);
+            ImGui::PopStyleColor();
+        };
+
+        ui::style::beginSubsection(ICON_FA_MESSAGE, "Info Text");
+        note(
+            "A box of text some markers show while you are near them, and pack scripts show too. It goes when you walk away, or "
+            "with its X or Escape.");
         // In settings::InfoDisplay's order.
         static constexpr const char* kInfoDisplays[] = {"Shown", "Shown without background", "Hidden"};
         ImGui::SetNextItemWidth(ImGui::GetFontSize() * kFieldWidthEms);
         bool changed = ImGui::Combo("Marker info text", &persisted.info_display, kInfoDisplays, IM_ARRAYSIZE(kInfoDisplays));
-        if (ImGui::IsItemHovered()) ImGui::SetTooltip("Text some markers show on screen while you are near them.");
         const auto display = static_cast<settings::InfoDisplay>(persisted.info_display);
 
         // Each its own beginDisabled: they do not nest.
@@ -373,15 +394,8 @@ void Session::drawOptionsPage() {
         ImGui::SetNextItemWidth(ImGui::GetFontSize() * kFieldWidthEms);
         changed |= ImGui::SliderFloat("Margin", &persisted.info_margin, 0.0f, 200.0f, "%.0f px", ImGuiSliderFlags_AlwaysClamp);
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("Space between the text and the edges of its box.");
-        // Two members, not an array, so through a copy.
-        float position[2] = {persisted.info_x, persisted.info_y};
-        ImGui::SetNextItemWidth(ImGui::GetFontSize() * kFieldWidthEms);
-        if (ImGui::DragFloat2("Position", position, 1.0f, 0.0f, 8000.0f, "%.0f", ImGuiSliderFlags_AlwaysClamp)) {
-            persisted.info_x = position[0];
-            persisted.info_y = position[1];
-            changed = true;
-        }
-        if (ImGui::IsItemHovered()) ImGui::SetTooltip("The box's top-left corner, in pixels from the top-left of the screen.");
+        changed |=
+            positionField(&persisted.info_x, &persisted.info_y, "The box's top-left corner, in pixels from the top-left of the screen.");
         changed |= ImGui::Checkbox("Can be moved", &persisted.info_movable);
         if (ImGui::IsItemHovered()) {
             ImGui::SetTooltip(
@@ -389,6 +403,18 @@ void Session::drawOptionsPage() {
                 "While on, clicks on a message go to it rather than to the game.");
         }
         ui::style::endDisabled();
+        ui::style::endSubsection();
+
+        ui::style::beginSubsection(ICON_FA_GEAR, "Interact Gear");
+        note(
+            "A gear near the middle of the screen when you are at a marker you can interact with. Point at it to see what your "
+            "Interact key will do there; click it or press the key to do it.");
+        changed |= ImGui::Checkbox("Show the interact gear", &persisted.show_interact_prompt);
+        ui::style::beginDisabled(!persisted.show_interact_prompt);
+        changed |=
+            positionField(&persisted.gear_x, &persisted.gear_y, "The gear's top-left corner, in pixels from the top-left of the screen.");
+        ui::style::endDisabled();
+        ui::style::endSubsection();
         if (changed) saveSettings();
         ImGui::TreePop();
     }

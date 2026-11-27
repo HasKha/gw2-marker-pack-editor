@@ -243,6 +243,21 @@ TEST_CASE("the info box starts near Pathing's, and how it looks and where it is 
     CHECK_FALSE(loaded.info_movable);
 }
 
+TEST_CASE("the interact gear starts at Pathing's place on a 1080p screen, and where it is is kept", "[viewer][settings]") {
+    const corpus::TempDir temp("settings_gear");
+    const viewer::settings::Settings defaults = viewer::settings::load(temp.path());
+    CHECK(defaults.gear_x == 1190.0f);
+    CHECK(defaults.gear_y == 626.0f);
+
+    viewer::settings::Settings settings;
+    settings.gear_x = 40.0f;
+    settings.gear_y = 9000.0f; // past any screen: brought back into the range
+    REQUIRE(viewer::settings::save(temp.path(), settings));
+    const viewer::settings::Settings loaded = viewer::settings::load(temp.path());
+    CHECK(loaded.gear_x == 40.0f);
+    CHECK(loaded.gear_y == 8000.0f);
+}
+
 TEST_CASE("a hand-edited info background is clamped, or ignored when it is not four numbers", "[viewer][settings]") {
     const corpus::TempDir temp("settings_info_background");
     const std::array<float, 4> defaults = viewer::settings::Settings{}.info_background;

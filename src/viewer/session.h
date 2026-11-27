@@ -10,6 +10,7 @@
 #include <memory>
 #include <optional>
 #include <set>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -178,6 +179,7 @@ private:
     void takeFontDevice();
     float uiScale();
     bool inGameplay() const;
+    ImTextureID gameIcon(const char* id, std::span<const unsigned char> png);
     ImTextureID aboveBelowImage(bool above);
     WorldOptions worldOptions();
     Maps::Frame mapFrame(const TextureLookup& texture);

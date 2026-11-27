@@ -65,12 +65,14 @@ constexpr Field<float> kFloats[] = {
     // From a few times our usual work to a frame at 10 fps.
     {"slow_frame_ms", &Settings::slow_frame_ms, 1.0f, 100.0f},
     // Ours, as the options page's sliders take them. The text may go below the 20 px floor
-    // (docs/code_style.md) by the player's choice, never by default; the place anywhere on a
-    // screen up to 8K, as interaction keeps the box on the screen it is drawn on.
+    // (docs/code_style.md) by the player's choice, never by default; the box and the gear anywhere
+    // on a screen up to 8K, as interaction keeps them on the screen they are drawn on.
     {"info_text_pixels", &Settings::info_text_pixels, 10.0f, 64.0f},
     {"info_margin", &Settings::info_margin, 0.0f, 200.0f},
     {"info_x", &Settings::info_x, 0.0f, 8000.0f},
     {"info_y", &Settings::info_y, 0.0f, 8000.0f},
+    {"gear_x", &Settings::gear_x, 0.0f, 8000.0f},
+    {"gear_y", &Settings::gear_y, 0.0f, 8000.0f},
 };
 
 // The info box's background as saved: [r, g, b, a].

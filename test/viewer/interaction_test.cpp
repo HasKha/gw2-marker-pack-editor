@@ -40,7 +40,7 @@ public:
         io.MousePos = mouse;
         io.MouseDown[0] = down;
         ImGui::NewFrame();
-        const viewer::ui::interaction::Drawn drawn = viewer::ui::interaction::draw(&screen, &settings, "F", nullptr);
+        const viewer::ui::interaction::Drawn drawn = viewer::ui::interaction::draw(&screen, &settings, 1.0f, nullptr, "F", nullptr);
         ImGui::Render();
         return drawn;
     }
@@ -122,6 +122,40 @@ TEST_CASE("a movable info window is dragged to a place the settings keep, its X 
     frames.run(centre(close));
     CHECK(frames.screen.info_closed);
     CHECK(frames.settings.info_x == Approx(start.x + 100.0f).margin(1.0f));
+}
+
+TEST_CASE("the prompt is a gear whose text shows only while it is hovered, and a click interacts", "[interaction]") {
+    // Pathing's SmallInteract: before, the text was always out beside it.
+    InfoFrames frames;
+    frames.screen.info.clear();
+    frames.screen.prompt = viewer::behaviors::Screen::Prompt{0, "Will trigger a script {0}"};
+    frames.settings.show_interact_prompt = true;
+    const auto tooltipShown = [] {
+        const ImGuiWindow* tooltip = ImGui::FindWindowByName("##Tooltip_00");
+        return tooltip && tooltip->Active;
+    };
+
+    // 64 of Blish HUD's pixels square, by default at SmallInteract's place on this 1920×1080 screen.
+    frames.run(ImVec2(0.0f, 0.0f));
+    frames.run(ImVec2(0.0f, 0.0f));
+    const ImGuiWindow* gear = ImGui::FindWindowByName("##marker_prompt");
+    REQUIRE(gear);
+    CHECK(gear->Pos.x == Approx(1920.0f * 0.62f).margin(1.0f));
+    CHECK(gear->Pos.y == Approx(1080.0f * 0.58f).margin(1.0f));
+    CHECK(gear->Size.x == Approx(64.0f * 0.897f).margin(1.0f));
+    CHECK_FALSE(tooltipShown());
+
+    frames.run(centre(gear));
+    CHECK(tooltipShown());
+    CHECK_FALSE(frames.run(centre(gear), true).prompt_clicked);
+    CHECK(frames.run(centre(gear)).prompt_clicked);
+
+    // Wherever the settings put it, and kept on the screen.
+    frames.settings.gear_x = 100.0f;
+    frames.settings.gear_y = 5000.0f;
+    frames.run(ImVec2(0.0f, 0.0f));
+    CHECK(gear->Pos.x == Approx(100.0f).margin(1.0f));
+    CHECK(gear->Pos.y + gear->Size.y == Approx(1080.0f).margin(1.0f));
 }
 
 TEST_CASE("an info window saved beyond the screen is drawn at its edge", "[interaction]") {

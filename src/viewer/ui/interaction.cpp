@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 
 #include "viewer/ui/achievement_tooltip.h"
 #include "viewer/ui/fonts.h"
@@ -17,9 +18,12 @@ constexpr ImGuiWindowFlags kOverlayFlags = ImGuiWindowFlags_NoDecoration | ImGui
                                            ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav |
                                            ImGuiWindowFlags_NoMove;
 
-// SmallInteract's place on screen: AdvancedDefaults' InteractGearXOffset and YOffset.
-constexpr float kPromptX = 0.62f;
-constexpr float kPromptY = 0.58f;
+// A window of `size` whose top-left corner is saved at (`x`, `y`), kept on the screen whatever
+// that place: a smaller resolution than the one it was set at may leave it beyond the edge.
+ImVec2 onScreen(float x, float y, ImVec2 size) {
+    const ImVec2 display = ImGui::GetIO().DisplaySize;
+    return ImVec2(std::clamp(x, 0.0f, std::max(0.0f, display.x - size.x)), std::clamp(y, 0.0f, std::max(0.0f, display.y - size.y)));
+}
 
 // Pathing's InfoWindow over the world, in a box as `settings` say. The text wraps at the width of
 // Pathing's label and the X is in proportion to it, so the box keeps its shape whatever size the
@@ -41,15 +45,11 @@ bool drawInfo(behaviors::Screen* screen, settings::Settings* settings) {
     const float close = bare ? 0.0f : kCloseSize * unit;
     const float wrap = kLabelWidth * unit;
 
-    // The box around the text, kept on the screen whatever its saved place: a smaller resolution
-    // may leave that beyond it.
+    // The box around the text.
     fonts::pushOverlay(text);
     const ImVec2 label = ImGui::CalcTextSize(screen->info.back().c_str(), nullptr, false, wrap);
     const ImVec2 size(margin + wrap + close + margin, std::max(margin + label.y + margin, margin + close));
-    const ImVec2 display = ImGui::GetIO().DisplaySize;
-    const ImVec2 at(
-        std::clamp(settings->info_x, 0.0f, std::max(0.0f, display.x - size.x)),
-        std::clamp(settings->info_y, 0.0f, std::max(0.0f, display.y - size.y)));
+    const ImVec2 at = onScreen(settings->info_x, settings->info_y, size);
 
     // Over the world: unless it can be moved, what is behind it takes the clicks, as Pathing's lets
     // them through, and only the close button, a window of its own, takes any. Never brought in
@@ -108,11 +108,90 @@ bool drawInfo(behaviors::Screen* screen, settings::Settings* settings) {
     return moved;
 }
 
+// Pathing's SmallInteract: the game's gear, tinted, what it does a tooltip over it, at the place
+// `settings` say. True when it was clicked, which interacts as the key does.
+bool drawGear(
+    const behaviors::Screen& screen,
+    const settings::Settings& settings,
+    float ui_scale,
+    ImTextureID gear,
+    const std::string& key_name,
+    achievements::Catalog* achievements) {
+    // One of Blish HUD's pixels at the Normal interface size, in UI pixels: its GetScaleRatio
+    // (see map.h). The gear is 64 of them square.
+    constexpr float kBlishPixel = 0.897f;
+    constexpr float kGearSize = 64.0f;
+    // From SmallInteract.Paint: faint while the player moves, near whole a moment after they
+    // stop, a little more under the mouse; and one turn as it shows, at 20 radians a second.
+    constexpr double kSubtleDelay = 0.103;
+    constexpr double kSubtleDamper = 0.05;
+    constexpr float kTurnRate = 20.0f;
+    constexpr float kFullTurn = 6.2831853f;
+
+    const behaviors::Screen::Prompt& prompt = *screen.prompt;
+    const float size = kGearSize * ui_scale * kBlishPixel;
+    bool clicked = false;
+    ImGui::SetNextWindowPos(onScreen(settings.gear_x, settings.gear_y, ImVec2(size, size)), ImGuiCond_Always);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
+    if (ImGui::Begin("##marker_prompt", nullptr, kOverlayFlags | ImGuiWindowFlags_NoBackground)) {
+        clicked = ImGui::InvisibleButton("gear", ImVec2(size, size));
+        const bool hovered = ImGui::IsItemHovered();
+
+        // Null until Nexus has made the texture: the gear is there to hover and click meanwhile.
+        if (gear) {
+            const double now = ImGui::GetTime();
+            const double still = std::max(now - screen.moved_at, kSubtleDamper);
+            const float opacity = (hovered ? 0.4f : 0.3f) + static_cast<float>(std::min((still / kSubtleDelay - kSubtleDamper) * 0.6, 0.6));
+            const float turn = std::min(static_cast<float>(now - prompt.shown_at) * kTurnRate, kFullTurn);
+            ImVec4 tint = prompt.unhides ? style::UNHIDE : style::PROMPT;
+            tint.w *= std::min(opacity, 1.0f);
+
+            // Turned about its centre: each corner of the square, rotated.
+            const ImVec2 min = ImGui::GetItemRectMin();
+            const ImVec2 centre(min.x + size * 0.5f, min.y + size * 0.5f);
+            const float c = std::cos(turn) * size * 0.5f;
+            const float s = std::sin(turn) * size * 0.5f;
+            const auto corner = [&](float x, float y) { return ImVec2(centre.x + x * c - y * s, centre.y + x * s + y * c); };
+            ImGui::GetWindowDrawList()->AddImageQuad(
+                gear,
+                corner(-1.0f, -1.0f),
+                corner(1.0f, -1.0f),
+                corner(1.0f, 1.0f),
+                corner(-1.0f, 1.0f),
+                ImVec2(0.0f, 0.0f),
+                ImVec2(1.0f, 0.0f),
+                ImVec2(1.0f, 1.0f),
+                ImVec2(0.0f, 1.0f),
+                ImGui::GetColorU32(tint));
+        }
+
+        if (hovered) {
+            ImGui::BeginTooltip();
+            // Nothing until the details are in: Pathing's "Loading achievement details..." would
+            // stand for good while the API is down.
+            if (const achievements::Details* details =
+                    prompt.achievement && achievements ? achievements->find(*prompt.achievement) : nullptr) {
+                achievement_tooltip::draw(*details, -1);
+                ImGui::Separator();
+            }
+            ImGui::TextUnformatted(behaviors::formatMessage(prompt.text, "[" + key_name + "]").c_str());
+            ImGui::EndTooltip();
+        }
+    }
+    ImGui::End();
+    ImGui::PopStyleVar();
+    return clicked;
+}
+
 } // namespace
 
-Drawn draw(behaviors::Screen* screen, settings::Settings* settings, const std::string& key_name, achievements::Catalog* achievements) {
-    const ImVec2 display = ImGui::GetIO().DisplaySize;
-
+Drawn draw(
+    behaviors::Screen* screen,
+    settings::Settings* settings,
+    float ui_scale,
+    ImTextureID gear,
+    const std::string& key_name,
+    achievements::Catalog* achievements) {
     Drawn drawn;
     if (static_cast<settings::InfoDisplay>(settings->info_display) != settings::InfoDisplay::Never && !screen->info_closed &&
         !screen->info.empty() && !screen->info.back().empty()) {
@@ -120,22 +199,7 @@ Drawn draw(behaviors::Screen* screen, settings::Settings* settings, const std::s
     }
 
     if (!settings->show_interact_prompt || !screen->prompt) return drawn;
-    ImGui::SetNextWindowPos(ImVec2(display.x * kPromptX, display.y * kPromptY), ImGuiCond_Always);
-    ImGui::SetNextWindowBgAlpha(0.6f);
-    if (ImGui::Begin("##marker_prompt", nullptr, kOverlayFlags)) {
-        // Nothing until the details are in: Pathing's "Loading achievement details..." would
-        // stand for good while the API is down.
-        if (const achievements::Details* details =
-                screen->prompt->achievement && achievements ? achievements->find(*screen->prompt->achievement) : nullptr) {
-            achievement_tooltip::draw(*details, -1);
-            ImGui::Separator();
-        }
-        const std::string text = behaviors::formatMessage(screen->prompt->text, "[" + key_name + "]");
-        ImGui::PushStyleColor(ImGuiCol_Text, screen->prompt->unhides ? style::UNHIDE : style::PROMPT);
-        drawn.prompt_clicked = ImGui::Selectable(text.c_str());
-        ImGui::PopStyleColor();
-    }
-    ImGui::End();
+    drawn.prompt_clicked = drawGear(*screen, *settings, ui_scale, gear, key_name, achievements);
     return drawn;
 }
 

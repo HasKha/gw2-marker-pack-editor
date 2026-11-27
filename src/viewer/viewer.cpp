@@ -421,15 +421,18 @@ bool Session::inGameplay() const {
     return !nexus_link || nexus_link->IsGameplay;
 }
 
-// The above or below image the maps draw on an icon's corner, which the options page shows too.
-// Nexus returns the texture it already made for an identifier, so asking every frame decodes
-// each once; null until it is ready.
-ImTextureID Session::aboveBelowImage(bool above) {
-    const char* id = above ? "TEX_MarkerPackEditor_Above" : "TEX_MarkerPackEditor_Below";
-    const unsigned char* bytes = above ? ui::map_icon_data::kAbove : ui::map_icon_data::kBelow;
-    const size_t size = above ? sizeof(ui::map_icon_data::kAbove) : sizeof(ui::map_icon_data::kBelow);
-    const Texture* texture = api->Textures.GetOrCreateFromMemory(id, const_cast<unsigned char*>(bytes), size);
+// One of the game's icons compiled in (map_icon_data.h), as Nexus's texture `id`. Nexus returns
+// the texture it already made for an identifier, so asking every frame decodes each once; null
+// until it is ready.
+ImTextureID Session::gameIcon(const char* id, std::span<const unsigned char> png) {
+    const Texture* texture = api->Textures.GetOrCreateFromMemory(id, const_cast<unsigned char*>(png.data()), png.size());
     return texture ? static_cast<ImTextureID>(texture->Resource) : nullptr;
+}
+
+// The above or below image the maps draw on an icon's corner, which the options page shows too.
+ImTextureID Session::aboveBelowImage(bool above) {
+    return above ? gameIcon("TEX_MarkerPackEditor_Above", ui::map_icon_data::kAbove)
+                 : gameIcon("TEX_MarkerPackEditor_Below", ui::map_icon_data::kBelow);
 }
 
 // ── Present ─────────────────────────────────────────────────────────────────────
@@ -731,7 +734,13 @@ void Session::render() {
     refreshLiveMap(live_map.map_id);
 
     if (camera.valid && !camera.map_open) {
-        const ui::interaction::Drawn on_screen = ui::interaction::draw(&screen, &persisted, interact_key.name(), &achievement_details);
+        const ui::interaction::Drawn on_screen = ui::interaction::draw(
+            &screen,
+            &persisted,
+            uiScale(),
+            gameIcon("TEX_MarkerPackEditor_Gear", ui::map_icon_data::kGear),
+            interact_key.name(),
+            &achievement_details);
         if (on_screen.prompt_clicked) behaviors::interactWith(&live_map, screen.prompt->marker, behaviorHost(), behaviorFrame());
         if (on_screen.info_moved) saveSettings();
     }

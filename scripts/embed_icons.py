@@ -1,4 +1,4 @@
-"""Writes src/viewer/ui/map_icon_data.h: the game's icons the map draws, from assets/icons/, as PNG bytes.
+"""Writes src/viewer/ui/map_icon_data.h: the game's icons the viewer draws, from assets/icons/, as PNG bytes.
 
     uv run scripts/embed_icons.py
 
@@ -11,6 +11,7 @@ import os
 ICONS = (
     ("kAbove", "1130638.png", "a marker well above the player"),
     ("kBelow", "1130639.png", "a marker well below the player"),
+    ("kGear", "102390.png", "the interact prompt's gear, white to be tinted"),
 )
 
 

@@ -226,6 +226,31 @@ TEST_CASE("walking into range focuses a marker, and out of it lets go", "[behavi
     CHECK_FALSE(world.screen.prompt);
 }
 
+TEST_CASE("the gear knows when it was shown and when the player last moved", "[behaviors]") {
+    // What SmallInteract turns and fades it by.
+    Behaving world("behave_gear_times", {"copy=\"x\""});
+    world.standAt(1);
+    world.tick();
+    CHECK(world.screen.moved_at == 100.0);
+    CHECK_FALSE(world.screen.prompt);
+
+    world.seconds = 101.0;
+    world.standAt(0);
+    world.tick();
+    REQUIRE(world.screen.prompt);
+    CHECK(world.screen.prompt->shown_at == 101.0);
+    CHECK(world.screen.moved_at == 101.0);
+
+    // Standing still, the time stays; in combat it moves on as if walking.
+    world.seconds = 102.0;
+    world.tick();
+    CHECK(world.screen.moved_at == 101.0);
+    CHECK(world.screen.prompt->shown_at == 101.0); // still focused: not shown again
+    world.mumble.is_in_combat = true;
+    world.tick();
+    CHECK(world.screen.moved_at == 102.0);
+}
+
 TEST_CASE("info closed with its X stays closed until the info changes", "[behaviors]") {
     Behaving world("behave_info_closed", {"info=\"Near\"", "triggerrange=\"10\" info=\"Far\""});
     world.standAt(0);

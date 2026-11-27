@@ -49,6 +49,8 @@ struct Screen {
         bool unhides = false; // the prompt of a hidden marker, which interacting unhides
         // AchievementFilter's gear: the achievement whose details it shows, else none.
         std::optional<int> achievement;
+        // Frame seconds when it was put up, as ShowInteract times it: the gear turns once from here.
+        double shown_at = 0.0;
     };
 
     std::vector<std::string> info;
@@ -56,6 +58,11 @@ struct Screen {
     // until UpdateInfoText shows it again.
     bool info_closed = false;
     std::optional<Prompt> prompt;
+
+    // SmallInteract's subtle timer: the frame seconds when the player last moved or was in
+    // combat, from the position then. The gear is faint until a moment after.
+    double moved_at = 0.0;
+    glm::vec3 moved_from{0.0f};
 };
 
 // Everything behaviors act on. Owned by whoever owns the live map.
