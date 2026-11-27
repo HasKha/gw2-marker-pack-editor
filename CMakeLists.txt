@@ -3,7 +3,9 @@ project(Markus)
 
 # Keep in step with the release tag: Nexus compares the tag on GitHub against the version
 # compiled in here, and only offers an update when the tag is greater. Tags are
-# vMAJOR.MINOR.BUILD — its parser rejects a two-component version.
+# vMAJOR.MINOR.BUILD — its parser rejects a two-component version. CI refuses to release a tag
+# that disagrees with these, and reads them with a regex: keep each a plain number on its own line
+# (docs/releasing.md).
 set(VERSION_MAJOR 2)
 set(VERSION_MINOR 4)
 set(VERSION_BUILD 0)

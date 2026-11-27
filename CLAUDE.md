@@ -36,4 +36,5 @@ menu: open a pack, edit it in the world where it is drawn, save it back.
 | [format.md](docs/format.md) | writing any parsing, serialization or rendering code; what an attribute does |
 | [editor_plan.md](docs/editor_plan.md) | picking up editor work; finishing something on it |
 | [testing.md](docs/testing.md) | running the tests, adding one, pointing them at other packs; `markus_probe` |
+| [releasing.md](docs/releasing.md) | cutting a release; changing the CI workflow |
 | [references.md](docs/references.md) | dependencies; where a format fact was read, and which source wins when they disagree |

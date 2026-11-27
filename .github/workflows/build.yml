@@ -1,0 +1,92 @@
+# Builds Markus.dll and runs the tests on every push to main and every pull request; on a version tag,
+# also drafts the GitHub release with the DLL from this build attached. The process is
+# docs/releasing.md.
+name: build
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*.*.*"]
+  pull_request:
+  workflow_dispatch:
+
+# Two pushes to one branch build once: the older run is cancelled. A tag is never cancelled.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v5
+
+      # Nexus offers an update only when the release tag is greater than the version compiled into
+      # the DLL, so a tag that disagrees with CMakeLists.txt ships a DLL that offers itself again.
+      - name: Check the tag matches the version in CMakeLists.txt
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        run: |
+          $cmake = Get-Content CMakeLists.txt -Raw
+          $parts = 'MAJOR', 'MINOR', 'BUILD' | ForEach-Object {
+            if ($cmake -notmatch "set\(VERSION_$_ (\d+)\)") { throw "VERSION_$_ not found in CMakeLists.txt" }
+            $Matches[1]
+          }
+          $expected = 'v' + ($parts -join '.')
+          if ('${{ github.ref_name }}' -ne $expected) {
+            throw "Tag ${{ github.ref_name }} does not match CMakeLists.txt, which says $expected"
+          }
+
+      - name: Configure
+        run: cmake -S . -B build
+
+      - name: Build
+        run: cmake --build build --config Release --parallel
+
+      # The runner has no marker pack corpus. The cases that need one, rather than skip without
+      # it, all have "corpus" in their name; the rest skip their corpus parts and run.
+      - name: Test
+        run: ctest --test-dir build -C Release --output-on-failure --parallel 4 --exclude-regex corpus
+
+      - uses: actions/upload-artifact@v5
+        with:
+          name: Markus
+          path: bin/Release/Markus.dll
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write       # create the release and upload to it
+      id-token: write       # sign the provenance attestation
+      attestations: write
+    steps:
+      - uses: actions/download-artifact@v5
+        with:
+          name: Markus
+
+      # A signed record that this DLL came from this commit and this workflow, which anyone can
+      # check with `gh attestation verify Markus.dll --repo <owner>/<repo>`.
+      - uses: actions/attest-build-provenance@v3
+        with:
+          subject-path: Markus.dll
+
+      # A draft, so the notes are read and the release published by hand: publishing is what Nexus
+      # sees. A release already made for this tag on the website gets the DLL instead, replacing
+      # any already attached.
+      - name: Draft the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            gh release upload "$TAG" Markus.dll --clobber
+          else
+            gh release create "$TAG" Markus.dll --draft --verify-tag --title "$TAG" --generate-notes
+          fi

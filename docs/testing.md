@@ -37,7 +37,8 @@ configure time, plus the `gw2-markers` checkout as a folder source. `markus_corp
 | `MARKUS_TEST_FOLDER_PACK` | an unzipped pack, checked against a zip the test builds from it |
 
 **A missing pack skips with a reason; a missing corpus fails**, since a green run that tested nothing is
-worse than a red one.
+worse than a red one. CI has no corpus and excludes the cases that fail without one by name, so **a case
+that needs the whole corpus has "corpus" in its name** ([releasing.md](releasing.md#what-ci-does-not-test)).
 
 Two shapes matter: a hand-authored pack with comments throughout (the round-trip target: losing a comment is
 a bug), and `hero.blish.pack.zip`, large and already TmfLib `PackWriter` output.
