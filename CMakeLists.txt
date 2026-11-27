@@ -21,6 +21,11 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
+
+# CMAKE_FOLDER is the solution folder Visual Studio shows a target in, set on every target made
+# while it is set, those of a dependency's own CMakeLists.txt included: dependencies and tests
+# each get one, and our libraries and the addon stay at the top.
+set(CMAKE_FOLDER Dependencies)
 include(imgui)
 include(imguizmo)
 include(mumble)
@@ -36,6 +41,7 @@ include(rtapi)
 include(lua)
 include(iconfontcppheaders)
 include(stb)
+unset(CMAKE_FOLDER)
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${PROJECT_SOURCE_DIR}/bin/")
 
@@ -57,9 +63,11 @@ add_subdirectory(src/viewer)
 add_subdirectory(src/editor)
 add_subdirectory(src/addon)
 
+set(CMAKE_FOLDER Tests)
 add_subdirectory(test/corpus)
 add_subdirectory(test/probe)
 add_subdirectory(test/http)
 add_subdirectory(test/pack)
 add_subdirectory(test/viewer)
 add_subdirectory(test/editor)
+unset(CMAKE_FOLDER)
