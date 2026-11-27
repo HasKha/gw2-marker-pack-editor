@@ -35,6 +35,7 @@ constexpr Field<bool> kBools[] = {
     {"map_fade_far_trails", &Settings::map_fade_far_trails},
     {"map_tooltips", &Settings::map_tooltips},
     {"log_slow_frames", &Settings::log_slow_frames},
+    {"info_movable", &Settings::info_movable},
 };
 
 // With the range each is clamped to, so that a hand-edited file cannot name a choice that
@@ -63,7 +64,17 @@ constexpr Field<float> kFloats[] = {
     {"map_dpi_custom", &Settings::map_dpi_custom, 0.5f, 4.0f},
     // From a few times our usual work to a frame at 10 fps.
     {"slow_frame_ms", &Settings::slow_frame_ms, 1.0f, 100.0f},
+    // Ours, as the options page's sliders take them. The text may go below the 20 px floor
+    // (docs/code_style.md) by the player's choice, never by default; the place anywhere on a
+    // screen up to 8K, as interaction keeps the box on the screen it is drawn on.
+    {"info_text_pixels", &Settings::info_text_pixels, 10.0f, 64.0f},
+    {"info_margin", &Settings::info_margin, 0.0f, 200.0f},
+    {"info_x", &Settings::info_x, 0.0f, 8000.0f},
+    {"info_y", &Settings::info_y, 0.0f, 8000.0f},
 };
+
+// The info box's background as saved: [r, g, b, a].
+constexpr const char* kInfoBackground = "info_background";
 
 } // namespace
 
@@ -84,6 +95,14 @@ Settings load(const std::filesystem::path& folder) {
             settings.*field.member =
                 std::clamp(util::json_file::readFloat(*parsed, field.key, settings.*field.member), field.min, field.max);
         }
+        // Four numbers, each clamped to 0 to 1; anything else keeps the default.
+        if (const auto saved = parsed->find(kInfoBackground);
+            saved != parsed->end() && saved->is_array() && saved->size() == settings.info_background.size() &&
+            std::all_of(saved->begin(), saved->end(), [](const nlohmann::json& channel) { return channel.is_number(); })) {
+            for (size_t i = 0; i < settings.info_background.size(); ++i) {
+                settings.info_background[i] = std::clamp((*saved)[i].get<float>(), 0.0f, 1.0f);
+            }
+        }
         settings.api_key = util::json_file::readString(*parsed, "api_key");
     }
     return settings;
@@ -96,6 +115,7 @@ bool save(const std::filesystem::path& folder, const Settings& settings) {
     for (const Field<bool>& field : kBools) out[field.key] = settings.*field.member;
     for (const Field<int>& field : kInts) out[field.key] = settings.*field.member;
     for (const Field<float>& field : kFloats) out[field.key] = settings.*field.member;
+    out[kInfoBackground] = settings.info_background;
     out["api_key"] = settings.api_key;
     return util::json_file::write(folder / FILE_NAME, out);
 }

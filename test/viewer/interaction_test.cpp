@@ -1,5 +1,5 @@
 // What behaviors put on screen, drawn into ImGui frames with no device: the info window laid out as
-// Pathing's, under the mouse but for its close button.
+// the settings say, under the mouse but for its close button unless it can be dragged.
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
@@ -27,6 +27,7 @@ public:
         int height = 0;
         io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
         screen.info.push_back("Kill marsh drakes each time you WP here");
+        settings.show_interact_prompt = false;
     }
     ~InfoFrames() { ImGui::DestroyContext(context); }
 
@@ -34,16 +35,18 @@ public:
     InfoFrames& operator=(const InfoFrames&) = delete;
 
     // One frame with the mouse at `mouse`, its left button held when `down`.
-    void run(ImVec2 mouse, bool down = false) {
+    viewer::ui::interaction::Drawn run(ImVec2 mouse, bool down = false) {
         ImGuiIO& io = ImGui::GetIO();
         io.MousePos = mouse;
         io.MouseDown[0] = down;
         ImGui::NewFrame();
-        viewer::ui::interaction::draw(&screen, viewer::settings::InfoDisplay::Default, 1.0f, "F", false, nullptr);
+        const viewer::ui::interaction::Drawn drawn = viewer::ui::interaction::draw(&screen, &settings, "F", nullptr);
         ImGui::Render();
+        return drawn;
     }
 
     viewer::behaviors::Screen screen;
+    viewer::settings::Settings settings;
 
 private:
     ImGuiContext* context;
@@ -57,16 +60,18 @@ ImVec2 centre(const ImGuiWindow* window) {
 
 TEST_CASE("info is Pathing's window, larger, and lets the mouse through but for its X", "[interaction]") {
     InfoFrames frames;
+    frames.settings.info_movable = false;
     frames.run(ImVec2(0.0f, 0.0f));
     frames.run(ImVec2(0.0f, 0.0f));
 
-    // At Pathing's (300, 200) of Blish HUD's pixels; its 512 wide in proportion to text of 20
-    // pixels where Pathing's is 18; each to the whole pixel ImGui rounds a window to.
+    // At the place saved; Pathing's 350 of label and 32 of X in proportion to text of 20 pixels
+    // where Pathing's is 18, with a margin either side; each to the whole pixel ImGui rounds a
+    // window to.
     const ImGuiWindow* info = ImGui::FindWindowByName("##marker_info");
     REQUIRE(info);
-    CHECK(info->Pos.x == Approx(300.0f * 0.897f).margin(1.0f));
-    CHECK(info->Pos.y == Approx(200.0f * 0.897f).margin(1.0f));
-    CHECK(info->Size.x == Approx(512.0f * 20.0f / 18.0f).margin(1.0f));
+    CHECK(info->Pos.x == Approx(frames.settings.info_x).margin(1.0f));
+    CHECK(info->Pos.y == Approx(frames.settings.info_y).margin(1.0f));
+    CHECK(info->Size.x == Approx(2.0f * frames.settings.info_margin + (350.0f + 32.0f) * 20.0f / 18.0f).margin(1.0f));
 
     frames.run(centre(info));
     frames.run(centre(info));
@@ -81,4 +86,54 @@ TEST_CASE("info is Pathing's window, larger, and lets the mouse through but for 
     CHECK_FALSE(frames.screen.info_closed);
     frames.run(centre(close));
     CHECK(frames.screen.info_closed);
+}
+
+TEST_CASE("a movable info window is dragged to a place the settings keep, its X with it", "[interaction]") {
+    InfoFrames frames;
+    REQUIRE(frames.settings.info_movable); // by default
+    frames.run(ImVec2(0.0f, 0.0f));
+    frames.run(ImVec2(0.0f, 0.0f));
+    const ImGuiWindow* info = ImGui::FindWindowByName("##marker_info");
+    const ImGuiWindow* close = ImGui::FindWindowByName("##marker_info_close");
+    REQUIRE(info);
+    REQUIRE(close);
+    const ImVec2 start = info->Pos;
+    const ImVec2 close_start = close->Pos;
+
+    // Pressed in the box, moved 100 right and 50 down, let go: only the release says to save.
+    const ImVec2 grab = centre(info);
+    frames.run(grab);
+    CHECK_FALSE(frames.run(grab, true).info_moved);
+    CHECK(ImGui::GetIO().WantCaptureMouse);
+    CHECK_FALSE(frames.run(ImVec2(grab.x + 100.0f, grab.y + 50.0f), true).info_moved);
+    CHECK(frames.run(ImVec2(grab.x + 100.0f, grab.y + 50.0f)).info_moved);
+    CHECK(frames.settings.info_x == Approx(start.x + 100.0f).margin(1.0f));
+    CHECK(frames.settings.info_y == Approx(start.y + 50.0f).margin(1.0f));
+    CHECK_FALSE(frames.screen.info_closed);
+
+    frames.run(ImVec2(0.0f, 0.0f));
+    CHECK(info->Pos.x == Approx(start.x + 100.0f).margin(1.0f));
+    CHECK(close->Pos.x == Approx(close_start.x + 100.0f).margin(1.0f));
+    CHECK(close->Pos.y == Approx(close_start.y + 50.0f).margin(1.0f));
+
+    // The X over the box still closes it rather than dragging it.
+    frames.run(centre(close));
+    frames.run(centre(close), true);
+    frames.run(centre(close));
+    CHECK(frames.screen.info_closed);
+    CHECK(frames.settings.info_x == Approx(start.x + 100.0f).margin(1.0f));
+}
+
+TEST_CASE("an info window saved beyond the screen is drawn at its edge", "[interaction]") {
+    // As when the resolution is made smaller than the one it was placed at.
+    InfoFrames frames;
+    frames.settings.info_x = 5000.0f;
+    frames.settings.info_y = 5000.0f;
+    frames.run(ImVec2(0.0f, 0.0f));
+    frames.run(ImVec2(0.0f, 0.0f));
+    const ImGuiWindow* info = ImGui::FindWindowByName("##marker_info");
+    REQUIRE(info);
+    CHECK(info->Pos.x + info->Size.x == Approx(1920.0f).margin(1.0f));
+    CHECK(info->Pos.y + info->Size.y == Approx(1080.0f).margin(1.0f));
+    CHECK(frames.settings.info_x == 5000.0f); // its saved place stands until it is dragged
 }

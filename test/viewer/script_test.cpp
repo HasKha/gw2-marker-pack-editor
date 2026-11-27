@@ -8,8 +8,10 @@
 
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "corpus.h"
+#include "viewer/behaviors/update.h"
 #include "viewer/game/mumble.h"
 #include "viewer/live/runtime.h"
 #include "viewer/packs/registry.h"
@@ -58,6 +60,9 @@ struct Scripted {
             clipboard = text;
             return true;
         };
+        // As the viewer does: onto the stack marker info is on.
+        host.show_info = [this](const std::string& text) { screen.addInfo(text); };
+        host.hide_info = [this](const std::string& text) { screen.removeInfo(text); };
         host.call_budget = std::chrono::milliseconds(50);
         engine = std::make_unique<viewer::script::Engine>(host);
     }
@@ -80,6 +85,7 @@ struct Scripted {
     viewer::store::KeyValues storage;
     viewer::MumbleState mumble;
     std::string clipboard;
+    viewer::behaviors::Screen screen;
     std::unique_ptr<viewer::script::Engine> engine;
 };
 
@@ -400,6 +406,21 @@ TEST_CASE("Debug, print and User reach the console and the host", "[viewer][scri
     CHECK(s.engine->watches().at("w") == "42");
     CHECK(s.clipboard == "text");
     CHECK(s.eval("copied") == "True");
+}
+
+TEST_CASE("User.ShowInfo shows on the marker info's stack, and HideInfo takes it off by its key", "[viewer][script][regression]") {
+    // Both went into a list of the engine's own that nothing drew.
+    Scripted s("script_info");
+    s.screen.addInfo("From a marker");
+    s.screen.info_closed = true;
+    CHECK(s.run(R"(key = User.ShowInfo("From a script"))"));
+    CHECK(s.screen.info == std::vector<std::string>{"From a marker", "From a script"});
+    CHECK_FALSE(s.screen.info_closed); // shown again, as AddInfoString does
+    CHECK(s.eval("key") == "From a script");
+
+    CHECK(s.run("User.HideInfo(key) User.HideInfo('never shown')"));
+    CHECK(s.screen.info == std::vector<std::string>{"From a marker"});
+    CHECK(s.errors() == 0);
 }
 
 TEST_CASE("the collector keeps up with scripts that leave garbage every frame", "[viewer][script][regression]") {

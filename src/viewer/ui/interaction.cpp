@@ -3,6 +3,7 @@
 #include <imgui.h>
 
 #include <algorithm>
+#include <array>
 
 #include "viewer/ui/achievement_tooltip.h"
 #include "viewer/ui/fonts.h"
@@ -20,64 +21,75 @@ constexpr ImGuiWindowFlags kOverlayFlags = ImGuiWindowFlags_NoDecoration | ImGui
 constexpr float kPromptX = 0.62f;
 constexpr float kPromptY = 0.58f;
 
-// Pathing's InfoWindow, laid out over the world. Its text is DefaultFont18, 18 of Blish HUD's
-// pixels, and everything else is in proportion to it, so the window is the same shape whatever
-// size the text comes out.
-void drawInfo(behaviors::Screen* screen, settings::InfoDisplay info, float ui_scale) {
-    // One of Blish HUD's pixels at the Normal interface size, in UI pixels: its GetScaleRatio (see
-    // map.h).
-    constexpr float kBlishPixel = 0.897f;
-    // Pathing's own font size, and the floor for text drawn over the world (docs/code_style.md),
-    // which is larger than Pathing's at the Normal interface size.
+// Pathing's InfoWindow over the world, in a box as `settings` say. The text wraps at the width of
+// Pathing's label and the X is in proportion to it, so the box keeps its shape whatever size the
+// text is. True when the box was let go after a drag.
+bool drawInfo(behaviors::Screen* screen, settings::Settings* settings) {
+    // From InfoWindow, in pixels of Pathing's text, DefaultFont18: its label 350 wide, its close
+    // button 32 square.
     constexpr float kPathingTextPixels = 18.0f;
-    constexpr float kLeastTextPixels = 20.0f;
-    // In Pathing's pixels, from UiStates.InitInfo and InfoWindow: placed at AdvancedDefaults'
-    // InfoWindow offsets, 512 wide, its label 350 wide at (70, 60) with 70 below it, and the close
-    // button 32 square, 64 from the right and 45 down.
-    constexpr float kLeft = 300.0f;
-    constexpr float kTop = 200.0f;
-    constexpr float kWidth = 512.0f;
-    constexpr float kLabelLeft = 70.0f;
-    constexpr float kLabelTop = 60.0f;
     constexpr float kLabelWidth = 350.0f;
-    constexpr float kBelowLabel = 70.0f;
-    constexpr float kCloseRight = 64.0f;
-    constexpr float kCloseTop = 45.0f;
     constexpr float kCloseSize = 32.0f;
 
-    const float blish = ui_scale * kBlishPixel;
-    const float text = std::max(kPathingTextPixels * blish, kLeastTextPixels);
-    const float unit = text / kPathingTextPixels; // screen pixels per pixel of the window's layout
-    const ImVec2 at(kLeft * blish, kTop * blish);
-    const bool bare = info == settings::InfoDisplay::WithoutBackground;
+    const float text = settings->info_text_pixels;
+    const float unit = text / kPathingTextPixels; // screen pixels per pixel of Pathing's layout
+    const float margin = settings->info_margin;
+    const bool bare = static_cast<settings::InfoDisplay>(settings->info_display) == settings::InfoDisplay::WithoutBackground;
+    // InfoWindow.PaintBeforeChildren draws the close button only with the window's art. It sits
+    // half a margin in from the top-right corner, half a margin from the text, which wraps short
+    // of it.
+    const float close = bare ? 0.0f : kCloseSize * unit;
+    const float wrap = kLabelWidth * unit;
 
-    // Over the world and under the mouse: what is behind it takes the clicks, as Pathing's lets
-    // them through. Only the close button, a window of its own, takes any.
+    // The box around the text, kept on the screen whatever its saved place: a smaller resolution
+    // may leave that beyond it.
+    fonts::pushOverlay(text);
+    const ImVec2 label = ImGui::CalcTextSize(screen->info.back().c_str(), nullptr, false, wrap);
+    const ImVec2 size(margin + wrap + close + margin, std::max(margin + label.y + margin, margin + close));
+    const ImVec2 display = ImGui::GetIO().DisplaySize;
+    const ImVec2 at(
+        std::clamp(settings->info_x, 0.0f, std::max(0.0f, display.x - size.x)),
+        std::clamp(settings->info_y, 0.0f, std::max(0.0f, display.y - size.y)));
+
+    // Over the world: unless it can be moved, what is behind it takes the clicks, as Pathing's lets
+    // them through, and only the close button, a window of its own, takes any. Never brought in
+    // front of that button by a click. Laid out by hand with no padding, so the drag handle is
+    // the box exactly and nothing makes it grow.
+    bool moved = false;
+    const std::array<float, 4>& background = settings->info_background;
     ImGui::SetNextWindowPos(at, ImGuiCond_Always);
-    ImGui::SetNextWindowSize(ImVec2(kWidth * unit, 0.0f), ImGuiCond_Always);
-    ImGui::PushStyleColor(ImGuiCol_WindowBg, bare ? ImVec4(0.0f, 0.0f, 0.0f, 0.0f) : style::INFO_BACKGROUND);
+    ImGui::SetNextWindowSize(size, ImGuiCond_Always);
+    ImGui::PushStyleColor(
+        ImGuiCol_WindowBg,
+        bare ? ImVec4(0.0f, 0.0f, 0.0f, 0.0f) : ImVec4(background[0], background[1], background[2], background[3]));
     ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, bare ? 0.0f : ImGui::GetStyle().WindowBorderSize);
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(kLabelLeft * unit, kLabelTop * unit));
-    constexpr ImGuiWindowFlags kInfoFlags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings |
-                                            ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoMove |
-                                            ImGuiWindowFlags_NoInputs;
-    if (ImGui::Begin("##marker_info", nullptr, kInfoFlags)) {
-        fonts::pushOverlay(text);
-        ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + kLabelWidth * unit);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
+    const ImGuiWindowFlags flags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing |
+                                   ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus |
+                                   ImGuiWindowFlags_NoScrollWithMouse | (settings->info_movable ? 0 : ImGuiWindowFlags_NoInputs);
+    if (ImGui::Begin("##marker_info", nullptr, flags)) {
+        if (settings->info_movable) {
+            ImGui::InvisibleButton("drag", size);
+            if (ImGui::IsItemActive()) {
+                const ImVec2 delta = ImGui::GetIO().MouseDelta;
+                settings->info_x = at.x + delta.x;
+                settings->info_y = at.y + delta.y;
+            }
+            moved = ImGui::IsItemDeactivated();
+        }
+        ImGui::SetCursorPos(ImVec2(margin, margin));
+        ImGui::PushTextWrapPos(margin + wrap);
         ImGui::TextUnformatted(screen->info.back().c_str());
         ImGui::PopTextWrapPos();
-        fonts::pop();
-        // The label's 70 below it, of which the window's padding gives 60.
-        ImGui::Dummy(ImVec2(0.0f, (kBelowLabel - kLabelTop) * unit));
     }
     ImGui::End();
     ImGui::PopStyleVar(2);
     ImGui::PopStyleColor();
+    fonts::pop();
 
-    // InfoWindow.PaintBeforeChildren draws the close button only with the window's art.
-    if (bare) return;
-    const float close = kCloseSize * unit;
-    ImGui::SetNextWindowPos(ImVec2(at.x + (kWidth - kCloseRight) * unit, at.y + kCloseTop * unit), ImGuiCond_Always);
+    if (bare) return moved;
+    // Where this frame's box is, not where a drag has just put the next: the two move together.
+    ImGui::SetNextWindowPos(ImVec2(at.x + size.x - margin * 0.5f - close, at.y + margin * 0.5f), ImGuiCond_Always);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
     if (ImGui::Begin("##marker_info_close", nullptr, kOverlayFlags | ImGuiWindowFlags_NoBackground)) {
         if (ImGui::InvisibleButton("close", ImVec2(close, close))) screen->info_closed = true;
@@ -93,25 +105,21 @@ void drawInfo(behaviors::Screen* screen, settings::InfoDisplay info, float ui_sc
     }
     ImGui::End();
     ImGui::PopStyleVar();
+    return moved;
 }
 
 } // namespace
 
-bool draw(
-    behaviors::Screen* screen,
-    settings::InfoDisplay info,
-    float ui_scale,
-    const std::string& key_name,
-    bool show_prompt,
-    achievements::Catalog* achievements) {
+Drawn draw(behaviors::Screen* screen, settings::Settings* settings, const std::string& key_name, achievements::Catalog* achievements) {
     const ImVec2 display = ImGui::GetIO().DisplaySize;
 
-    if (info != settings::InfoDisplay::Never && !screen->info_closed && !screen->info.empty() && !screen->info.back().empty()) {
-        drawInfo(screen, info, ui_scale);
+    Drawn drawn;
+    if (static_cast<settings::InfoDisplay>(settings->info_display) != settings::InfoDisplay::Never && !screen->info_closed &&
+        !screen->info.empty() && !screen->info.back().empty()) {
+        drawn.info_moved = drawInfo(screen, settings);
     }
 
-    if (!show_prompt || !screen->prompt) return false;
-    bool clicked = false;
+    if (!settings->show_interact_prompt || !screen->prompt) return drawn;
     ImGui::SetNextWindowPos(ImVec2(display.x * kPromptX, display.y * kPromptY), ImGuiCond_Always);
     ImGui::SetNextWindowBgAlpha(0.6f);
     if (ImGui::Begin("##marker_prompt", nullptr, kOverlayFlags)) {
@@ -124,11 +132,11 @@ bool draw(
         }
         const std::string text = behaviors::formatMessage(screen->prompt->text, "[" + key_name + "]");
         ImGui::PushStyleColor(ImGuiCol_Text, screen->prompt->unhides ? style::UNHIDE : style::PROMPT);
-        clicked = ImGui::Selectable(text.c_str());
+        drawn.prompt_clicked = ImGui::Selectable(text.c_str());
         ImGui::PopStyleColor();
     }
     ImGui::End();
-    return clicked;
+    return drawn;
 }
 
 } // namespace viewer::ui::interaction

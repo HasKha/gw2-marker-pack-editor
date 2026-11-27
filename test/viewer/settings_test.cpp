@@ -2,6 +2,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <array>
 #include <fstream>
 #include <iterator>
 #include <string>
@@ -216,4 +217,45 @@ TEST_CASE("slow frames are not logged unless asked, and the threshold is kept wi
     REQUIRE(viewer::settings::save(temp.path(), settings));
     loaded = viewer::settings::load(temp.path());
     CHECK(loaded.slow_frame_ms == 1.0f);
+}
+
+TEST_CASE("the info box starts near Pathing's, and how it looks and where it is are kept", "[viewer][settings]") {
+    const corpus::TempDir temp("settings_info_box");
+    const viewer::settings::Settings defaults = viewer::settings::load(temp.path());
+    CHECK(defaults.info_background == std::array<float, 4>{0.06f, 0.06f, 0.07f, 0.9f});
+    CHECK(defaults.info_text_pixels == 20.0f);
+    CHECK(defaults.info_movable);
+
+    viewer::settings::Settings settings;
+    settings.info_background = {1.0f, 0.5f, 0.25f, 0.0f};
+    settings.info_text_pixels = 32.0f;
+    settings.info_margin = 12.0f;
+    settings.info_x = 640.0f;
+    settings.info_y = 360.0f;
+    settings.info_movable = false;
+    REQUIRE(viewer::settings::save(temp.path(), settings));
+    const viewer::settings::Settings loaded = viewer::settings::load(temp.path());
+    CHECK(loaded.info_background == settings.info_background);
+    CHECK(loaded.info_text_pixels == 32.0f);
+    CHECK(loaded.info_margin == 12.0f);
+    CHECK(loaded.info_x == 640.0f);
+    CHECK(loaded.info_y == 360.0f);
+    CHECK_FALSE(loaded.info_movable);
+}
+
+TEST_CASE("a hand-edited info background is clamped, or ignored when it is not four numbers", "[viewer][settings]") {
+    const corpus::TempDir temp("settings_info_background");
+    const std::array<float, 4> defaults = viewer::settings::Settings{}.info_background;
+
+    std::ofstream(temp / viewer::settings::FILE_NAME) << R"({"info_background": [2, -1, 0.5, 1], "info_text_pixels": 8})";
+    const viewer::settings::Settings loaded = viewer::settings::load(temp.path());
+    CHECK(loaded.info_background == std::array<float, 4>{1.0f, 0.0f, 0.5f, 1.0f});
+    CHECK(loaded.info_text_pixels == 10.0f); // the slider's least
+
+    std::ofstream(temp / viewer::settings::FILE_NAME) << R"({"info_background": [1, 1, 1]})";
+    CHECK(viewer::settings::load(temp.path()).info_background == defaults);
+    std::ofstream(temp / viewer::settings::FILE_NAME) << R"({"info_background": [1, 1, "1", 1]})";
+    CHECK(viewer::settings::load(temp.path()).info_background == defaults);
+    std::ofstream(temp / viewer::settings::FILE_NAME) << R"({"info_background": "#ffffff"})";
+    CHECK(viewer::settings::load(temp.path()).info_background == defaults);
 }

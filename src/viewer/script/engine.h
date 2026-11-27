@@ -57,6 +57,11 @@ struct Host {
     // Debug.ShowMessage: a notification on screen. Null leaves it in the console only.
     std::function<void(const std::string& text)> show_message;
 
+    // User.ShowInfo and HideInfo: a string onto the stack of marker info, and the first one equal
+    // to it off again. Null shows nothing.
+    std::function<void(const std::string& text)> show_info;
+    std::function<void(const std::string& text)> hide_info;
+
     // How long one call into Lua may run before it is stopped with an error: far past what a
     // working script needs — Hero's heaviest file loads in milliseconds — and short enough
     // that a script stuck in a loop costs the player a hitch rather than the game.
@@ -113,7 +118,6 @@ public:
     void clickMenu(size_t index);
 
     const std::map<std::string, std::string>& watches() const; // Debug:Watch, as text
-    const std::vector<std::string>& info() const; // User.ShowInfo
 
     // A script-* behavior's function, called as Pathing's ScriptEngine.CallFunction calls it:
     // a global looked up ignoring case, handed `entity`, then what `hook` adds — `flag` for

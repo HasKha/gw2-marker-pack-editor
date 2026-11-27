@@ -198,6 +198,8 @@ Session::Session(AddonAPI* nexus, Mumble::Data* mumble)
         return persisted.clipboard_consent != static_cast<int>(behaviors::ClipboardConsent::Never) && setClipboard(text, message);
     };
     host.show_message = [this](const std::string& text) { api->UI.SendAlert(text.c_str()); };
+    host.show_info = [this](const std::string& text) { screen.addInfo(text); };
+    host.hide_info = [this](const std::string& text) { screen.removeInfo(text); };
     installed.api = api;
     installed.jobs = &jobs;
     installed.uploads = &texture_uploads;
@@ -728,15 +730,10 @@ void Session::render() {
     // Either may have removed a pack, and the prompt below calls into the live map.
     refreshLiveMap(live_map.map_id);
 
-    if (camera.valid && !camera.map_open &&
-        ui::interaction::draw(
-            &screen,
-            static_cast<settings::InfoDisplay>(persisted.info_display),
-            uiScale(),
-            interact_key.name(),
-            persisted.show_interact_prompt,
-            &achievement_details)) {
-        behaviors::interactWith(&live_map, screen.prompt->marker, behaviorHost(), behaviorFrame());
+    if (camera.valid && !camera.map_open) {
+        const ui::interaction::Drawn on_screen = ui::interaction::draw(&screen, &persisted, interact_key.name(), &achievement_details);
+        if (on_screen.prompt_clicked) behaviors::interactWith(&live_map, screen.prompt->marker, behaviorHost(), behaviorFrame());
+        if (on_screen.info_moved) saveSettings();
     }
 
     if (all_markers_requested.exchange(false)) {

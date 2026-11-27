@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <filesystem>
 #include <string>
 
@@ -33,6 +34,16 @@ struct Settings {
     // The key that interacts with a focused marker: Blish HUD's own interact binding, F
     // unless changed, since neither it nor Nexus can read the game's. A Windows virtual key.
     int info_display = 0; // InfoDisplay: Pathing's "Marker Info Display Mode"
+    // Ours: the info box (ui::interaction). The defaults are near Pathing's InfoWindow at the
+    // Normal interface size, its dark art at 0.9 opacity and its place at (300, 200) of Blish
+    // HUD's pixels, with less room around the text than its label's 70, and the text at the 20 px
+    // floor for text over the world.
+    std::array<float, 4> info_background = {0.06f, 0.06f, 0.07f, 0.9f}; // RGBA, each 0 to 1
+    float info_text_pixels = 20.0f;
+    float info_margin = 40.0f; // screen pixels around the text
+    float info_x = 270.0f; // its top-left corner, in screen pixels
+    float info_y = 180.0f;
+    bool info_movable = true; // dragged by the mouse, which it then takes from the game
 
     // Pathing's pack settings for the world, as WorldOptions takes them.
     // Where the menu is: in Nexus's own right-click menu, and behind an icon of ours in Nexus's

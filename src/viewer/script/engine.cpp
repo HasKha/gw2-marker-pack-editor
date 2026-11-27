@@ -295,10 +295,6 @@ const std::map<std::string, std::string>& Engine::watches() const {
     return state->context.watches;
 }
 
-const std::vector<std::string>& Engine::info() const {
-    return state->context.info;
-}
-
 std::optional<bool> Engine::callBehavior(const behaviors::ScriptCall& call, behaviors::Entity entity, behaviors::Hook hook, bool flag) {
     State& running = *state;
     Context& ctx = running.context;

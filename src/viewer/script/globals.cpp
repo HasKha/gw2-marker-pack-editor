@@ -304,16 +304,15 @@ const Member<UserApi> kUserMembers[] = {
     {.name = "ShowInfo",
      .call =
          [](sol::state_view lua, UserApi&, sol::variadic_args args) {
+             // The message is its own key, for HideInfo.
              const std::string message = textOf(lua, argument(args, 0));
-             context(lua).info.push_back(message);
+             if (const Host& host = context(lua).host; host.show_info) host.show_info(message);
              return sol::make_object(lua, message);
          }},
     {.name = "HideInfo",
      .call =
          [](sol::state_view lua, UserApi&, sol::variadic_args args) {
-             std::vector<std::string>& info = context(lua).info;
-             const auto it = std::find(info.begin(), info.end(), textOf(lua, argument(args, 0)));
-             if (it != info.end()) info.erase(it);
+             if (const Host& host = context(lua).host; host.hide_info) host.hide_info(textOf(lua, argument(args, 0)));
              return sol::object(sol::lua_nil);
          }},
 };

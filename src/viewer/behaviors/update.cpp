@@ -268,18 +268,14 @@ private:
         host.screen->prompt = Screen::Prompt{index, std::move(text), false, achievement};
     }
 
-    // UiStates.AddInfoString and RemoveInfoString, each of which shows the window again.
     void showInfo(const std::string& text, EntityState* state) {
-        host.screen->info.push_back(text);
-        host.screen->info_closed = false;
+        host.screen->addInfo(text);
         state->shown_info = text;
     }
 
     void takeInfoBack(EntityState* state) {
         if (!state->shown_info) return;
-        std::vector<std::string>& info = host.screen->info;
-        if (const auto at = std::find(info.begin(), info.end(), *state->shown_info); at != info.end()) info.erase(at);
-        host.screen->info_closed = false;
+        host.screen->removeInfo(*state->shown_info);
         state->shown_info.reset();
     }
 
@@ -345,6 +341,16 @@ private:
 };
 
 } // namespace
+
+void Screen::addInfo(const std::string& text) {
+    info.push_back(text);
+    info_closed = false;
+}
+
+void Screen::removeInfo(const std::string& text) {
+    if (const auto at = std::find(info.begin(), info.end(), text); at != info.end()) info.erase(at);
+    info_closed = false;
+}
 
 void update(runtime::LiveMap* live, const std::vector<char>& visible, const Host& host, const Frame& frame) {
     Runner runner(live, host, frame);

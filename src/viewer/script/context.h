@@ -46,7 +46,6 @@ struct Context {
     std::vector<sol::protected_function> menu_clicks; // one per menus entry; may be empty
 
     std::map<std::string, std::string> watches;
-    std::vector<std::string> info;
 
     // One userdata per object, so that a script keying a table with a marker, or comparing
     // two, finds the same one — as NeoLua does, handing out the .NET object itself.

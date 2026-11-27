@@ -34,9 +34,15 @@ struct Options {
 // nothing, did not exist, or failed.
 using ScriptCaller = std::function<std::optional<bool>(const ScriptCall& call, Entity entity, Hook hook, bool flag)>;
 
-// What behaviors put on screen: Pathing's UiStates. Info strings stack, the last one shown;
-// one marker at a time has the interact prompt.
+// What behaviors and scripts put on screen: Pathing's UiStates. Info strings stack, the last one
+// shown, markers' and User.ShowInfo's in the one stack; one marker at a time has the interact
+// prompt.
 struct Screen {
+    // UiStates.AddInfoString and RemoveInfoString, each of which shows the window again. Removing
+    // takes the first string equal to `text`, as SafeList.Remove does.
+    void addInfo(const std::string& text);
+    void removeInfo(const std::string& text);
+
     struct Prompt {
         size_t marker = 0;
         std::string text; // with "{0}" where the interact key's name goes

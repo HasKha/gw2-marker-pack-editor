@@ -343,12 +343,52 @@ void Session::drawOptionsPage() {
         changed |= ImGui::Checkbox("Show what interacting does", &persisted.show_interact_prompt);
         if (ImGui::IsItemHovered())
             ImGui::SetTooltip("A prompt near a marker you can interact with, saying what your Interact key will do.");
+        ui::style::endSubsection();
+        if (changed) saveSettings();
+        ImGui::TreePop();
+    }
+
+    // The box a marker's info text shows in. Its size applies a moment after it is changed, once
+    // the font is built at it (fonts::pushOverlay).
+    if (ui::style::section("popups", ICON_FA_MESSAGE, "Popup Messages")) {
         // In settings::InfoDisplay's order.
         static constexpr const char* kInfoDisplays[] = {"Shown", "Shown without background", "Hidden"};
         ImGui::SetNextItemWidth(ImGui::GetFontSize() * kFieldWidthEms);
-        changed |= ImGui::Combo("Marker info text", &persisted.info_display, kInfoDisplays, IM_ARRAYSIZE(kInfoDisplays));
-        if (ImGui::IsItemHovered()) ImGui::SetTooltip("Text some markers show at the top of the screen while you are near them.");
-        ui::style::endSubsection();
+        bool changed = ImGui::Combo("Marker info text", &persisted.info_display, kInfoDisplays, IM_ARRAYSIZE(kInfoDisplays));
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("Text some markers show on screen while you are near them.");
+        const auto display = static_cast<settings::InfoDisplay>(persisted.info_display);
+
+        // Each its own beginDisabled: they do not nest.
+        ui::style::beginDisabled(display != settings::InfoDisplay::Default);
+        ImGui::SetNextItemWidth(ImGui::GetFontSize() * kFieldWidthEms);
+        changed |= ImGui::ColorEdit4(
+            "Background",
+            persisted.info_background.data(),
+            ImGuiColorEditFlags_AlphaBar | ImGuiColorEditFlags_AlphaPreviewHalf);
+        ui::style::endDisabled();
+
+        ui::style::beginDisabled(display == settings::InfoDisplay::Never);
+        ImGui::SetNextItemWidth(ImGui::GetFontSize() * kFieldWidthEms);
+        changed |= ImGui::SliderFloat("Font size", &persisted.info_text_pixels, 10.0f, 64.0f, "%.0f px", ImGuiSliderFlags_AlwaysClamp);
+        ImGui::SetNextItemWidth(ImGui::GetFontSize() * kFieldWidthEms);
+        changed |= ImGui::SliderFloat("Margin", &persisted.info_margin, 0.0f, 200.0f, "%.0f px", ImGuiSliderFlags_AlwaysClamp);
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("Space between the text and the edges of its box.");
+        // Two members, not an array, so through a copy.
+        float position[2] = {persisted.info_x, persisted.info_y};
+        ImGui::SetNextItemWidth(ImGui::GetFontSize() * kFieldWidthEms);
+        if (ImGui::DragFloat2("Position", position, 1.0f, 0.0f, 8000.0f, "%.0f", ImGuiSliderFlags_AlwaysClamp)) {
+            persisted.info_x = position[0];
+            persisted.info_y = position[1];
+            changed = true;
+        }
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("The box's top-left corner, in pixels from the top-left of the screen.");
+        changed |= ImGui::Checkbox("Can be moved", &persisted.info_movable);
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip(
+                "Drag a message to move it, and the next ones show there too.\n"
+                "While on, clicks on a message go to it rather than to the game.");
+        }
+        ui::style::endDisabled();
         if (changed) saveSettings();
         ImGui::TreePop();
     }
